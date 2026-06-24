@@ -1,0 +1,8 @@
+/.chrome-smoke-profile/
+/.edge-smoke-profile/
+/.claude/
+/tests/smoke-output/
+/tests/visual-output/
+/tests/smoke-labels-dom.err
+/tests/smoke-labels-dom.html
+/tests/smoke-labels.png

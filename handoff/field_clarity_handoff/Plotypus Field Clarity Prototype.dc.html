@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;500;700;900&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;}
+  /* value (editable) cell — plain text at rest, reveals editability on hover/focus */
+  .vcell{position:relative;cursor:text;border-radius:7px;transition:background .08s,box-shadow .08s;}
+  .vcell:hover{background:#fff;box-shadow:inset 0 0 0 1px #d4ccbd;}
+  .vcell:focus-within{background:#fff;box-shadow:inset 0 0 0 2px #3f6b5e;}
+  .pin{width:100%;border:none;background:transparent;font:500 16px/1.35 Lato,'Segoe UI',sans-serif;color:#282a27;padding:9px 12px;min-height:44px;}
+  .pin:focus{outline:none;}
+  select.pin{cursor:pointer;appearance:none;}
+  .vcell:hover .pin,.vcell:focus-within .pin{cursor:text;}
+  .num{font-variant-numeric:tabular-nums;}
+  /* computed cell — system, never editable */
+  .ccell{background:#f0eee7;cursor:default;}
+  @keyframes ppshimmer{0%{background-position:-260px 0;}100%{background-position:260px 0;}}
+  .skel{height:16px;border-radius:5px;background:linear-gradient(90deg,#ece7db 0%,#f4f0e6 50%,#ece7db 100%);background-size:260px 100%;animation:ppshimmer 1.15s linear infinite;}
+</style>
+</helmet>
+<div style="min-width:100%;min-height:100vh;box-sizing:border-box;padding:44px 40px 80px;background:#e9e6dd;font-family:Lato,'Segoe UI',Arial,sans-serif;color:#282a27;display:flex;flex-direction:column;align-items:center;gap:28px;">
+
+  <!-- ===== INTRO ===== -->
+  <div style="width:1240px;max-width:100%;">
+    <div style="font:600 11px/1.2 'IBM Plex Mono',monospace;letter-spacing:0.16em;text-transform:uppercase;color:#3f6b5e;">Plotypus · Workspace prototype</div>
+    <h1 style="margin:8px 0 10px;font:900 26px/1.15 Lato,sans-serif;letter-spacing:-0.01em;">Editable vs. computed cells — and bilingual editing</h1>
+    <p style="margin:0;max-width:780px;font-size:14.5px;line-height:1.55;color:#4a4338;">Same quiet, borderless table you have today — these changes only add <em>signal</em>. In <strong>Project points</strong>, value columns reveal an edit affordance on hover while the auto-derived <strong>Status</strong> column stays visibly inert, so it's clear which cells you own. In <strong>Translate</strong>, English and French both become editable in place instead of one editable field beside a locked reference.</p>
+  </div>
+
+  <!-- ===== PROJECT POINTS — MAIN ===== -->
+  <div data-screen-label="Project points — field clarity" style="width:1240px;max-width:100%;background:#ffffff;border:1px solid #d4ccbd;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.08);overflow:hidden;">
+    <!-- workspace tab chrome (context) -->
+    <div style="display:flex;align-items:center;gap:2px;height:46px;padding:0 14px;background:#f5f2eb;border-bottom:1px solid #e3ded3;">
+      <span style="display:flex;align-items:center;height:30px;padding:0 11px;border-radius:7px;color:#6b6155;font:600 13px Lato,sans-serif;">Map</span>
+      <span style="display:flex;align-items:center;height:30px;padding:0 11px;border-radius:7px;background:#fff;border:1px solid #d4ccbd;color:#282a27;font:700 13px Lato,sans-serif;">Project points</span>
+      <span style="display:flex;align-items:center;height:30px;padding:0 11px;border-radius:7px;color:#6b6155;font:600 13px Lato,sans-serif;">Categories &amp; markers</span>
+      <span style="display:flex;align-items:center;height:30px;padding:0 11px;border-radius:7px;color:#6b6155;font:600 13px Lato,sans-serif;">Map baselayer</span>
+      <span style="display:flex;align-items:center;height:30px;padding:0 11px;border-radius:7px;color:#6b6155;font:600 13px Lato,sans-serif;">Translate</span>
+      <span style="display:flex;align-items:center;height:30px;padding:0 11px;border-radius:7px;color:#6b6155;font:600 13px Lato,sans-serif;">Map quality</span>
+    </div>
+
+    <!-- legend -->
+    <div style="display:flex;align-items:center;gap:10px;padding:11px 18px;background:#fbfaf6;border-bottom:1px solid #efeae0;">
+      <span style="font:600 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#9a9183;">Field types</span>
+      <span style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:#4a4338;margin-left:8px;"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#3f6b5e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>You enter the value — hover any cell to edit</span>
+      <span style="width:1px;height:16px;background:#e3ded3;margin:0 6px;"></span>
+      <span style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:#4a4338;"><span style="display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:4px;background:#f0eee7;border:1px solid #d8d0c0;"><svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="#7a7263" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span>Status is set automatically by Plotypus</span>
+    </div>
+
+    <div style="overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
+        <colgroup>
+          <col style="width:auto;"><col style="width:200px;"><col style="width:96px;"><col style="width:118px;"><col style="width:108px;"><col style="width:132px;">
+        </colgroup>
+        <thead>
+          <tr>
+            <th style="padding:13px 12px 11px;text-align:left;background:#fbfaf6;border-bottom:1px solid #d4ccbd;"><span style="display:inline-flex;align-items:center;gap:6px;font:600 11px/1 'IBM Plex Mono',monospace;letter-spacing:0.08em;text-transform:uppercase;color:#9a9183;">Project name <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="#bcb4a3" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span></th>
+            <th style="padding:13px 12px 11px;text-align:left;background:#fbfaf6;border-bottom:1px solid #d4ccbd;"><span style="display:inline-flex;align-items:center;gap:6px;font:600 11px/1 'IBM Plex Mono',monospace;letter-spacing:0.08em;text-transform:uppercase;color:#9a9183;">Type <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="#bcb4a3" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span></th>
+            <th style="padding:13px 12px 11px;text-align:left;background:#fbfaf6;border-bottom:1px solid #d4ccbd;"><span style="display:inline-flex;align-items:center;gap:6px;font:600 11px/1 'IBM Plex Mono',monospace;letter-spacing:0.08em;text-transform:uppercase;color:#9a9183;">Priority <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="#bcb4a3" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span></th>
+            <th style="padding:13px 12px 11px;text-align:left;background:#fbfaf6;border-bottom:1px solid #d4ccbd;"><span style="display:inline-flex;align-items:center;gap:6px;font:600 11px/1 'IBM Plex Mono',monospace;letter-spacing:0.08em;text-transform:uppercase;color:#9a9183;">Longitude <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="#bcb4a3" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span></th>
+            <th style="padding:13px 12px 11px;text-align:left;background:#fbfaf6;border-bottom:1px solid #d4ccbd;"><span style="display:inline-flex;align-items:center;gap:6px;font:600 11px/1 'IBM Plex Mono',monospace;letter-spacing:0.08em;text-transform:uppercase;color:#9a9183;">Latitude <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="#bcb4a3" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span></th>
+            <th style="padding:13px 12px 11px;text-align:left;background:#f4f1ea;border-bottom:1px solid #d4ccbd;border-left:1px solid #e7e1d4;"><span style="display:inline-flex;align-items:center;gap:6px;font:600 11px/1 'IBM Plex Mono',monospace;letter-spacing:0.08em;text-transform:uppercase;color:#8a8273;">Status <span style="display:inline-flex;align-items:center;gap:3px;padding:1px 5px;border:1px solid #ddd6c8;border-radius:4px;background:#eae5da;font:700 8px/1.4 'IBM Plex Mono',monospace;letter-spacing:0.06em;color:#8a8273;"><svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="#8a8273" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Auto</span></span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- mapped -->
+          <tr>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;"><input class="pin" type="text" value="Grays Bay Road and Port" aria-label="Project name"></td>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;"><select class="pin" aria-label="Type"><option>Referred Project</option><option>Transformative Strategy</option></select></td>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;"><input class="pin num" type="number" value="0" aria-label="Priority"></td>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;"><input class="pin num" type="text" value="-108.4" aria-label="Longitude"></td>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;"><input class="pin num" type="text" value="68.5" aria-label="Latitude"></td>
+            <td class="ccell" style="border-bottom:1px solid #e7e1d4;border-left:1px solid #e7e1d4;padding:0 12px;" aria-readonly="true"><span style="display:inline-flex;align-items:center;min-height:26px;padding:4px 9px;border:1px solid #cfe0d8;border-radius:5px;background:#eef4f0;color:#3f6b5e;font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.05em;text-transform:uppercase;">Mapped</span></td>
+          </tr>
+          <!-- mapped -->
+          <tr>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;"><input class="pin" type="text" value="Arctic Economic and Security Corridor" aria-label="Project name"></td>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;"><select class="pin" aria-label="Type"><option>Referred Project</option><option>Transformative Strategy</option></select></td>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;"><input class="pin num" type="number" value="0" aria-label="Priority"></td>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;"><input class="pin num" type="text" value="-112.5" aria-label="Longitude"></td>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;"><input class="pin num" type="text" value="64.5" aria-label="Latitude"></td>
+            <td class="ccell" style="border-bottom:1px solid #e7e1d4;border-left:1px solid #e7e1d4;padding:0 12px;" aria-readonly="true"><span style="display:inline-flex;align-items:center;min-height:26px;padding:4px 9px;border:1px solid #cfe0d8;border-radius:5px;background:#eef4f0;color:#3f6b5e;font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.05em;text-transform:uppercase;">Mapped</span></td>
+          </tr>
+          <!-- mapped -->
+          <tr>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;"><input class="pin" type="text" value="Mackenzie Valley Highway" aria-label="Project name"></td>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;"><select class="pin" aria-label="Type"><option>Referred Project</option><option>Transformative Strategy</option></select></td>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;"><input class="pin num" type="number" value="0" aria-label="Priority"></td>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;"><input class="pin num" type="text" value="-124" aria-label="Longitude"></td>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;"><input class="pin num" type="text" value="65.5" aria-label="Latitude"></td>
+            <td class="ccell" style="border-bottom:1px solid #e7e1d4;border-left:1px solid #e7e1d4;padding:0 12px;" aria-readonly="true"><span style="display:inline-flex;align-items:center;min-height:26px;padding:4px 9px;border:1px solid #cfe0d8;border-radius:5px;background:#eef4f0;color:#3f6b5e;font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.05em;text-transform:uppercase;">Mapped</span></td>
+          </tr>
+          <!-- MISSING coordinate (warning) — hovered/editable demo on the empty lon -->
+          <tr>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;"><input class="pin" type="text" value="Ksi Lisims LNG" aria-label="Project name"></td>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;"><select class="pin" aria-label="Type"><option>Referred Project</option><option>Transformative Strategy</option></select></td>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;"><input class="pin num" type="number" value="0" aria-label="Priority"></td>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;background:#fff;box-shadow:inset 0 0 0 2px #9a4b3f;border-radius:7px;"><input class="pin num" type="text" value="" placeholder="—" aria-label="Longitude"></td>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;"><input class="pin num" type="text" value="55.1" aria-label="Latitude"></td>
+            <td class="ccell" style="border-bottom:1px solid #e7e1d4;border-left:1px solid #e7e1d4;padding:0 12px;" aria-readonly="true"><span style="display:inline-flex;align-items:center;min-height:26px;padding:4px 9px;border:1px solid #efd0c9;border-radius:5px;background:#f9e7e2;color:#9a4b3f;font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.05em;text-transform:uppercase;">Missing</span></td>
+          </tr>
+          <!-- callout -->
+          <tr>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;"><input class="pin" type="text" value="Northwest Critical Conservation Corridor" aria-label="Project name"></td>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;"><select class="pin" aria-label="Type"><option>Transformative Strategy</option><option>Referred Project</option></select></td>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;"><input class="pin num" type="number" value="0" aria-label="Priority"></td>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;"><input class="pin num" type="text" value="" placeholder="—" aria-label="Longitude"></td>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;"><input class="pin num" type="text" value="" placeholder="—" aria-label="Latitude"></td>
+            <td class="ccell" style="border-bottom:1px solid #e7e1d4;border-left:1px solid #e7e1d4;padding:0 12px;" aria-readonly="true"><span style="display:inline-flex;align-items:center;min-height:26px;padding:4px 9px;border:1px solid #ead8ad;border-radius:5px;background:#f7efd8;color:#9f7616;font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.05em;text-transform:uppercase;">Callout</span></td>
+          </tr>
+          <!-- active/selected row -->
+          <tr style="background:#eef4f0;">
+            <td class="vcell" style="border-bottom:1px solid #efeae0;box-shadow:inset 3px 0 0 #3f6b5e;"><input class="pin" type="text" value="Red Chris Mine Expansion" aria-label="Project name" style="color:#365e52;font-weight:700;"></td>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;"><select class="pin" aria-label="Type"><option>Referred Project</option><option>Transformative Strategy</option></select></td>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;"><input class="pin num" type="number" value="0" aria-label="Priority"></td>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;"><input class="pin num" type="text" value="-129.9" aria-label="Longitude"></td>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;"><input class="pin num" type="text" value="57.7" aria-label="Latitude"></td>
+            <td class="ccell" style="background:#e4eee8;border-bottom:1px solid #d3e3da;border-left:1px solid #d3e3da;padding:0 12px;" aria-readonly="true"><span style="display:inline-flex;align-items:center;min-height:26px;padding:4px 9px;border:1px solid #cfe0d8;border-radius:5px;background:#fff;color:#3f6b5e;font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.05em;text-transform:uppercase;">Mapped</span></td>
+          </tr>
+          <!-- mapped -->
+          <tr>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;"><input class="pin" type="text" value="LNG Canada Phase 2" aria-label="Project name"></td>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;"><select class="pin" aria-label="Type"><option>Referred Project</option><option>Transformative Strategy</option></select></td>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;"><input class="pin num" type="number" value="0" aria-label="Priority"></td>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;"><input class="pin num" type="text" value="-128.65" aria-label="Longitude"></td>
+            <td class="vcell" style="border-bottom:1px solid #efeae0;"><input class="pin num" type="text" value="54.05" aria-label="Latitude"></td>
+            <td class="ccell" style="border-bottom:1px solid #e7e1d4;border-left:1px solid #e7e1d4;padding:0 12px;" aria-readonly="true"><span style="display:inline-flex;align-items:center;min-height:26px;padding:4px 9px;border:1px solid #cfe0d8;border-radius:5px;background:#eef4f0;color:#3f6b5e;font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.05em;text-transform:uppercase;">Mapped</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin:0;padding:14px 18px 16px;font-size:12.5px;line-height:1.5;color:#6b6155;border-top:1px solid #efeae0;background:#fbfaf6;"><strong style="color:#3f6b5e;">How to read it:</strong> nothing boxes-in at rest — the table stays as airy as today. The five value columns light up with a soft outline + text cursor on hover (see the highlighted empty <em>Longitude</em> on the Ksi Lisims row), so they invite editing. The <strong>Status</strong> column carries a faint persistent tint, an <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;">Auto</span> lock chip in its header, and a default cursor — it never looks typeable because Plotypus derives it from the coordinates.</p>
+  </div>
+
+  <!-- ===== PROJECT POINTS — EDGE STATES ===== -->
+  <div style="width:1240px;max-width:100%;display:flex;gap:20px;align-items:stretch;">
+    <!-- empty -->
+    <div data-screen-label="Project points — empty" style="flex:1;background:#fff;border:1px solid #d4ccbd;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.08);padding:18px;display:flex;flex-direction:column;">
+      <div style="font:600 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#9a9183;margin-bottom:14px;">Empty state</div>
+      <div style="flex:1;border:1.5px dashed #d4ccbd;border-radius:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:26px 18px;gap:6px;">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#a89e8c" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v14H4Z"/><path d="M4 10h16M10 5v14"/></svg>
+        <strong style="font-size:14px;color:#282a27;">No project points yet.</strong>
+        <span style="font-size:12px;color:#8e8576;">Add a row, import a CSV, or load the sample.</span>
+        <div style="display:flex;gap:8px;margin-top:8px;"><span style="height:30px;padding:0 12px;display:flex;align-items:center;border-radius:7px;background:#3f6b5e;color:#fff;font:700 12px Lato,sans-serif;">Add row</span><span style="height:30px;padding:0 12px;display:flex;align-items:center;border-radius:7px;background:#fff;border:1px solid #d4ccbd;color:#282a27;font:600 12px Lato,sans-serif;">Import CSV</span></div>
+      </div>
+    </div>
+    <!-- loading -->
+    <div data-screen-label="Project points — loading" style="flex:1;background:#fff;border:1px solid #d4ccbd;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.08);padding:18px;">
+      <div style="font:600 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#9a9183;margin-bottom:16px;">Loading</div>
+      <div style="display:flex;flex-direction:column;gap:18px;">
+        <div style="display:grid;grid-template-columns:1.7fr 1fr 0.8fr;gap:12px;align-items:center;"><div class="skel"></div><div class="skel"></div><div style="height:24px;border-radius:5px;background:#f0eee7;border:1px solid #e3ded3;"></div></div>
+        <div style="display:grid;grid-template-columns:1.7fr 1fr 0.8fr;gap:12px;align-items:center;"><div class="skel"></div><div class="skel"></div><div style="height:24px;border-radius:5px;background:#f0eee7;border:1px solid #e3ded3;"></div></div>
+        <div style="display:grid;grid-template-columns:1.7fr 1fr 0.8fr;gap:12px;align-items:center;"><div class="skel"></div><div class="skel"></div><div style="height:24px;border-radius:5px;background:#f0eee7;border:1px solid #e3ded3;"></div></div>
+        <div style="display:grid;grid-template-columns:1.7fr 1fr 0.8fr;gap:12px;align-items:center;"><div class="skel"></div><div class="skel"></div><div style="height:24px;border-radius:5px;background:#f0eee7;border:1px solid #e3ded3;"></div></div>
+      </div>
+      <p style="margin:16px 0 0;font-size:11.5px;color:#8e8576;line-height:1.45;">Value columns shimmer; the computed Status column shows a flat inert block — it has nothing to fetch, it derives once values land.</p>
+    </div>
+    <!-- warning / fix -->
+    <div data-screen-label="Project points — warning" style="flex:1;background:#fff;border:1px solid #d4ccbd;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.08);padding:18px;">
+      <div style="font:600 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#9a9183;margin-bottom:14px;">Warning · actionable</div>
+      <div style="border:1px solid #e3c9c3;background:#fdf6f4;border-radius:9px;padding:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;">
+          <span style="font:700 14px Lato,sans-serif;color:#282a27;">Ksi Lisims LNG</span>
+          <span style="display:inline-flex;align-items:center;min-height:24px;padding:4px 9px;border:1px solid #efd0c9;border-radius:5px;background:#f9e7e2;color:#9a4b3f;font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.05em;text-transform:uppercase;">Missing</span>
+        </div>
+        <div style="display:flex;gap:10px;margin-bottom:12px;">
+          <span style="flex:1;display:block;padding:9px 11px;border-radius:7px;background:#fff;box-shadow:inset 0 0 0 2px #9a4b3f;color:#a89e8c;font:500 15px Lato,sans-serif;">—</span>
+          <span style="flex:1;display:block;padding:9px 11px;border-radius:7px;background:#fff;box-shadow:inset 0 0 0 1px #d4ccbd;color:#282a27;font:500 15px Lato,sans-serif;">55.1</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:9px;">
+          <span style="height:30px;padding:0 12px;display:flex;align-items:center;gap:6px;border-radius:7px;background:#9a4b3f;color:#fff;font:700 12px Lato,sans-serif;">Fix coordinates</span>
+          <span style="font-size:11.5px;color:#9a4b3f;">Has latitude but no longitude.</span>
+        </div>
+      </div>
+      <p style="margin:13px 0 0;font-size:11.5px;color:#6b6155;line-height:1.45;">The computed Status flags the problem; the fix happens in the value cells. Read-only and editable never blur together.</p>
+    </div>
+  </div>
+
+  <!-- ===== TRANSLATE — MAIN ===== -->
+  <div data-screen-label="Translate — bilingual editing" style="width:1240px;max-width:100%;background:#fff;border:1px solid #d4ccbd;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.08);overflow:hidden;margin-top:4px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 18px;background:#f5f2eb;border-bottom:1px solid #e3ded3;">
+      <div style="display:flex;align-items:baseline;gap:12px;">
+        <strong style="font:900 16px Lato,sans-serif;">Translate</strong>
+        <span style="font:600 11px 'IBM Plex Mono',monospace;color:#6b6155;">4 / 6 French strings complete</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:14px;">
+        <span style="display:flex;align-items:center;border:1px solid #d4ccbd;border-radius:7px;overflow:hidden;">
+          <span style="height:30px;padding:0 11px;display:flex;align-items:center;background:#fff;color:#282a27;font:700 12px Lato,sans-serif;">Edit both</span>
+          <span style="height:30px;padding:0 11px;display:flex;align-items:center;background:#f5f2eb;color:#6b6155;font:600 12px Lato,sans-serif;border-left:1px solid #d4ccbd;">EN focus</span>
+          <span style="height:30px;padding:0 11px;display:flex;align-items:center;background:#f5f2eb;color:#6b6155;font:600 12px Lato,sans-serif;border-left:1px solid #d4ccbd;">FR focus</span>
+        </span>
+        <span style="height:30px;padding:0 12px;display:flex;align-items:center;border-radius:7px;background:#fff;border:1px solid #d4ccbd;color:#282a27;font:600 12px Lato,sans-serif;">Missing FR</span>
+      </div>
+    </div>
+
+    <!-- legend -->
+    <div style="display:flex;align-items:center;gap:18px;padding:10px 18px;background:#fbfaf6;border-bottom:1px solid #efeae0;">
+      <span style="font:600 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#9a9183;">Both columns editable</span>
+      <span style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:#4a4338;"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#3f6b5e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>English · editable</span>
+      <span style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:#4a4338;"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#3f6b5e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Français · editable</span>
+      <span style="margin-left:auto;font-size:11.5px;color:#9a4b3f;font-style:italic;">Was: English locked as read-only reference</span>
+    </div>
+
+    <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
+      <colgroup><col style="width:44px;"><col><col><col style="width:128px;"></colgroup>
+      <thead>
+        <tr>
+          <th style="background:#fbfaf6;border-bottom:1px solid #d4ccbd;"></th>
+          <th style="padding:11px 14px;text-align:left;background:#fbfaf6;border-bottom:1px solid #d4ccbd;"><span style="display:inline-flex;align-items:center;gap:6px;font:600 11px/1 'IBM Plex Mono',monospace;letter-spacing:0.08em;text-transform:uppercase;color:#9a9183;">English · source <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="#bcb4a3" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span></th>
+          <th style="padding:11px 14px;text-align:left;background:#fbfaf6;border-bottom:1px solid #d4ccbd;border-left:1px solid #efeae0;"><span style="display:inline-flex;align-items:center;gap:6px;font:600 11px/1 'IBM Plex Mono',monospace;letter-spacing:0.08em;text-transform:uppercase;color:#9a9183;">Français <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="#bcb4a3" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span></th>
+          <th style="padding:11px 14px;text-align:center;background:#f4f1ea;border-bottom:1px solid #d4ccbd;border-left:1px solid #e7e1d4;"><span style="font:600 11px/1 'IBM Plex Mono',monospace;letter-spacing:0.08em;text-transform:uppercase;color:#8a8273;">Status</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td colspan="4" style="padding:13px 14px 7px;font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.1em;text-transform:uppercase;color:#9a9183;background:#fff;">Project names</td></tr>
+        <tr>
+          <td style="text-align:center;font:600 12px 'IBM Plex Mono',monospace;color:#a89e8c;border-bottom:1px solid #efeae0;">1</td>
+          <td class="vcell" style="border-bottom:1px solid #efeae0;"><input class="pin" type="text" value="Grays Bay Road and Port" aria-label="English"></td>
+          <td class="vcell" style="border-bottom:1px solid #efeae0;border-left:1px solid #efeae0;"><input class="pin" type="text" value="Route et port de Grays Bay" aria-label="Français"></td>
+          <td style="text-align:center;border-bottom:1px solid #e7e1d4;border-left:1px solid #e7e1d4;background:#faf8f3;"><span style="display:inline-flex;align-items:center;min-height:24px;padding:4px 9px;border:1px solid #cfe0d8;border-radius:5px;background:#eef4f0;color:#3f6b5e;font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.05em;text-transform:uppercase;">Complete</span></td>
+        </tr>
+        <tr>
+          <td style="text-align:center;font:600 12px 'IBM Plex Mono',monospace;color:#a89e8c;border-bottom:1px solid #efeae0;">2</td>
+          <td class="vcell" style="border-bottom:1px solid #efeae0;"><input class="pin" type="text" value="Mackenzie Valley Highway" aria-label="English"></td>
+          <td class="vcell" style="border-bottom:1px solid #efeae0;border-left:1px solid #efeae0;"><input class="pin" type="text" value="Route de la vallée du Mackenzie" aria-label="Français"></td>
+          <td style="text-align:center;border-bottom:1px solid #e7e1d4;border-left:1px solid #e7e1d4;background:#faf8f3;"><span style="display:inline-flex;align-items:center;min-height:24px;padding:4px 9px;border:1px solid #cfe0d8;border-radius:5px;background:#eef4f0;color:#3f6b5e;font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.05em;text-transform:uppercase;">Complete</span></td>
+        </tr>
+        <tr>
+          <td style="text-align:center;font:600 12px 'IBM Plex Mono',monospace;color:#a89e8c;border-bottom:1px solid #efeae0;">3</td>
+          <td class="vcell" style="border-bottom:1px solid #efeae0;"><input class="pin" type="text" value="Ksi Lisims LNG" aria-label="English"></td>
+          <td class="vcell" style="border-bottom:1px solid #efeae0;border-left:1px solid #efeae0;background:#fdf6f4;box-shadow:inset 0 0 0 1px #e3c9c3;"><input class="pin" type="text" value="" placeholder="Ajouter la traduction française…" aria-label="Français"></td>
+          <td style="text-align:center;border-bottom:1px solid #e7e1d4;border-left:1px solid #e7e1d4;background:#faf8f3;"><span style="display:inline-flex;align-items:center;min-height:24px;padding:4px 9px;border:1px solid #efd0c9;border-radius:5px;background:#f9e7e2;color:#9a4b3f;font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.05em;text-transform:uppercase;">Missing FR</span></td>
+        </tr>
+        <tr><td colspan="4" style="padding:15px 14px 7px;font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.1em;text-transform:uppercase;color:#9a9183;background:#fff;">Categories</td></tr>
+        <tr>
+          <td style="text-align:center;font:600 12px 'IBM Plex Mono',monospace;color:#a89e8c;border-bottom:1px solid #efeae0;">4</td>
+          <td class="vcell" style="border-bottom:1px solid #efeae0;"><input class="pin" type="text" value="Referred Project" aria-label="English"></td>
+          <td class="vcell" style="border-bottom:1px solid #efeae0;border-left:1px solid #efeae0;"><input class="pin" type="text" value="Projet renvoyé" aria-label="Français"></td>
+          <td style="text-align:center;border-bottom:1px solid #e7e1d4;border-left:1px solid #e7e1d4;background:#faf8f3;"><span style="display:inline-flex;align-items:center;min-height:24px;padding:4px 9px;border:1px solid #cfe0d8;border-radius:5px;background:#eef4f0;color:#3f6b5e;font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.05em;text-transform:uppercase;">Complete</span></td>
+        </tr>
+        <tr style="background:#eef4f0;">
+          <td style="text-align:center;font:600 12px 'IBM Plex Mono',monospace;color:#3f6b5e;border-bottom:1px solid #efeae0;">5</td>
+          <td class="vcell" style="border-bottom:1px solid #efeae0;background:#fff;box-shadow:inset 0 0 0 2px #3f6b5e;border-radius:7px;"><input class="pin" type="text" value="Transformative Strategy" aria-label="English"></td>
+          <td class="vcell" style="border-bottom:1px solid #efeae0;border-left:1px solid #efeae0;"><input class="pin" type="text" value="Stratégie transformatrice" aria-label="Français"></td>
+          <td style="text-align:center;border-bottom:1px solid #d3e3da;border-left:1px solid #d3e3da;background:#e4eee8;"><span style="display:inline-flex;align-items:center;min-height:24px;padding:4px 9px;border:1px solid #cfe0d8;border-radius:5px;background:#fff;color:#3f6b5e;font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.05em;text-transform:uppercase;">Complete</span></td>
+        </tr>
+        <tr>
+          <td style="text-align:center;font:600 12px 'IBM Plex Mono',monospace;color:#a89e8c;border-bottom:1px solid #efeae0;">6</td>
+          <td class="vcell" style="border-bottom:1px solid #efeae0;"><input class="pin" type="text" value="Infrastructure" aria-label="English"></td>
+          <td class="vcell" style="border-bottom:1px solid #efeae0;border-left:1px solid #efeae0;background:#fdf6f4;box-shadow:inset 0 0 0 1px #e3c9c3;"><input class="pin" type="text" value="" placeholder="Ajouter la traduction française…" aria-label="Français"></td>
+          <td style="text-align:center;border-bottom:1px solid #e7e1d4;border-left:1px solid #e7e1d4;background:#faf8f3;"><span style="display:inline-flex;align-items:center;min-height:24px;padding:4px 9px;border:1px solid #efd0c9;border-radius:5px;background:#f9e7e2;color:#9a4b3f;font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.05em;text-transform:uppercase;">Missing FR</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="margin:0;padding:14px 18px 16px;font-size:12.5px;line-height:1.5;color:#6b6155;border-top:1px solid #efeae0;background:#fbfaf6;"><strong style="color:#3f6b5e;">What changed:</strong> English and French are now both editable in place, with the same quiet hover-to-edit affordance as the rest of Plotypus — a typo in either language is fixed without flipping translation direction. Row 5 shows an active English edit; rows 3 and 6 still need French. The completeness pill is computed from both cells.</p>
+  </div>
+
+  <!-- ===== SPEC NOTE ===== -->
+  <div style="width:1240px;max-width:100%;background:#282a27;border-radius:12px;padding:24px 26px;color:#e9e6dd;">
+    <div style="font:600 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.14em;text-transform:uppercase;color:#9fb3a8;margin-bottom:14px;">Field-type rules · for implementation</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:22px;">
+      <div>
+        <div style="font:700 13px Lato,sans-serif;color:#fff;margin-bottom:8px;">Value cell (editable)</div>
+        <ul style="margin:0;padding-left:18px;font-size:12.5px;line-height:1.6;color:#cfcabd;">
+          <li>Borderless at rest — unchanged from today (<span style="font-family:'IBM Plex Mono',monospace;">border/background:transparent</span>).</li>
+          <li>Hover → inset 1px <span style="font-family:'IBM Plex Mono',monospace;">#d4ccbd</span> + white fill + text cursor.</li>
+          <li>Focus → inset 2px <span style="font-family:'IBM Plex Mono',monospace;">#3f6b5e</span> (existing focus token).</li>
+          <li>Header label carries a small muted pencil glyph.</li>
+        </ul>
+      </div>
+      <div>
+        <div style="font:700 13px Lato,sans-serif;color:#fff;margin-bottom:8px;">Computed cell (Status)</div>
+        <ul style="margin:0;padding-left:18px;font-size:12.5px;line-height:1.6;color:#cfcabd;">
+          <li>Faint persistent column tint <span style="font-family:'IBM Plex Mono',monospace;">#f0eee7</span> + thin left rule.</li>
+          <li>No hover affordance, <span style="font-family:'IBM Plex Mono',monospace;">cursor:default</span>, not tab-focusable, <span style="font-family:'IBM Plex Mono',monospace;">aria-readonly</span>.</li>
+          <li>Header marked with an <span style="font-family:'IBM Plex Mono',monospace;">Auto</span> lock chip.</li>
+          <li>Pill reuses existing <span style="font-family:'IBM Plex Mono',monospace;">.row-status-badge</span> colours.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

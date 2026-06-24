@@ -1,0 +1,119 @@
+name: Windows CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: Unit and configuration
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check JavaScript syntax
+        shell: pwsh
+        run: |
+          node --check app.js
+          node --check config.js
+          node --check geometry.js
+          node --check icons.js
+          node --check label-layout.js
+          node --check presets.js
+          node --check project-io.js
+          node --check project-file.js
+          node --check properties.js
+          node --check tests/validate-config.cjs
+          node --check workspace.js
+
+      - name: Validate configuration
+        shell: pwsh
+        run: node tests/validate-config.cjs plotypus.config.json
+
+      - name: Run unit tests
+        shell: pwsh
+        run: node --test tests/geometry.test.cjs tests/label-layout.test.cjs tests/label-geometry.test.cjs tests/config-parity.test.cjs
+
+  browser-smoke:
+    name: Shell and map smoke
+    runs-on: windows-latest
+    timeout-minutes: 20
+    needs: unit
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Run shell smoke test
+        shell: pwsh
+        run: ./tests/run-shell-smoke.ps1 -Workspace preview -LoadSample -SkipScreenshot
+
+      - name: Run map output smoke test
+        shell: pwsh
+        run: ./tests/run-smoke.ps1
+
+      - name: Upload smoke failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-smoke-failure-${{ github.run_attempt }}
+          if-no-files-found: ignore
+          retention-days: 14
+          path: |
+            tests/smoke-output/**/*.png
+            tests/smoke-output/**/*.html
+            tests/smoke-output/**/*.err
+            tests/smoke-output/**/*.out
+
+  visual-regression:
+    name: Visual regression
+    runs-on: windows-latest
+    timeout-minutes: 30
+    needs: unit
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Compare approved workspace baselines
+        shell: pwsh
+        run: ./tests/run-visual-regression.ps1
+
+      - name: Upload visual failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-visual-failure-${{ github.run_attempt }}
+          if-no-files-found: ignore
+          retention-days: 14
+          path: |
+            tests/visual-output/**/*.png
+            tests/smoke-output/**/*.png
+            tests/smoke-output/**/*.html
+            tests/smoke-output/**/*.err
+            tests/smoke-output/**/*.out

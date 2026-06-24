@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Plotypus Loading Animation Test</title>
+  <link rel="icon" href="assets/plotypus-pin.png" type="image/png" />
+  <link rel="preload" href="assets/fonts/lato/lato-2.woff2" as="font" type="font/woff2" />
+  <link rel="preload" href="assets/fonts/lato/lato-4.woff2" as="font" type="font/woff2" />
+  <link rel="stylesheet" href="assets/fonts/lato/lato.css?v=20260612-file-fonts" />
+  <link rel="stylesheet" href="style.css?v=20260612-tabs-ux" />
+  <style>
+    body {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 32px;
+    }
+
+    .loader-test-shell {
+      width: min(900px, 100%);
+      display: grid;
+      gap: 14px;
+    }
+
+    .loader-test-title {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--ink);
+    }
+
+    .loader-test-host {
+      min-height: 420px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+
+    .loader-test-canvas {
+      width: min(640px, 86%);
+      aspect-ratio: 16 / 10;
+      margin: 72px auto 40px;
+      background:
+        linear-gradient(90deg, transparent 49%, rgba(91, 98, 82, 0.08) 50%, transparent 51%),
+        linear-gradient(0deg, transparent 49%, rgba(91, 98, 82, 0.08) 50%, transparent 51%),
+        var(--map-background);
+      background-size: 80px 80px;
+      box-shadow:
+        0 0 0 1px rgba(40, 42, 39, 0.22),
+        0 16px 34px rgba(40, 42, 39, 0.20);
+    }
+  </style>
+</head>
+<body>
+  <main class="loader-test-shell">
+    <h1 class="loader-test-title">Plotypus loading animation test</h1>
+    <div class="map-host loader-test-host is-rendering" aria-busy="true">
+      <div class="preview-loading" role="status" aria-live="polite">
+        <span class="plotypus-loader" aria-hidden="true">
+          <span class="plotypus-loader-ring"></span>
+          <span class="plotypus-loader-ring"></span>
+          <span class="plotypus-loader-ring"></span>
+          <img class="plotypus-loader-pin" src="assets/plotypus-pin.png" alt="" />
+        </span>
+        <span class="preview-loading-label">Plotting preview</span>
+      </div>
+      <div class="loader-test-canvas" aria-hidden="true"></div>
+    </div>
+  </main>
+</body>
+</html>

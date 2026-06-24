@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { background: #e8e5dc; -webkit-font-smoothing: antialiased; }
+  ::selection { background: #e2e4da; }
+  .mono { font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace; }
+  table.spec { border-collapse: collapse; width: 100%; font-size: 13px; }
+  table.spec th { text-align: left; padding: 8px 11px; background: #f3f1ea; border-bottom: 1px solid #d1ccbf; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: #696d66; vertical-align: top; }
+  table.spec td { padding: 8px 11px; border-bottom: 1px solid #ece8dd; vertical-align: top; line-height: 1.45; color: #3f4339; }
+  table.spec tr:nth-child(even) td { background: #faf8f3; }
+  .tag { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 11px; background: #eef0e9; color: #3f4d3f; padding: 1px 6px; border-radius: 4px; border: 1px solid #dde0d4; white-space: nowrap; }
+  @media print { .page-break { page-break-before: always; } body { background: #fff; } }
+</style>
+</helmet>
+
+<div style="font-family: Lato, 'Segoe UI', Arial, sans-serif; color: #282a27; background: #e8e5dc; min-height: 100vh; padding: 56px 24px 120px;">
+  <div style="max-width: 880px; margin: 0 auto; display: flex; flex-direction: column; gap: 30px;">
+
+    <!-- COVER -->
+    <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:32px;">
+      <div style="display:flex; gap:16px; align-items:center;">
+        <div style="width:50px; height:50px; border-radius:13px; background:#2f342d; display:flex; align-items:center; justify-content:center; flex-shrink:0; position:relative;">
+          <div style="width:21px; height:21px; border-radius:50% 50% 50% 2px; background:#6b5d4f; transform:rotate(45deg);"></div>
+          <div style="position:absolute; width:8px; height:8px; border-radius:50%; background:#8fb3a6; top:16px; left:16px;"></div>
+        </div>
+        <div>
+          <div class="mono" style="font-size:11px; letter-spacing:0.16em; text-transform:uppercase; color:#8f9388; margin-bottom:4px;">Implementation handoff</div>
+          <h1 style="margin:0; font-size:26px; font-weight:900; letter-spacing:-0.02em;">Plotypus shell redesign &mdash; spec &amp; specification</h1>
+        </div>
+      </div>
+      <div class="mono" style="text-align:right; font-size:11px; color:#8f9388; line-height:1.7; padding-top:4px; white-space:nowrap;">
+        <div>Target: index.html · style.css · app.js</div>
+        <div>Vanilla HTML/CSS/JS · offline</div>
+        <div style="color:#5b6252;">Companion: Plotypus Shell.dc.html</div>
+      </div>
+    </div>
+    <p style="margin:0; font-size:15px; line-height:1.6; color:#4a4338;">This document specifies the redesigned application shell concretely enough to implement without guessing spacing, hierarchy, or behaviour. It pairs with the working prototype (<span class="tag">Plotypus Shell.dc.html</span>). All values build on the live <span class="tag">:root</span> tokens already in <span class="tag">style.css</span>; new tokens are flagged. <strong style="font-weight:700;">No map-output change</strong> &mdash; <span class="tag">themes/*.css</span> still own everything that prints.</p>
+
+    <!-- TOC -->
+    <div style="background:#fffdf8; border:1px solid #d1ccbf; border-radius:10px; padding:18px 22px;">
+      <div class="mono" style="font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#a7a99f; margin-bottom:10px;">Contents</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:4px 28px; font-size:13.5px; color:#3f4339;">
+        <div>1 &nbsp; Architecture audit</div><div>8 &nbsp; Interaction contract</div>
+        <div>2 &nbsp; Alternatives considered</div><div>9 &nbsp; Current &rarr; proposed mapping</div>
+        <div>3 &nbsp; Recommended architecture</div><div>10 &nbsp; Existing DOM hook mapping</div>
+        <div>4 &nbsp; Design tokens &amp; measurements</div><div>11 &nbsp; Icon specification</div>
+        <div>5 &nbsp; Responsive behaviour</div><div>12 &nbsp; Asset requirements</div>
+        <div>6 &nbsp; Component state matrix</div><div>13 &nbsp; Implementation order &amp; acceptance</div>
+        <div>7 &nbsp; Component specifications</div><div>&nbsp; &nbsp; &nbsp; Artifact / file manifest</div>
+      </div>
+    </div>
+
+    <!-- 1 AUDIT -->
+    <section style="background:#fffdf8; border:1px solid #d1ccbf; border-radius:10px; padding:26px 30px;">
+      <div class="mono" style="font-size:11px; letter-spacing:0.16em; text-transform:uppercase; color:#a7a99f; margin-bottom:6px;">01 &mdash; Architecture audit</div>
+      <h2 style="margin:0 0 12px; font-size:20px; font-weight:800;">Five control surfaces, no clear owner</h2>
+      <p style="margin:0 0 16px; font-size:14px; line-height:1.6; color:#4a4338;">Historical additions left settings, navigation, commands and status scattered across competing regions. The same kind of control appears in more than one place, and the canvas &mdash; the product&rsquo;s entire purpose &mdash; is a non-default tab.</p>
+      <table class="spec">
+        <thead><tr><th style="width:30%;">Today&rsquo;s surface</th><th style="width:34%;">What it holds</th><th>Problem</th></tr></thead>
+        <tbody>
+          <tr><td>Top ribbon <span class="tag">.app-ribbon</span></td><td>Project, Data, Export, Appearance (map style + language)</td><td>Mixes global commands with render settings; 86px tall.</td></tr>
+          <tr><td>Left sidebar <span class="tag">.sidebar</span> (376px)</td><td>Only &ldquo;Legend &amp; markers&rdquo; categories + hidden layout inputs</td><td>Near-empty permanent column; eats table width.</td></tr>
+          <tr><td>Table tabs <span class="tag">.table-tabs</span></td><td>Project points · Map regions · Translate · Map · Quality</td><td>Map (the destination) is one tab among five.</td></tr>
+          <tr><td>Right panel <span class="tag">.properties-panel</span></td><td>Display, Interaction, Selection</td><td>Duplicates document defaults that also live elsewhere.</td></tr>
+          <tr><td>Summary chips <span class="tag">#workspaceSummaryMetrics</span></td><td>Rows · mapped · callouts · issues</td><td>Passive counts and actionable problems look identical.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 2 ALTERNATIVES -->
+    <section style="background:#fffdf8; border:1px solid #d1ccbf; border-radius:10px; padding:26px 30px;">
+      <div class="mono" style="font-size:11px; letter-spacing:0.16em; text-transform:uppercase; color:#a7a99f; margin-bottom:6px;">02 &mdash; Alternatives considered</div>
+      <h2 style="margin:0 0 16px; font-size:20px; font-weight:800;">Three structures, one chosen</h2>
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px;">
+        <div style="border:1px solid #d1ccbf; border-radius:8px; padding:15px;">
+          <div style="font-size:13.5px; font-weight:800; margin-bottom:6px;">A · Left icon rail</div>
+          <p style="margin:0 0 8px; font-size:12.5px; line-height:1.5; color:#4a4338;">VS Code-style vertical rail as primary nav.</p>
+          <div style="font-size:11.5px; color:#9a4b3f; line-height:1.5;">Rejected: reintroduces a permanent left column the brief asks to remove; steals table width.</div>
+        </div>
+        <div style="border:1px solid #d1ccbf; border-radius:8px; padding:15px;">
+          <div style="font-size:13.5px; font-weight:800; margin-bottom:6px;">B · Mode toggle + modal panels</div>
+          <p style="margin:0 0 8px; font-size:12.5px; line-height:1.5; color:#4a4338;">Edit / Preview modes, settings in dialogs.</p>
+          <div style="font-size:11.5px; color:#9a4b3f; line-height:1.5;">Rejected: hides dense inline editing behind modals; breaks keyboard flow.</div>
+        </div>
+        <div style="border:2px solid #5b6252; border-radius:8px; padding:15px; background:#fbfcfb; box-shadow:0 0 0 3px rgba(91,98,82,0.1);">
+          <div style="font-size:13.5px; font-weight:800; margin-bottom:6px; color:#3f4d3f;">C · Horizontal workspace nav &#10003;</div>
+          <p style="margin:0 0 8px; font-size:12.5px; line-height:1.5; color:#4a4338;">One stable top nav; canvas default; no left column.</p>
+          <div style="font-size:11.5px; color:#245a3a; line-height:1.5;">Chosen: removes the sidebar, keeps tables full-width, makes Map the home destination.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3 RECOMMENDED -->
+    <section style="background:#fffdf8; border:1px solid #d1ccbf; border-radius:10px; padding:26px 30px;">
+      <div class="mono" style="font-size:11px; letter-spacing:0.16em; text-transform:uppercase; color:#a7a99f; margin-bottom:6px;">03 &mdash; Recommended architecture</div>
+      <h2 style="margin:0 0 6px; font-size:20px; font-weight:800;">One persistent shell, five owners</h2>
+      <p style="margin:0 0 18px; font-size:14px; line-height:1.6; color:#4a4338;">Three stacked horizontal bands above one body. Each band owns exactly one job; the body is the active workspace plus a contextual Properties panel. Categories &amp; markers becomes its own workspace, vacating the left sidebar entirely.</p>
+      <!-- diagram -->
+      <div style="border:1px solid #d1ccbf; border-radius:8px; overflow:hidden; background:#f3f1ea;">
+        <div style="background:#fffdf8; border-bottom:1px solid #d1ccbf; padding:9px 12px; display:flex; align-items:center; gap:10px;"><span style="width:11px;height:11px;border-radius:3px;background:#5b6252;"></span><span style="font-size:12px; font-weight:700;">1 · Command bar</span><span style="font-size:11px; color:#8f9388;">brand · Project · Data · Map style · Map language · Export</span></div>
+        <div style="background:#f3f1ea; border-bottom:1px solid #d1ccbf; padding:9px 12px; display:flex; align-items:center; justify-content:space-between; gap:10px;"><div style="display:flex; align-items:center; gap:10px;"><span style="width:11px;height:11px;border-radius:3px;background:#2f342d;"></span><span style="font-size:12px; font-weight:700;">2 · Workspace nav</span><span style="font-size:11px; color:#8f9388;">Map · Project points · Categories · Regions · Translate · Quality</span></div><div style="display:flex; align-items:center; gap:8px;"><span style="width:11px;height:11px;border-radius:3px;background:#8f9388;"></span><span style="font-size:11px; color:#696d66;">3 · metrics</span><span style="width:11px;height:11px;border-radius:3px;background:#755200;"></span><span style="font-size:11px; color:#755200;">4 · review</span></div></div>
+        <div style="display:grid; grid-template-columns:1fr 200px; min-height:120px;">
+          <div style="padding:16px; display:flex; align-items:center; justify-content:center; color:#a7a99f;" class="mono" >active workspace body</div>
+          <div style="background:#fffdf8; border-left:1px solid #d1ccbf; padding:14px; display:flex; flex-direction:column; gap:8px;"><div style="display:flex; align-items:center; gap:8px;"><span style="width:11px;height:11px;border-radius:3px;background:#e2e4da; border:1px solid #c7c8ba;"></span><span style="font-size:12px; font-weight:700;">5 · Properties</span></div><span style="height:7px; width:80%; background:#ddd9ce; border-radius:3px;"></span><span style="height:7px; width:60%; background:#ece8dd; border-radius:3px;"></span></div>
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px 28px; margin-top:18px;">
+        <div style="font-size:13px; line-height:1.5; color:#4a4338;"><strong style="font-weight:700;">Global commands</strong> live only in the command bar &mdash; they never change per workspace.</div>
+        <div style="font-size:13px; line-height:1.5; color:#4a4338;"><strong style="font-weight:700;">Tab-specific tools</strong> live in a local toolbar at the top of each workspace body (or floating on the canvas).</div>
+        <div style="font-size:13px; line-height:1.5; color:#4a4338;"><strong style="font-weight:700;">Passive metrics</strong> (rows/mapped/regions) sit quietly on the right of the nav band.</div>
+        <div style="font-size:13px; line-height:1.5; color:#4a4338;"><strong style="font-weight:700;">Actionable problems</strong> collect in one ochre &ldquo;N to review&rdquo; cluster that routes to fixes.</div>
+        <div style="font-size:13px; line-height:1.5; color:#4a4338;"><strong style="font-weight:700;">Selection properties</strong> are the only thing in the right panel &mdash; contextual to the active workspace.</div>
+        <div style="font-size:13px; line-height:1.5; color:#4a4338;"><strong style="font-weight:700;">Map stays the default</strong> landing workspace and the largest surface.</div>
+      </div>
+    </section>
+
+    <!-- 4 TOKENS -->
+    <section style="background:#fffdf8; border:1px solid #d1ccbf; border-radius:10px; padding:26px 30px;">
+      <div class="mono" style="font-size:11px; letter-spacing:0.16em; text-transform:uppercase; color:#a7a99f; margin-bottom:6px;">04 &mdash; Design tokens &amp; measurements</div>
+      <h2 style="margin:0 0 14px; font-size:20px; font-weight:800;">Build on the live <span class="tag" style="font-size:13px;">:root</span></h2>
+
+      <div style="font-size:12px; font-weight:700; color:#696d66; text-transform:uppercase; letter-spacing:0.04em; margin:4px 0 10px;">Existing tokens (unchanged)</div>
+      <div style="display:grid; grid-template-columns:repeat(6,1fr); gap:9px; margin-bottom:20px;">
+        <div><div style="height:42px; border-radius:6px; background:#282a27;"></div><div class="mono" style="font-size:9px; color:#696d66; margin-top:5px;">--ink</div><div class="mono" style="font-size:9px; color:#a7a99f;">#282a27</div></div>
+        <div><div style="height:42px; border-radius:6px; background:#5b6252;"></div><div class="mono" style="font-size:9px; color:#696d66; margin-top:5px;">--accent</div><div class="mono" style="font-size:9px; color:#a7a99f;">#5b6252</div></div>
+        <div><div style="height:42px; border-radius:6px; background:#f3f1ea; border:1px solid #d1ccbf;"></div><div class="mono" style="font-size:9px; color:#696d66; margin-top:5px;">--surface</div><div class="mono" style="font-size:9px; color:#a7a99f;">#f3f1ea</div></div>
+        <div><div style="height:42px; border-radius:6px; background:#ddd9ce;"></div><div class="mono" style="font-size:9px; color:#696d66; margin-top:5px;">--surf-strong</div><div class="mono" style="font-size:9px; color:#a7a99f;">#ddd9ce</div></div>
+        <div><div style="height:42px; border-radius:6px; background:#e2e4da; border:1px solid #d1ccbf;"></div><div class="mono" style="font-size:9px; color:#696d66; margin-top:5px;">--accent-soft</div><div class="mono" style="font-size:9px; color:#a7a99f;">#e2e4da</div></div>
+        <div><div style="height:42px; border-radius:6px; background:#fffdf8; border:1px solid #d1ccbf;"></div><div class="mono" style="font-size:9px; color:#696d66; margin-top:5px;">--panel</div><div class="mono" style="font-size:9px; color:#a7a99f;">#fffdf8</div></div>
+        <div><div style="height:42px; border-radius:6px; background:#e8e5dc; border:1px solid #d1ccbf;"></div><div class="mono" style="font-size:9px; color:#696d66; margin-top:5px;">--bg</div><div class="mono" style="font-size:9px; color:#a7a99f;">#e8e5dc</div></div>
+        <div><div style="height:42px; border-radius:6px; background:#696d66;"></div><div class="mono" style="font-size:9px; color:#696d66; margin-top:5px;">--muted</div><div class="mono" style="font-size:9px; color:#a7a99f;">#696d66</div></div>
+        <div><div style="height:42px; border-radius:6px; background:#d1ccbf;"></div><div class="mono" style="font-size:9px; color:#696d66; margin-top:5px;">--border</div><div class="mono" style="font-size:9px; color:#a7a99f;">#d1ccbf</div></div>
+        <div><div style="height:42px; border-radius:6px; background:#245a3a;"></div><div class="mono" style="font-size:9px; color:#696d66; margin-top:5px;">--ok</div><div class="mono" style="font-size:9px; color:#a7a99f;">#245a3a</div></div>
+        <div><div style="height:42px; border-radius:6px; background:#755200;"></div><div class="mono" style="font-size:9px; color:#696d66; margin-top:5px;">--warning</div><div class="mono" style="font-size:9px; color:#a7a99f;">#755200</div></div>
+        <div><div style="height:42px; border-radius:6px; background:#8a1f11;"></div><div class="mono" style="font-size:9px; color:#696d66; margin-top:5px;">--danger</div><div class="mono" style="font-size:9px; color:#a7a99f;">#8a1f11</div></div>
+      </div>
+
+      <div style="font-size:12px; font-weight:700; color:#696d66; text-transform:uppercase; letter-spacing:0.04em; margin:4px 0 10px;">New tokens (add to <span class="tag" style="font-size:11px;">:root</span>)</div>
+      <div style="background:#f6f4ee; border:1px solid #e0dccf; border-radius:8px; padding:14px 16px; margin-bottom:18px;">
+        <pre class="mono" style="margin:0; font-size:12px; line-height:1.7; color:#3f4339; white-space:pre-wrap;">--command-h: 56px;      /* command bar height (was .app-ribbon 86px) */
+--nav-h: 52px;          /* workspace nav + status spine band */
+--props-w: 292px;       /* Properties panel (1500px bp: 272px) */
+--workspace-min: 760px; /* tables never shrink below this */
+--row-h: 40px;          /* table row (38px compact) */
+--radius-card: 8px;     /* app chrome cards/panels */
+--radius-control: 6px;  /* buttons, inputs, selects (existing) */
+--radius-map-box: 0;    /* map callout/legend furniture stays square */
+--review-bg: #f1e9d6;   /* actionable cluster background */
+--review-border: #e3d3a8;
+--ok-soft: #e2ece4;  --danger-soft: #f3e2de;
+--space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 24px;
+--focus-outline: 2px solid var(--accent);  /* offset 2px (existing) */
+--mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;</pre>
+      </div>
+
+      <table class="spec">
+        <thead><tr><th style="width:42%;">Measurement</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>App max / min width</td><td>max none (fluid); min usable <span class="tag">1024px</span>; workspace min <span class="tag">760px</span></td></tr>
+          <tr><td>Command bar height</td><td><span class="tag">56px</span></td></tr>
+          <tr><td>Workspace nav + spine</td><td><span class="tag">52px</span> (combined band)</td></tr>
+          <tr><td>Properties panel width</td><td><span class="tag">292px</span> &rarr; <span class="tag">272px</span> at &le;1500</td></tr>
+          <tr><td>Table row height</td><td><span class="tag">40px</span> comfortable · <span class="tag">38px</span> compact</td></tr>
+          <tr><td>Nav item</td><td>padding <span class="tag">8px 13px</span>, min-height <span class="tag">36px</span>, radius <span class="tag">7px</span>, gap <span class="tag">3px</span></td></tr>
+          <tr><td>Spacing scale</td><td><span class="tag">4 · 8 · 12 · 16 · 24</span> px</td></tr>
+          <tr><td>Border width</td><td><span class="tag">1px</span> chrome · <span class="tag">2px</span> selected/focus</td></tr>
+          <tr><td>Border radii</td><td>cards <span class="tag">8px</span> · controls <span class="tag">6px</span> · pills <span class="tag">999px</span> · map boxes <span class="tag">0</span></td></tr>
+          <tr><td>Shadow</td><td>soft <span class="tag">0 2px 10px rgba(40,42,39,.09)</span> · float <span class="tag">0 8px 22px -12px rgba(40,42,39,.4)</span></td></tr>
+          <tr><td>Typography</td><td>Lato (400/700/900) UI · mono stack for all numerals &amp; eyebrows</td></tr>
+          <tr><td>Font sizes</td><td>H1 26 · H2 20 · section 16 · body 14 · control 13 · label 11 · eyebrow 9&ndash;11</td></tr>
+          <tr><td>Line heights</td><td>headings 1.15 · body 1.5&ndash;1.6 · controls 1.2</td></tr>
+          <tr><td>Hover</td><td>fill <span class="tag">#ebe7dc</span>, border &rarr; <span class="tag">--accent</span></td></tr>
+          <tr><td>Selected</td><td>row inset bar <span class="tag">3px --accent</span> + bg <span class="tag">#eef0e9</span>; card <span class="tag">2px --accent</span> + 3px soft ring</td></tr>
+          <tr><td>Focus-visible</td><td><span class="tag">2px solid --accent</span>, offset <span class="tag">2px</span> (already in style.css)</td></tr>
+          <tr><td>Transitions</td><td><span class="tag">140ms ease</span> on bg / border / shadow / colour</td></tr>
+          <tr><td>Breakpoints</td><td><span class="tag">1440</span> wide · <span class="tag">1280</span> working · <span class="tag">1024</span> narrow</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 5 RESPONSIVE -->
+    <section style="background:#fffdf8; border:1px solid #d1ccbf; border-radius:10px; padding:26px 30px;">
+      <div class="mono" style="font-size:11px; letter-spacing:0.16em; text-transform:uppercase; color:#a7a99f; margin-bottom:6px;">05 &mdash; Responsive behaviour</div>
+      <h2 style="margin:0 0 14px; font-size:20px; font-weight:800;">Explicit changes, not fluid scaling</h2>
+      <table class="spec">
+        <thead><tr><th style="width:18%;">Element</th><th>1440 wide</th><th>1280 working</th><th>~1024 narrow</th></tr></thead>
+        <tbody>
+          <tr><td>Workspace nav</td><td>icon + full label</td><td>icon + full label</td><td>icons only; label in tooltip</td></tr>
+          <tr><td>Properties panel</td><td>docked 292px</td><td>docked 272px</td><td>slide-over, toggled from command bar</td></tr>
+          <tr><td>Toolbar</td><td>single row</td><td>wraps to 2 rows if needed</td><td>wraps; filters collapse to a menu</td></tr>
+          <tr><td>Tables</td><td>full width</td><td>full width</td><td>horizontal scroll; min 760px, never shrink</td></tr>
+          <tr><td>Status summary</td><td>all chips inline</td><td>drop &ldquo;regions&rdquo; word, keep value</td><td>collapse to single &ldquo;N to review&rdquo;</td></tr>
+          <tr><td>Canvas controls</td><td>floating toolbar centered</td><td>floating toolbar centered</td><td>toolbar left-aligned, compact</td></tr>
+          <tr><td>Labels that shorten</td><td>&mdash;</td><td>&ldquo;No-coordinate callouts&rdquo; &rarr; &ldquo;Callouts&rdquo;</td><td>command-bar group labels hidden</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 6 STATE MATRIX -->
+    <section style="background:#fffdf8; border:1px solid #d1ccbf; border-radius:10px; padding:26px 30px;">
+      <div class="mono" style="font-size:11px; letter-spacing:0.16em; text-transform:uppercase; color:#a7a99f; margin-bottom:6px;">06 &mdash; Component state matrix</div>
+      <h2 style="margin:0 0 14px; font-size:20px; font-weight:800;">States per component</h2>
+      <table class="spec">
+        <thead><tr><th>Component</th><th>Key states</th></tr></thead>
+        <tbody>
+          <tr><td>Nav item</td><td>default · hover (<span class="tag">#ebe7dc</span>) · <strong>active</strong> (accent fill, white, 800) · focus-visible (2px outline)</td></tr>
+          <tr><td>Command button</td><td>default · hover · active (press) · disabled (<span class="tag">--surface-strong</span>, not-allowed)</td></tr>
+          <tr><td>Primary button</td><td>default (accent) · hover (<span class="tag">--accent-dark</span>) · disabled</td></tr>
+          <tr><td>Danger button</td><td>default (brick border) · hover (<span class="tag">#fbf3f1</span>) · disabled · separated from constructive by a divider</td></tr>
+          <tr><td>Table row</td><td>default · zebra · hover · <strong>selected</strong> (inset bar) · warning (NO COORD) · callout · empty · loading skeleton</td></tr>
+          <tr><td>Toggle</td><td>on (accent) · off (<span class="tag">--surface-strong</span>) · disabled (muted label) · focus</td></tr>
+          <tr><td>Filter segmented</td><td>active segment (accent) · idle · count badge (e.g. &ldquo;Missing FR (5)&rdquo;)</td></tr>
+          <tr><td>Status item</td><td><strong>passive</strong> (neutral/green, no action) vs <strong>actionable</strong> (ochre + Locate button)</td></tr>
+          <tr><td>Properties panel</td><td>Document (Map) · Row selected · Marker selected · Region · empty (&ldquo;Select a row&hellip;&rdquo;)</td></tr>
+          <tr><td>Canvas</td><td>empty (first run) · loading (spinner) · ready · error card · selection active</td></tr>
+          <tr><td>Translate group</td><td>collapsed / expanded · in-progress (n/total) · complete (&#10003;) · missing-FR field (dashed amber)</td></tr>
+        </tbody>
+      </table>
+      <p style="margin:14px 0 0; font-size:13px; line-height:1.55; color:#4a4338;"><strong style="font-weight:700;">Passive vs actionable readiness:</strong> green/neutral checklist lines are passive (Coordinates valid, Leader crossings 0). Ochre lines are actionable and carry a <span class="tag">Locate</span> button (Label overlaps, Near edge, French titles missing). Nothing in the checklist ever blocks export.</p>
+    </section>
+
+    <!-- 7 COMPONENT SPECS -->
+    <section style="background:#fffdf8; border:1px solid #d1ccbf; border-radius:10px; padding:26px 30px;">
+      <div class="mono" style="font-size:11px; letter-spacing:0.16em; text-transform:uppercase; color:#a7a99f; margin-bottom:6px;">07 &mdash; Component specifications</div>
+      <h2 style="margin:0 0 14px; font-size:20px; font-weight:800;">Build details</h2>
+      <div style="display:flex; flex-direction:column; gap:14px;">
+        <div style="border-left:3px solid #5b6252; padding-left:14px;"><div style="font-size:14px; font-weight:800; margin-bottom:3px;">Command bar</div><div style="font-size:13px; line-height:1.55; color:#4a4338;">56px, <span class="tag">--panel</span> bg, sticky, 1px bottom border. Left: brand + grouped icon buttons (Project / Data) with a mono group caption under each, 1px dividers between groups. Right: Map style select, Map language segmented (EN/FR/Bi), accent <strong>Export &#9662;</strong>. Buttons 12.5px, icon 15px stroke 1.8.</div></div>
+        <div style="border-left:3px solid #2f342d; padding-left:14px;"><div style="font-size:14px; font-weight:800; margin-bottom:3px;">Workspace nav</div><div style="font-size:13px; line-height:1.55; color:#4a4338;"><span class="tag">role="tablist"</span> on <span class="tag">--surface</span> band. Six items, 16px icon + 13px label, active = accent fill/white/800. Map first &amp; default.</div></div>
+        <div style="border-left:3px solid #8f9388; padding-left:14px;"><div style="font-size:14px; font-weight:800; margin-bottom:3px;">Status spine</div><div style="font-size:13px; line-height:1.55; color:#4a4338;">Right of nav band. Passive metric = mono value + muted word, no border. Actionable = one ochre pill <span class="tag">N to review &rarr;</span> routing to Map quality with the relevant filter.</div></div>
+        <div style="border-left:3px solid #5b6252; padding-left:14px;"><div style="font-size:14px; font-weight:800; margin-bottom:3px;">Project table</div><div style="font-size:13px; line-height:1.55; color:#4a4338;">Column bands (Identity · Classification · Coordinates · Output) via a grouping header row. Name column sticky-left. Coordinates mono &amp; right-aligned. Validation badge only on problem rows. Row 40px, zebra <span class="tag">#faf8f3</span>.</div></div>
+        <div style="border-left:3px solid #5b6252; padding-left:14px;"><div style="font-size:14px; font-weight:800; margin-bottom:3px;">Canvas workspace</div><div style="font-size:13px; line-height:1.55; color:#4a4338;"><span class="tag">--workspace-canvas-bg #ebe7dc</span> pasteboard, centered white print-frame with crop marks, hatched placeholder. Floating toolbar (zoom / Fit / <strong>Fit map + labels</strong> / Labels only) top-center; docked quality readout bottom-center with <span class="tag">Locate next</span>.</div></div>
+        <div style="border-left:3px solid #e2e4da; padding-left:14px;"><div style="font-size:14px; font-weight:800; margin-bottom:3px;">Properties panel</div><div style="font-size:13px; line-height:1.55; color:#4a4338;">Header = type glyph + what&rsquo;s selected. Sections shown <em>only if relevant to the active workspace</em>: Map &rarr; Display + Interaction; Project points &rarr; selected row fields; Categories &rarr; marker shape/colour; Regions &rarr; colour actions; Translate &rarr; keyboard help.</div></div>
+      </div>
+    </section>
+
+    <!-- 8 INTERACTION CONTRACT -->
+    <section style="background:#fffdf8; border:1px solid #d1ccbf; border-radius:10px; padding:26px 30px;">
+      <div class="mono" style="font-size:11px; letter-spacing:0.16em; text-transform:uppercase; color:#a7a99f; margin-bottom:6px;">08 &mdash; Interaction contract</div>
+      <h2 style="margin:0 0 14px; font-size:20px; font-weight:800;">What every control does</h2>
+      <table class="spec">
+        <thead><tr><th style="width:20%;">Control</th><th>On activate</th><th style="width:14%;">Cost</th><th style="width:16%;">Keyboard / a11y</th></tr></thead>
+        <tbody>
+          <tr><td>Workspace nav item</td><td>Swap body + Properties context; preserves scroll. No re-render of map.</td><td>Lightweight</td><td>Tab/Arrow; <span class="tag">aria-selected</span>; label = name</td></tr>
+          <tr><td>&ldquo;N to review&rdquo;</td><td>Open Map quality, scroll to first actionable line.</td><td>Lightweight</td><td>Button; name &ldquo;N issues to review&rdquo;</td></tr>
+          <tr><td>Locate (quality)</td><td>Switch to Map (or Translate for FR), pan to + highlight target.</td><td>Light (no re-plot)</td><td>Button; name &ldquo;Locate &lt;issue&gt;&rdquo;</td></tr>
+          <tr><td>Map language EN/FR/Bi</td><td>Re-render preview + drives every export. Render-only.</td><td><strong>Expensive</strong> (re-plot)</td><td>Segmented radio; live region announces</td></tr>
+          <tr><td>Fit map + labels</td><td>Auto-place labels, shrink map if needed.</td><td><strong>Expensive</strong></td><td><span class="tag">#canvasAutoPlaceBtn</span>; loading spinner</td></tr>
+          <tr><td>Labels only</td><td>Auto-place, preserve map size.</td><td><strong>Expensive</strong></td><td><span class="tag">#canvasPlaceLabelsOnlyBtn</span></td></tr>
+          <tr><td>Zoom +/&minus; / Fit</td><td>Scale preview viewport only.</td><td>Light</td><td>Buttons; <span class="tag">#canvasZoomReadout</span></td></tr>
+          <tr><td>Display / Interaction toggle</td><td>Toggle a render feature; re-draw preview.</td><td>Medium (re-draw)</td><td>Checkbox; label visible</td></tr>
+          <tr><td>Row click</td><td>Select row &rarr; Properties shows its fields. No map change.</td><td>Lightweight</td><td>Arrow/Enter; row focusable</td></tr>
+          <tr><td>Filter chip</td><td>Filter rows in place; updates count. No map change.</td><td>Lightweight</td><td>Segmented; <span class="tag">data-project-filter</span></td></tr>
+          <tr><td>Add / Delete / Clear</td><td>Mutate rows; Delete/Clear are danger, confirm Clear.</td><td>Light + redraw</td><td>Delete disabled until selection</td></tr>
+          <tr><td>FR textarea Enter</td><td>Commit, focus next FR field below.</td><td>Light (debounced redraw)</td><td>Enter / Shift+Enter / Esc</td></tr>
+          <tr><td>Export SVG / PNG</td><td>Generate file in current Map language; never blocked.</td><td><strong>Expensive</strong></td><td>Buttons; soft note if FR missing</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 9 MAPPING -->
+    <section style="background:#fffdf8; border:1px solid #d1ccbf; border-radius:10px; padding:26px 30px;">
+      <div class="mono" style="font-size:11px; letter-spacing:0.16em; text-transform:uppercase; color:#a7a99f; margin-bottom:6px;">09 &mdash; Current &rarr; proposed mapping</div>
+      <h2 style="margin:0 0 14px; font-size:20px; font-weight:800;">Migration table</h2>
+      <table class="spec">
+        <thead><tr><th style="width:24%;">Current</th><th style="width:24%;">Proposed location</th><th style="width:10%;">Action</th><th>Reason</th></tr></thead>
+        <tbody>
+          <tr><td>Ribbon Project group</td><td>Command bar &middot; Project</td><td>Retained</td><td>Stays global; restyled to 56px.</td></tr>
+          <tr><td>Ribbon Data group</td><td>Command bar &middot; Data</td><td>Retained</td><td>Global import/export.</td></tr>
+          <tr><td>Ribbon Export group</td><td>Command bar &middot; Export &#9662;</td><td>Merged</td><td>SVG/PNG into one menu button.</td></tr>
+          <tr><td>Ribbon Appearance (style/lang)</td><td>Command bar right</td><td>Moved</td><td>Render settings, global.</td></tr>
+          <tr><td>Left sidebar &ldquo;Legend &amp; markers&rdquo;</td><td>Categories &amp; markers workspace</td><td>Moved</td><td>Frees the column; gives categories room.</td></tr>
+          <tr><td>Hidden layout inputs</td><td>Properties (Map) + presets</td><td>Moved</td><td>Document defaults, contextual.</td></tr>
+          <tr><td>Table tab &ldquo;Map&rdquo;</td><td>Workspace nav &middot; Map (default)</td><td>Renamed/promoted</td><td>The production destination.</td></tr>
+          <tr><td>Table tabs (points/regions/translate/quality)</td><td>Workspace nav items</td><td>Moved</td><td>One stable primary nav.</td></tr>
+          <tr><td>Workspace summary chips</td><td>Status spine (passive) + review cluster (actionable)</td><td>Split</td><td>Separate metrics from problems.</td></tr>
+          <tr><td>Map canvas controls</td><td>Floating canvas toolbar</td><td>Retained/moved</td><td>On the canvas, not the ribbon.</td></tr>
+          <tr><td>Properties panel</td><td>Properties panel (contextual)</td><td>Retained</td><td>Now shows only active-workspace controls.</td></tr>
+          <tr><td>Project row filters</td><td>Project points local toolbar</td><td>Retained</td><td>Same chips, scoped to workspace.</td></tr>
+          <tr><td>Region controls</td><td>Map regions local toolbar</td><td>Retained</td><td>Boundary/preset/select-all.</td></tr>
+          <tr><td>Translation controls</td><td>Translate workspace header</td><td>Retained</td><td>Progress + Missing FR + Paste column.</td></tr>
+          <tr><td>Quality metrics / statusBox</td><td>Map quality workspace + canvas dock</td><td>Retained</td><td>Checklist + metrics, inline locate.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 10 DOM HOOKS -->
+    <section style="background:#fffdf8; border:1px solid #d1ccbf; border-radius:10px; padding:26px 30px;">
+      <div class="mono" style="font-size:11px; letter-spacing:0.16em; text-transform:uppercase; color:#a7a99f; margin-bottom:6px;">10 &mdash; Existing DOM hook mapping</div>
+      <h2 style="margin:0 0 8px; font-size:20px; font-weight:800;">Keep these IDs stable</h2>
+      <p style="margin:0 0 14px; font-size:13px; line-height:1.55; color:#4a4338;">Do not rename internal IDs for visual reasons. <span class="tag">app.js</span> binds the tab array in <span class="tag">setActiveDataTab()</span> (~4949), summary in <span class="tag">renderWorkspaceSummary()</span> (~970) / <span class="tag">handleWorkspaceSummaryClick()</span> (~1050), checklist in <span class="tag">updateStatus()</span> (~4077) / <span class="tag">renderQualityMetrics()</span> (~4296).</p>
+      <table class="spec">
+        <thead><tr><th style="width:34%;">Existing hook</th><th style="width:30%;">New home</th><th>Note</th></tr></thead>
+        <tbody>
+          <tr><td><span class="tag">#previewTableTab</span> (Map)</td><td>nav &ldquo;Map&rdquo;</td><td>Keep id; restyle as nav item.</td></tr>
+          <tr><td><span class="tag">#projectTableTab</span> / <span class="tag">#regionTableTab</span> / <span class="tag">#translateTableTab</span> / <span class="tag">#qualityTableTab</span></td><td>nav items</td><td>Keep ids; <span class="tag">setActiveDataTab()</span> array unchanged.</td></tr>
+          <tr><td><span class="tag">#addRowBtn · #deleteSelectedBtn · #clearRowsBtn</span></td><td>Project points toolbar</td><td>Stable.</td></tr>
+          <tr><td><span class="tag">#ribbonImportCsvBtn · #ribbonLoadSampleBtn · #ribbonExportCsvBtn</span></td><td>Command bar &middot; Data</td><td>Stable.</td></tr>
+          <tr><td><span class="tag">#ribbonExportSvgBtn · #ribbonExportPngBtn</span></td><td>Export &#9662; menu</td><td>Keep ids inside the menu.</td></tr>
+          <tr><td><span class="tag">#mapLanguageInput · #previewLanguageInput</span></td><td>Command bar segmented</td><td>Keep both; mirror value.</td></tr>
+          <tr><td><span class="tag">#canvasAutoPlaceBtn</span> (Fit map+labels) · <span class="tag">#canvasPlaceLabelsOnlyBtn</span> (Labels only)</td><td>Floating canvas toolbar</td><td>Stable; keep titles.</td></tr>
+          <tr><td><span class="tag">#canvasZoomInBtn/OutBtn · #canvasZoomReadout</span></td><td>Floating toolbar zoom group</td><td>Stable.</td></tr>
+          <tr><td><span class="tag">#workspaceSummaryMetrics</span></td><td>Status spine</td><td>Add <span class="tag">data-summary-state</span> passive/warning.</td></tr>
+          <tr><td><span class="tag">[data-project-filter]</span></td><td>Project points toolbar</td><td>Stable.</td></tr>
+          <tr><td><span class="tag">#mapHost · #mapSvg</span></td><td>Map workspace</td><td><strong>Untouched</strong> &mdash; render output.</td></tr>
+          <tr><td><span class="tag">#statusBox · #qualityMetricsPanel</span></td><td>Map quality workspace</td><td>Stable; add passive/actionable styling.</td></tr>
+          <tr><td><span class="tag">#categoryList · #addCategoryBtn</span></td><td>Categories &amp; markers workspace</td><td>Move container out of <span class="tag">.sidebar</span>.</td></tr>
+          <tr><td><span class="tag">#boundaryInput · #regionPresetInput</span></td><td>Map regions toolbar</td><td>Stable.</td></tr>
+          <tr><td>Properties sections <span class="tag">#previewDisplayPropertiesSection</span> etc.</td><td>Properties panel</td><td>Toggle visibility per active workspace.</td></tr>
+        </tbody>
+      </table>
+      <p style="margin:14px 0 0; font-size:13px; line-height:1.55; color:#4a4338;"><strong style="font-weight:700;">New ids/classes:</strong> <span class="tag">.command-bar</span>, <span class="tag">.workspace-nav</span>, <span class="tag">#workspaceReviewBtn</span>, <span class="tag">.status-spine</span>, <span class="tag">.workspace-toolbar</span>, <span class="tag">[data-workspace]</span> on each body, <span class="tag">[data-props-context]</span> on Properties sections.</p>
+    </section>
+
+    <!-- 11 ICONS -->
+    <section style="background:#fffdf8; border:1px solid #d1ccbf; border-radius:10px; padding:26px 30px;">
+      <div class="mono" style="font-size:11px; letter-spacing:0.16em; text-transform:uppercase; color:#a7a99f; margin-bottom:6px;">11 &mdash; Icon specification</div>
+      <h2 style="margin:0 0 8px; font-size:20px; font-weight:800;">Lucide set, via <span class="tag" style="font-size:13px;">icons.js</span></h2>
+      <p style="margin:0 0 14px; font-size:13px; line-height:1.55; color:#4a4338;">Reuse the existing <span class="tag">PLOTYPUS_ICON_PATHS</span> registry (Lucide-equivalent strokes). Size <strong>15px</strong> in the command bar, <strong>16px</strong> in nav, <strong>14px</strong> in toolbars; stroke <strong>1.75&ndash;1.8</strong>, round caps/joins; colour <span class="tag">--accent</span> (idle) or white (active).</p>
+      <table class="spec">
+        <thead><tr><th>Name</th><th>Meaning</th><th>Accessible label</th><th style="width:18%;">Where</th></tr></thead>
+        <tbody>
+          <tr><td><span class="tag">undo · folder-open · save</span></td><td>Project actions</td><td>Undo / Open project / Save project</td><td>Command bar</td></tr>
+          <tr><td><span class="tag">table · upload · download</span></td><td>Sample / import / export CSV</td><td>Load sample / Import CSV / Export CSV</td><td>Command bar</td></tr>
+          <tr><td><span class="tag">svg-file · image</span></td><td>Export formats</td><td>Export SVG / Export PNG</td><td>Export menu</td></tr>
+          <tr><td><span class="tag">map</span> <em>(new)</em></td><td>Map workspace</td><td>Map</td><td>Nav</td></tr>
+          <tr><td><span class="tag">table</span></td><td>Project points</td><td>Project points</td><td>Nav</td></tr>
+          <tr><td><span class="tag">layers / shapes</span> <em>(new)</em></td><td>Categories &amp; markers</td><td>Categories and markers</td><td>Nav</td></tr>
+          <tr><td><span class="tag">languages</span> <em>(new)</em></td><td>Translate</td><td>Translate</td><td>Nav</td></tr>
+          <tr><td><span class="tag">shield-check</span> <em>(new)</em></td><td>Quality</td><td>Map quality check</td><td>Nav</td></tr>
+          <tr><td><span class="tag">auto-fit · label-place</span></td><td>Auto-place</td><td>Fit map + labels / Labels only</td><td>Canvas toolbar</td></tr>
+          <tr><td><span class="tag">plus · trash · eraser</span></td><td>Row actions</td><td>Add / Delete selected / Clear table</td><td>Points toolbar</td></tr>
+          <tr><td><span class="tag">palette · reset · paste · filter</span></td><td>Colour / reset / paste / filter</td><td>(as labelled)</td><td>Regions / Translate</td></tr>
+          <tr><td><span class="tag">legend · callout · box · line-casing · elbow · lock · ruler</span></td><td>Display/interaction toggles</td><td>(as labelled)</td><td>Properties</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 12 ASSETS -->
+    <section style="background:#fffdf8; border:1px solid #d1ccbf; border-radius:10px; padding:26px 30px;">
+      <div class="mono" style="font-size:11px; letter-spacing:0.16em; text-transform:uppercase; color:#a7a99f; margin-bottom:6px;">12 &mdash; Asset requirements</div>
+      <h2 style="margin:0 0 14px; font-size:20px; font-weight:800;">Everything bundles offline</h2>
+      <table class="spec">
+        <thead><tr><th>File</th><th>Format / size</th><th>Transparent</th><th>Use</th><th style="width:14%;">Status</th></tr></thead>
+        <tbody>
+          <tr><td><span class="tag">assets/plotypus-pin.png</span></td><td>PNG · 56&times;56</td><td>Yes</td><td>Brand mark, command bar &amp; loader</td><td>Exists</td></tr>
+          <tr><td><span class="tag">assets/plotypus-mark.svg</span></td><td>SVG</td><td>Yes</td><td>Scalable brand mark</td><td>Exists</td></tr>
+          <tr><td><span class="tag">assets/fonts/lato/*.woff2</span></td><td>WOFF2</td><td>&mdash;</td><td>UI typeface (preloaded)</td><td>Exists</td></tr>
+          <tr><td><span class="tag">icons.js</span> registry</td><td>Inline SVG paths</td><td>&mdash;</td><td>All UI icons; add 4 nav glyphs</td><td>Extend</td></tr>
+          <tr><td>Mono numerals</td><td>System stack <span class="tag">ui-monospace&hellip;</span></td><td>&mdash;</td><td>Numerals &amp; eyebrows</td><td>None (no asset)</td></tr>
+        </tbody>
+      </table>
+      <p style="margin:12px 0 0; font-size:13px; line-height:1.55; color:#4a4338;">No new bitmap assets are required. The mono &ldquo;instrument&rdquo; look uses a system font stack, so nothing extra to bundle. No remote/CDN assets in the shipped app.</p>
+    </section>
+
+    <!-- 13 IMPL ORDER + ACCEPTANCE -->
+    <section style="background:#fffdf8; border:1px solid #d1ccbf; border-radius:10px; padding:26px 30px;">
+      <div class="mono" style="font-size:11px; letter-spacing:0.16em; text-transform:uppercase; color:#a7a99f; margin-bottom:6px;">13 &mdash; Implementation order</div>
+      <h2 style="margin:0 0 14px; font-size:20px; font-weight:800;">File-oriented sequence</h2>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:8px;">
+        <div style="background:#f6f4ee; border:1px solid #e0dccf; border-radius:8px; padding:15px;">
+          <div class="mono" style="font-size:10px; letter-spacing:0.08em; color:#3f4d3f; background:#eef0e9; display:inline-block; padding:3px 8px; border-radius:4px; margin-bottom:10px;">STRUCTURE &middot; index.html</div>
+          <ol style="margin:0; padding-left:18px; font-size:12.5px; line-height:1.55; color:#4a4338; display:flex; flex-direction:column; gap:6px;">
+            <li>Split header into <span class="tag">.command-bar</span> + <span class="tag">.workspace-nav</span>.</li>
+            <li>Move table tabs into the nav; promote Map to first/default.</li>
+            <li>Lift <span class="tag">#categoryList</span> out of <span class="tag">.sidebar</span> into a Categories workspace; delete the sidebar.</li>
+            <li>Wrap each pane in <span class="tag">[data-workspace]</span>; tag Properties sections <span class="tag">[data-props-context]</span>.</li>
+          </ol>
+        </div>
+        <div style="background:#f6f4ee; border:1px solid #e0dccf; border-radius:8px; padding:15px;">
+          <div class="mono" style="font-size:10px; letter-spacing:0.08em; color:#3f4d3f; background:#eef0e9; display:inline-block; padding:3px 8px; border-radius:4px; margin-bottom:10px;">STYLING &middot; style.css</div>
+          <ol style="margin:0; padding-left:18px; font-size:12.5px; line-height:1.55; color:#4a4338; display:flex; flex-direction:column; gap:6px;">
+            <li>Add new tokens to <span class="tag">:root</span>.</li>
+            <li>Command bar + nav band layout; remove 3-col <span class="tag">.app-shell</span> grid&rsquo;s left track.</li>
+            <li>Status spine: passive vs <span class="tag">[data-summary-state]</span> styling.</li>
+            <li>Mono + right-align numeric cells; zebra; sticky name; danger separation; focus rings (already present).</li>
+            <li>Responsive: 1280 / 1024 rules per &sect;5.</li>
+          </ol>
+        </div>
+        <div style="background:#f6f4ee; border:1px solid #e0dccf; border-radius:8px; padding:15px;">
+          <div class="mono" style="font-size:10px; letter-spacing:0.08em; color:#9a7a30; background:#f4ecd9; display:inline-block; padding:3px 8px; border-radius:4px; margin-bottom:10px;">BEHAVIOUR &middot; app.js</div>
+          <ol style="margin:0; padding-left:18px; font-size:12.5px; line-height:1.55; color:#4a4338; display:flex; flex-direction:column; gap:6px;">
+            <li>Point nav clicks at existing <span class="tag">setActiveDataTab()</span>; default to Map on load.</li>
+            <li>Render Properties section visibility from active workspace (<span class="tag">data-props-context</span>).</li>
+            <li>Split summary into passive metrics + <span class="tag">#workspaceReviewBtn</span> in <span class="tag">renderWorkspaceSummary()</span>.</li>
+            <li>Wire Locate buttons from <span class="tag">updateStatus()</span> / <span class="tag">renderQualityMetrics()</span>.</li>
+            <li>Guard: nav/filter/select stay lightweight; never call the plot path.</li>
+          </ol>
+        </div>
+        <div style="background:#fbf3f1; border:1px solid #e3c9c3; border-radius:8px; padding:15px;">
+          <div class="mono" style="font-size:10px; letter-spacing:0.08em; color:#9a4b3f; background:#f3e2de; display:inline-block; padding:3px 8px; border-radius:4px; margin-bottom:10px;">RISKY &middot; verify carefully</div>
+          <ol style="margin:0; padding-left:18px; font-size:12.5px; line-height:1.55; color:#4a4338; display:flex; flex-direction:column; gap:6px;">
+            <li>Removing the sidebar grid track &mdash; check no JS reads <span class="tag">.sidebar</span> layout.</li>
+            <li>Map language mirroring across the two selects.</li>
+            <li>Don&rsquo;t touch <span class="tag">#mapSvg</span> render or export paths.</li>
+            <li>Run the smoke + label-geometry tests after.</li>
+          </ol>
+        </div>
+      </div>
+
+      <h2 style="margin:22px 0 12px; font-size:20px; font-weight:800;">Acceptance criteria</h2>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px 22px;">
+        <div style="display:flex; gap:9px; align-items:flex-start; font-size:13px; line-height:1.5; color:#3f4339;"><span style="color:#245a3a; font-weight:900;">&#10003;</span> Nav stays stationary between workspaces.</div>
+        <div style="display:flex; gap:9px; align-items:flex-start; font-size:13px; line-height:1.5; color:#3f4339;"><span style="color:#245a3a; font-weight:900;">&#10003;</span> No permanent left sidebar.</div>
+        <div style="display:flex; gap:9px; align-items:flex-start; font-size:13px; line-height:1.5; color:#3f4339;"><span style="color:#245a3a; font-weight:900;">&#10003;</span> Categories &amp; markers fully accessible (own workspace).</div>
+        <div style="display:flex; gap:9px; align-items:flex-start; font-size:13px; line-height:1.5; color:#3f4339;"><span style="color:#245a3a; font-weight:900;">&#10003;</span> Map is the primary, default workspace.</div>
+        <div style="display:flex; gap:9px; align-items:flex-start; font-size:13px; line-height:1.5; color:#3f4339;"><span style="color:#245a3a; font-weight:900;">&#10003;</span> Properties never show irrelevant controls.</div>
+        <div style="display:flex; gap:9px; align-items:flex-start; font-size:13px; line-height:1.5; color:#3f4339;"><span style="color:#245a3a; font-weight:900;">&#10003;</span> Passive metrics vs actionable issues clearly distinct.</div>
+        <div style="display:flex; gap:9px; align-items:flex-start; font-size:13px; line-height:1.5; color:#3f4339;"><span style="color:#245a3a; font-weight:900;">&#10003;</span> Tables keep adequate width (&ge;760px) &amp; never shrink.</div>
+        <div style="display:flex; gap:9px; align-items:flex-start; font-size:13px; line-height:1.5; color:#3f4339;"><span style="color:#245a3a; font-weight:900;">&#10003;</span> No control overlap at 1440 / 1280 / 1024.</div>
+        <div style="display:flex; gap:9px; align-items:flex-start; font-size:13px; line-height:1.5; color:#3f4339;"><span style="color:#245a3a; font-weight:900;">&#10003;</span> Keyboard focus always visible.</div>
+        <div style="display:flex; gap:9px; align-items:flex-start; font-size:13px; line-height:1.5; color:#3f4339;"><span style="color:#245a3a; font-weight:900;">&#10003;</span> Map render &amp; export output unchanged.</div>
+        <div style="display:flex; gap:9px; align-items:flex-start; font-size:13px; line-height:1.5; color:#3f4339;"><span style="color:#245a3a; font-weight:900;">&#10003;</span> Lightweight actions never trigger a re-plot.</div>
+        <div style="display:flex; gap:9px; align-items:flex-start; font-size:13px; line-height:1.5; color:#3f4339;"><span style="color:#245a3a; font-weight:900;">&#10003;</span> App remains usable fully offline.</div>
+      </div>
+    </section>
+
+    <!-- MANIFEST -->
+    <section style="background:#2f342d; border-radius:10px; padding:26px 30px; color:#e9e6dd;">
+      <div class="mono" style="font-size:11px; letter-spacing:0.16em; text-transform:uppercase; color:#9aa08f; margin-bottom:6px;">Artifact / file manifest</div>
+      <h2 style="margin:0 0 14px; font-size:20px; font-weight:800; color:#fbfaf6;">What ships with this handoff</h2>
+      <div style="display:flex; flex-direction:column; gap:9px;">
+        <div style="display:flex; gap:12px; align-items:baseline;"><span class="tag" style="background:#3f463c; border-color:#525a4c; color:#d7dccb;">Plotypus Shell.dc.html</span><span style="font-size:13px; color:#d8d2c6;">Interactive prototype &mdash; live shell, 6 workspaces, contextual Properties, state &amp; responsive frames.</span></div>
+        <div style="display:flex; gap:12px; align-items:baseline;"><span class="tag" style="background:#3f463c; border-color:#525a4c; color:#d7dccb;">Plotypus Shell - Spec &amp; Handoff.dc.html</span><span style="font-size:13px; color:#d8d2c6;">This document &mdash; tokens, measurements, states, interactions, mapping, plan.</span></div>
+        <div style="display:flex; gap:12px; align-items:baseline;"><span class="tag" style="background:#3f463c; border-color:#525a4c; color:#d7dccb;">support.js</span><span style="font-size:13px; color:#d8d2c6;">DC runtime (auto-included; not part of the app).</span></div>
+      </div>
+      <p style="margin:16px 0 0; font-size:12.5px; line-height:1.6; color:#b9bcad;">Reference screenshots correspond exactly to the prototype source above &mdash; capture each workspace by clicking its nav item. Implement against <span class="tag" style="background:#3f463c; border-color:#525a4c; color:#d7dccb;">index.html / style.css / app.js</span>; keep <span class="tag" style="background:#3f463c; border-color:#525a4c; color:#d7dccb;">themes/*.css</span> and the map render path untouched.</p>
+    </section>
+
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
