@@ -1,6 +1,13 @@
 (function (global) {
   "use strict";
 
+  function projectIoError(message, i18nKey, i18nParams) {
+    const error = new Error(message);
+    error.i18nKey = i18nKey;
+    error.i18nParams = i18nParams || {};
+    return error;
+  }
+
   function createProjectSnapshot(options) {
     const {
       version,
@@ -55,7 +62,8 @@
         priority: row.priority || 0,
         lon: row.lon,
         lat: row.lat,
-        hideLine: row.hideLine
+        hideLine: row.hideLine,
+        labelMaxChars: row.labelMaxChars || ""
       })),
       regionVisibility,
       regionFills,
@@ -120,7 +128,8 @@
       file,
       targets,
       savedMapping,
-      findSourceForTarget
+      findSourceForTarget,
+      defaultFileName
     } = options || {};
     if (typeof findSourceForTarget !== "function") throw new TypeError("CSV mapping requires a source matcher.");
     const fields = results && results.meta && Array.isArray(results.meta.fields)
@@ -141,7 +150,7 @@
       errors: results && results.errors || [],
       mapping,
       file,
-      fileName: file && file.name || "Selected CSV"
+      fileName: file && file.name || defaultFileName || "CSV"
     };
   }
 
@@ -168,7 +177,7 @@
   function validateAndNormalizeProject(rawProject, options) {
     const { projectFile } = options || {};
     if (!projectFile || typeof projectFile.validateAndNormalizeProject !== "function") {
-      throw new Error("Project-file validation module did not load.");
+      throw projectIoError("Project-file validation module did not load.", "project.error.validationModuleMissing");
     }
     return projectFile.validateAndNormalizeProject(rawProject, options);
   }

@@ -11,9 +11,34 @@
     return typeof value === "string" && /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value);
   }
 
+  function validationError(message, i18nKey, i18nParams) {
+    const error = new Error(message);
+    error.i18nKey = i18nKey;
+    error.i18nParams = i18nParams || {};
+    return error;
+  }
+
+  function fieldLabel(label, labelKey, labelParams) {
+    return {
+      label,
+      labelKey,
+      labelParams: labelParams || {}
+    };
+  }
+
+  function getFieldLabelText(field) {
+    return field && typeof field === "object" ? field.label : field;
+  }
+
+  function getFieldLabelParams(field) {
+    return field && typeof field === "object"
+      ? { label: field.label, labelKey: field.labelKey, labelParams: field.labelParams || {} }
+      : { label: field };
+  }
+
   function validateColour(value, label) {
     if (value !== undefined && !isHexColour(value)) {
-      throw new Error(`${label} must be a hex colour such as #444444.`);
+      throw validationError(`${getFieldLabelText(label)} must be a hex colour such as #444444.`, "project.error.hexColour", getFieldLabelParams(label));
     }
   }
 
@@ -23,20 +48,22 @@
 
   function validateCustomIcon(icon, label) {
     if (icon === undefined || icon === null) return;
-    if (!isPlainObject(icon)) throw new Error(`${label} must be an object.`);
+    const labelText = getFieldLabelText(label);
+    const labelParams = getFieldLabelParams(label);
+    if (!isPlainObject(icon)) throw validationError(`${labelText} must be an object.`, "project.error.objectField", labelParams);
     const mimeType = String(icon.mimeType || "").toLowerCase();
     if (mimeType !== "image/png" && mimeType !== "image/webp") {
-      throw new Error(`${label} must be a PNG or WebP image.`);
+      throw validationError(`${labelText} must be a PNG or WebP image.`, "project.error.customIconType", labelParams);
     }
     if (!isCustomIconDataUrl(icon.dataUrl)) {
-      throw new Error(`${label} must be a PNG/WebP data URL.`);
+      throw validationError(`${labelText} must be a PNG/WebP data URL.`, "project.error.customIconDataUrl", labelParams);
     }
     const width = Number(icon.width);
     const height = Number(icon.height);
     const size = Number(icon.size);
-    if (!Number.isFinite(width) || width < 8 || width > 512) throw new Error(`${label} width must be 8-512 pixels.`);
-    if (!Number.isFinite(height) || height < 8 || height > 512) throw new Error(`${label} height must be 8-512 pixels.`);
-    if (!Number.isFinite(size) || size < 1 || size > 256 * 1024) throw new Error(`${label} must be 256 KB or smaller.`);
+    if (!Number.isFinite(width) || width < 8 || width > 512) throw validationError(`${labelText} width must be 8-512 pixels.`, "project.error.customIconWidth", labelParams);
+    if (!Number.isFinite(height) || height < 8 || height > 512) throw validationError(`${labelText} height must be 8-512 pixels.`, "project.error.customIconHeight", labelParams);
+    if (!Number.isFinite(size) || size < 1 || size > 256 * 1024) throw validationError(`${labelText} must be 256 KB or smaller.`, "project.error.customIconSize", labelParams);
   }
 
   function validateAndNormalizeProject(rawProject, options = {}) {
@@ -47,33 +74,37 @@
     const defaultMapStyle = options.defaultMapStyle || Object.keys(mapStylePresets)[0] || "";
     const normalizeLanguage = options.normalizeLanguage || (value => value === "fr" ? "fr" : "en");
 
-    if (!isPlainObject(rawProject)) throw new Error("Project file must contain a JSON object.");
+    if (!isPlainObject(rawProject)) throw validationError("Project file must contain a JSON object.", "project.error.jsonObject");
     const version = rawProject.version === undefined ? 1 : Number(rawProject.version);
-    if (!Number.isInteger(version) || version < 1) throw new Error("Project version must be a positive whole number.");
+    if (!Number.isInteger(version) || version < 1) throw validationError("Project version must be a positive whole number.", "project.error.versionNumber");
     if (version > currentVersion) {
-      throw new Error(`This project uses version ${version}. This Plotypus build supports up to version ${currentVersion}.`);
+      throw validationError(
+        `This project uses version ${version}. This Plotypus build supports up to version ${currentVersion}.`,
+        "project.error.versionUnsupported",
+        { version, currentVersion }
+      );
     }
-    if (!Array.isArray(rawProject.rows)) throw new Error("Project file is missing its rows array.");
-    if (rawProject.rows.length > 10000) throw new Error("Project file contains more than 10,000 rows and was not loaded.");
+    if (!Array.isArray(rawProject.rows)) throw validationError("Project file is missing its rows array.", "project.error.rowsMissing");
+    if (rawProject.rows.length > 10000) throw validationError("Project file contains more than 10,000 rows and was not loaded.", "project.error.rowsTooMany");
     rawProject.rows.forEach((row, index) => {
-      if (!isPlainObject(row)) throw new Error(`Project row ${index + 1} must be an object.`);
+      if (!isPlainObject(row)) throw validationError(`Project row ${index + 1} must be an object.`, "project.error.rowObject", { index: index + 1 });
     });
     if (rawProject.categories !== undefined && !Array.isArray(rawProject.categories)) {
-      throw new Error("Project categories must be an array.");
+      throw validationError("Project categories must be an array.", "project.error.categoriesArray");
     }
     if (Array.isArray(rawProject.categories)) {
       rawProject.categories.forEach((category, index) => {
-        if (!isPlainObject(category)) throw new Error(`Project category ${index + 1} must be an object.`);
-        validateColour(category.colour, `Project category ${index + 1} colour`);
-        validateColour(category.stroke, `Project category ${index + 1} stroke`);
-        validateCustomIcon(category.customIcon, `Project category ${index + 1} custom icon`);
+        if (!isPlainObject(category)) throw validationError(`Project category ${index + 1} must be an object.`, "project.error.categoryObject", { index: index + 1 });
+        validateColour(category.colour, fieldLabel(`Project category ${index + 1} colour`, "project.error.label.category.colour", { index: index + 1 }));
+        validateColour(category.stroke, fieldLabel(`Project category ${index + 1} stroke`, "project.error.label.category.stroke", { index: index + 1 }));
+        validateCustomIcon(category.customIcon, fieldLabel(`Project category ${index + 1} custom icon`, "project.error.label.category.customicon", { index: index + 1 }));
       });
     }
     if (rawProject.settings !== undefined && !isPlainObject(rawProject.settings)) {
-      throw new Error("Project settings must be an object.");
+      throw validationError("Project settings must be an object.", "project.error.settingsObject");
     }
     if (rawProject.languageLayouts !== undefined && !isPlainObject(rawProject.languageLayouts)) {
-      throw new Error("Project language layouts must be an object.");
+      throw validationError("Project language layouts must be an object.", "project.error.languageLayoutsObject");
     }
 
     [
@@ -86,12 +117,12 @@
       "manualBoxPositions"
     ].forEach(field => {
       if (rawProject[field] !== undefined && !isPlainObject(rawProject[field])) {
-        throw new Error(`Project field '${field}' must be an object.`);
+        throw validationError(`Project field '${field}' must be an object.`, "project.error.fieldObject", { field });
       }
     });
     if (rawProject.regionFills !== undefined) {
       Object.entries(rawProject.regionFills).forEach(([regionId, colour]) => {
-        validateColour(colour, `Project region fill '${regionId}'`);
+        validateColour(colour, fieldLabel(`Project region fill '${regionId}'`, "project.error.label.regionFill", { id: regionId }));
       });
     }
 

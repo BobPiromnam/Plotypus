@@ -12,7 +12,7 @@
   </style>
 </head>
 <body>
-  <iframe id="app" title="Plotypus application under test" data-src="../index.html"></iframe>
+  <iframe id="app" title="Plotypus application under test" data-src="../index.html?v=20260624-i18n-quality"></iframe>
   <pre id="result">{"status":"running"}</pre>
   <script>
     const result = document.querySelector("#result");
@@ -27,6 +27,7 @@
     if (visualCapture) document.documentElement.classList.add("is-visual-capture");
     try {
       localStorage.removeItem("plotypus.propertiesPanel");
+      localStorage.removeItem("plotypus.uiLanguage");
     } catch (_error) {
       // Storage may be unavailable in a locked-down browser profile.
     }
@@ -50,7 +51,8 @@
     }
 
     function dispatchKey(target, key) {
-      target.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+      const View = target.ownerDocument?.defaultView?.KeyboardEvent || KeyboardEvent;
+      target.dispatchEvent(new View("keydown", { key, bubbles: true, cancelable: true }));
     }
 
     function assert(checks, name, pass, detail = "") {
@@ -119,7 +121,10 @@
           const dialogMap = {
             "map-details": "#mapDetailsDialog",
             "csv-map": "#csvMapDialog",
-            "point-catalog": "#pointCatalogDialog"
+            "point-catalog": "#pointCatalogDialog",
+            "shortcuts": "#shortcutsOverlay",
+            "export-menu": "#exportMenu",
+            "project-load-error": "#statusBox"
           };
           const dialogSelector = dialogMap[requestedDialog];
           if (!dialogSelector) throw new Error(`Unknown dialog: ${requestedDialog}`);
@@ -135,6 +140,11 @@
             assert(checks, "Map details does not block saving partial bilingual details", dialog.querySelectorAll("input[required], textarea[required]").length === 0);
             assert(checks, "Map details headings do not show publish-needed badges", dialog.querySelectorAll(".dialog-field-group .field-requirement").length === 0);
             assert(checks, "Accessibility publishing note remains visible", /not drawn in SVG or PNG exports/i.test(dialog.querySelector(".dialog-note")?.textContent || ""));
+            doc.querySelector("[data-ui-language='fr']")?.click();
+            await waitFor(() => doc.documentElement.lang === "fr" && /Détails de la carte/.test(doc.querySelector("#mapDetailsTitle")?.textContent || ""), 2000);
+            assert(checks, "Top language toggle switches Map details dialog copy to French", /Les deux langues sont requises/.test(dialog.querySelector(".dialog-note")?.textContent || "") && /Titre de la carte/.test(dialog.textContent || "") && /Enregistrer les détails de la carte/.test(dialog.textContent || ""), dialog.textContent || "");
+            doc.querySelector("[data-ui-language='en']")?.click();
+            await waitFor(() => doc.documentElement.lang === "en" && /Map details/.test(doc.querySelector("#mapDetailsTitle")?.textContent || ""), 2000);
             dialog.querySelector("#mapTitleEnInput").value = "";
             dialog.querySelector("#mapTitleFrInput").value = "Titre provisoire";
             dialog.querySelector("#mapTextEnInput").value = "";
@@ -168,6 +178,11 @@
             assert(checks, "Detected columns are auto-matched", mappings.every(select => Boolean(select.value)));
             assert(checks, "Required mappings enable import", doc.querySelector("#confirmCsvMapBtn")?.disabled === false);
             assert(checks, "Source samples are visible", Array.from(dialog.querySelectorAll(".csv-map-sample")).some(sample => /Test project/.test(sample.textContent || "")));
+            doc.querySelector("[data-ui-language='fr']")?.click();
+            await waitFor(() => doc.documentElement.lang === "fr" && /Associer les colonnes CSV/.test(doc.querySelector("#csvMapTitle")?.textContent || ""), 2000);
+            assert(checks, "Top language toggle switches CSV mapping dialog copy to French", /Champ Plotypus/.test(dialog.textContent || "") && /Colonne du CSV/.test(dialog.textContent || "") && /Nom anglais du projet/.test(dialog.textContent || "") && /Requis/.test(dialog.textContent || "") && /Non associé/.test(dialog.textContent || "") && /Importer les lignes associées/.test(dialog.textContent || ""), dialog.textContent || "");
+            doc.querySelector("[data-ui-language='en']")?.click();
+            await waitFor(() => doc.documentElement.lang === "en" && /Map CSV columns/.test(doc.querySelector("#csvMapTitle")?.textContent || ""), 2000);
             dispatchKey(doc, "Escape");
             assert(checks, "Escape closes CSV mapping", dialog.hidden);
             input.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
@@ -188,6 +203,12 @@
             assert(checks, "Point catalog exposes modal semantics", dialog.getAttribute("role") === "dialog" && dialog.getAttribute("aria-modal") === "true" && dialog.getAttribute("aria-labelledby") === "pointCatalogTitle");
             assert(checks, "Point catalog starts on Presets", doc.activeElement === presetsTab && presetsTab.getAttribute("aria-selected") === "true" && !doc.querySelector("#pointCatalogPresetsPanel").hidden);
             assert(checks, "Point catalog reports its entry context", /Project points/.test(doc.querySelector("#pointCatalogScope")?.textContent || ""));
+            doc.querySelector("[data-ui-language='fr']")?.click();
+            await waitFor(() => doc.documentElement.lang === "fr" && /Ajouter des points/.test(doc.querySelector("#pointCatalogTitle")?.textContent || ""), 2000);
+            const catalogCountText = Array.from(doc.querySelectorAll(".catalog-card-count")).map(node => node.textContent.trim());
+            assert(checks, "Top language toggle switches Point catalog copy to French", /Points de projet/.test(doc.querySelector("#pointCatalogScope")?.textContent || "") && /Capitales/.test(doc.querySelector("[data-catalog-preset='capitals'] strong")?.textContent || "") && catalogCountText.every(text => /^\d+ pts$/.test(text)), `${doc.querySelector("#pointCatalogScope")?.textContent || ""} | ${catalogCountText.join(", ")}`);
+            doc.querySelector("[data-ui-language='en']")?.click();
+            await waitFor(() => doc.documentElement.lang === "en" && /Add points/.test(doc.querySelector("#pointCatalogTitle")?.textContent || ""), 2000);
             dispatchKey(presetsTab, "ArrowRight");
             assert(checks, "Catalog tabs support arrow-key navigation", doc.activeElement === sourcesTab && sourcesTab.getAttribute("aria-selected") === "true" && !doc.querySelector("#pointCatalogSourcesPanel").hidden);
             assert(checks, "Browsing catalog sources does not re-plot", (doc.querySelector("#mapSvg")?.innerHTML || "") === mapBeforeCatalog);
@@ -210,6 +231,54 @@
             assert(checks, "Adding a preset outside Map does not re-plot", (doc.querySelector("#mapSvg")?.innerHTML || "") === mapBeforeCatalog);
             doc.querySelector("#addPointsBtn")?.click();
             await waitFor(() => dialog.hidden === false);
+          }
+          if (requestedDialog === "shortcuts") {
+            dispatchKey(doc, "?");
+            await waitFor(() => doc.querySelector(dialogSelector)?.hidden === false);
+            const dialog = doc.querySelector(dialogSelector);
+            assert(checks, "Shortcuts dialog opens", !dialog.hidden);
+            assert(checks, "Shortcuts exposes modal semantics", dialog.getAttribute("role") === "dialog" && dialog.getAttribute("aria-modal") === "true" && dialog.getAttribute("aria-labelledby") === "shortcutsTitle");
+            assert(checks, "Shortcuts starts with a close control", doc.activeElement === doc.querySelector("#closeShortcutsBtn"));
+            doc.querySelector("[data-ui-language='fr']")?.click();
+            await waitFor(() => doc.documentElement.lang === "fr" && /Raccourcis/.test(doc.querySelector("#shortcutsTitle")?.textContent || ""), 2000);
+            assert(checks, "Top language toggle switches Shortcuts dialog copy to French", /Clavier/.test(dialog.textContent || "") && /Afficher ou masquer/.test(dialog.textContent || "") && /Fermer/.test(dialog.textContent || ""), dialog.textContent || "");
+            doc.querySelector("[data-ui-language='en']")?.click();
+            await waitFor(() => doc.documentElement.lang === "en" && /Shortcuts/.test(doc.querySelector("#shortcutsTitle")?.textContent || ""), 2000);
+            dispatchKey(doc, "Escape");
+            assert(checks, "Escape closes Shortcuts", dialog.hidden);
+          }
+          if (requestedDialog === "export-menu") {
+            const trigger = doc.querySelector("#exportMenuBtn");
+            trigger.focus();
+            trigger.click();
+            await waitFor(() => doc.querySelector(dialogSelector)?.hidden === false);
+            const menu = doc.querySelector(dialogSelector);
+            assert(checks, "Export menu opens", !menu.hidden && trigger.getAttribute("aria-expanded") === "true");
+            assert(checks, "Export menu exposes menu semantics", menu.getAttribute("role") === "menu" && Array.from(menu.querySelectorAll("[role='menuitem']")).length === 2);
+            doc.querySelector("[data-ui-language='fr']")?.click();
+            await waitFor(() => doc.documentElement.lang === "fr" && /Exporter PNG/.test(menu.textContent || ""), 2000);
+            assert(checks, "Top language toggle switches Export menu copy to French", /Image matricielle pour les documents/.test(menu.textContent || "") && /Illustration vectorielle modifiable/.test(menu.textContent || ""), menu.textContent || "");
+            doc.querySelector("[data-ui-language='en']")?.click();
+            await waitFor(() => doc.documentElement.lang === "en" && /Export PNG/.test(menu.textContent || ""), 2000);
+            dispatchKey(doc, "Escape");
+            assert(checks, "Escape closes Export menu", menu.hidden && trigger.getAttribute("aria-expanded") === "false");
+          }
+          if (requestedDialog === "project-load-error") {
+            doc.querySelector("[data-ui-language='fr']")?.click();
+            await waitFor(() => doc.documentElement.lang === "fr", 2000);
+            const projectInput = doc.querySelector("#projectInput");
+            const invalidProject = new frame.contentWindow.File(
+              [JSON.stringify({ version: 5, categories: [] })],
+              "invalid-plotypus-project.json",
+              { type: "application/json" }
+            );
+            const transfer = new frame.contentWindow.DataTransfer();
+            transfer.items.add(invalidProject);
+            Object.defineProperty(projectInput, "files", { value: transfer.files, configurable: true });
+            projectInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+            await waitFor(() => /Échec du chargement/.test(doc.querySelector("#statusBox")?.textContent || ""), 4000);
+            const statusText = doc.querySelector("#statusBox")?.textContent || "";
+            assert(checks, "Project load validation error is translated to French", /Échec du chargement/.test(statusText) && /tableau des lignes/.test(statusText), statusText);
           }
           const failed = checks.filter(check => !check.pass);
           result.textContent = JSON.stringify({
@@ -257,6 +326,50 @@
           const regionSummaryLabel = doc.querySelector("#workspaceSummaryMetrics [data-summary-key='regions'] span");
           const workspaceTabs = Array.from(doc.querySelectorAll(".workspace-nav .table-tab"));
           assert(checks, "Every workspace tab has an accessible name", workspaceTabs.every(tab => Boolean((tab.getAttribute("aria-label") || tab.textContent || "").trim())));
+          const uiFrenchButton = doc.querySelector("[data-ui-language='fr']");
+          const uiEnglishButton = doc.querySelector("[data-ui-language='en']");
+          uiFrenchButton?.click();
+          await waitFor(() => doc.documentElement.lang === "fr" && doc.querySelector("#previewTableTab")?.textContent.trim() === "Carte", 2000);
+          assert(checks, "Top language toggle switches app chrome to French", doc.documentElement.lang === "fr" && doc.querySelector("#mapDetailsBtn")?.textContent.includes("Détails de la carte") && doc.querySelector("#exportMenuBtn")?.textContent.trim() === "Exporter" && doc.querySelector("#mapLanguageInput")?.value === "fr");
+          if (requestedWorkspace === "preview") {
+            const expectedPropertiesCopy = ["Affichage", "Détails de la carte"];
+            await waitFor(() => {
+              const text = `${doc.querySelector("#propertiesTitle")?.textContent || ""} ${doc.querySelector("#propertiesSubtitle")?.textContent || ""} ${doc.querySelector("#propertiesSelectionControls")?.textContent || ""}`;
+              return expectedPropertiesCopy.every(copy => text.includes(copy));
+            }, 2000);
+            const translatedPropertiesText = `${doc.querySelector("#propertiesTitle")?.textContent || ""} ${doc.querySelector("#propertiesSubtitle")?.textContent || ""} ${doc.querySelector("#propertiesSelectionControls")?.textContent || ""}`;
+            assert(checks, "Top language toggle switches Properties copy to French", expectedPropertiesCopy.every(copy => translatedPropertiesText.includes(copy)), translatedPropertiesText);
+            const placeholderText = doc.querySelector("#canvasPlaceholder")?.textContent || "";
+            assert(checks, "Top language toggle switches empty canvas fallback to French", /Canevas de carte/.test(placeholderText) && /Canevas de \d+ x \d+ pt/.test(placeholderText), placeholderText);
+            assert(checks, "Top language toggle switches map scale readout to French", /^Carte \d+%$/.test(doc.querySelector("#canvasZoomReadout")?.textContent.trim() || ""), doc.querySelector("#canvasZoomReadout")?.textContent.trim() || "");
+          }
+          if (requestedWorkspace === "projects") {
+            const projectToolbarText = `${doc.querySelector("#addRowBtn")?.textContent || ""} ${doc.querySelector("#addPointsBtn")?.textContent || ""} ${doc.querySelector("#clearRowsBtn")?.textContent || ""}`;
+            assert(checks, "Top language toggle switches Project toolbar copy to French", /Ligne/.test(projectToolbarText) && /Source/.test(projectToolbarText) && /Vider le tableau/.test(projectToolbarText), projectToolbarText);
+          }
+          if (requestedWorkspace === "translate") {
+            const translationStatusHeaderText = Array.from(doc.querySelector(".translation-column-labels")?.children || []).at(-1)?.textContent.trim() || "";
+            const translationStatusText = doc.querySelector(".translation-row .translation-status")?.textContent.trim() || "";
+            assert(checks, "Top language toggle switches Translation status copy to French", translationStatusHeaderText === "État" && ["Complet", "EN manquant", "FR manquant"].includes(translationStatusText), `${translationStatusHeaderText} / ${translationStatusText}`);
+            const firstFrenchTranslation = doc.querySelector(".translation-row .translation-fr-input");
+            if (firstFrenchTranslation) {
+              firstFrenchTranslation.value = "";
+              firstFrenchTranslation.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
+              await waitFor(() => !doc.querySelector("#exportLanguageNotice")?.hidden, 4000);
+              const exportNoticeText = doc.querySelector("#exportLanguageNotice")?.textContent || "";
+              assert(checks, "Export missing-translation notice switches to French", /1 chaîne n'a pas de français/.test(exportNoticeText) && /anglais/.test(exportNoticeText), exportNoticeText);
+            }
+          }
+          if (requestedWorkspace === "quality") {
+            const qualityText = `${doc.querySelector("#qualitySummaryBanner")?.textContent || ""} ${doc.querySelector("#statusBox")?.textContent || ""}`;
+            assert(checks, "Top language toggle switches Map quality copy to French", /problèmes à réviser|Éléments à corriger|Localiser le premier/.test(qualityText), qualityText);
+          }
+          uiEnglishButton?.click();
+          await waitFor(() => doc.documentElement.lang === "en" && doc.querySelector("#previewTableTab")?.textContent.trim() === "Map", 2000);
+          assert(checks, "Top language toggle switches app chrome back to English", doc.documentElement.lang === "en" && doc.querySelector("#mapDetailsBtn")?.textContent.includes("Map details") && doc.querySelector("#exportMenuBtn")?.textContent.trim() === "Export" && doc.querySelector("#mapLanguageInput")?.value === "en");
+          const currentSummaryChips = Array.from(doc.querySelectorAll("#workspaceSummaryMetrics .workspace-summary-chip"));
+          const currentVisibleSummaryChips = currentSummaryChips.filter(chip => frame.contentWindow.getComputedStyle(chip).display !== "none");
+          const currentRegionSummaryLabel = doc.querySelector("#workspaceSummaryMetrics [data-summary-key='regions'] span");
           if (appWidth > 1280) {
             assert(checks, "Properties uses the 320px desktop dock", Math.round(parseFloat(propertiesStyle.width)) === 320, propertiesStyle.width);
             assert(checks, "Docked Properties remains available to assistive technology", !propertiesPanel.inert && !propertiesPanel.hasAttribute("aria-hidden"));
@@ -268,17 +381,17 @@
             propertiesResizeHandle?.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true }));
             await waitFor(() => Math.round(propertiesPanel.getBoundingClientRect().width) === 336);
             assert(checks, "Desktop Properties can be resized from the splitter", Math.round(propertiesPanel.getBoundingClientRect().width) === 336);
-            assert(checks, "Desktop readiness shows every summary chip", visibleSummaryChips.length === 4);
+            assert(checks, "Desktop readiness shows every summary chip", currentVisibleSummaryChips.length === 4);
             assert(checks, "Desktop workspace tabs show full labels", workspaceTabs.every(tab => frame.contentWindow.getComputedStyle(tab).fontSize !== "0px"));
           } else if (appWidth > 1080) {
             assert(checks, "Properties uses the 300px working-width dock", Math.round(parseFloat(propertiesStyle.width)) === 300);
             assert(checks, "Working-width Properties remains available to assistive technology", !propertiesPanel.inert && !propertiesPanel.hasAttribute("aria-hidden"));
-            assert(checks, "Working-width readiness retains every value", visibleSummaryChips.length === 4 && frame.contentWindow.getComputedStyle(regionSummaryLabel).display === "none");
+            assert(checks, "Working-width readiness retains every value", currentVisibleSummaryChips.length === 4 && frame.contentWindow.getComputedStyle(currentRegionSummaryLabel).display === "none", currentSummaryChips.map(chip => `${chip.dataset.summaryKey}:${frame.contentWindow.getComputedStyle(chip).display}`).join(", "));
             assert(checks, "Working-width workspace tabs retain labels", workspaceTabs.every(tab => frame.contentWindow.getComputedStyle(tab).fontSize !== "0px"));
           } else {
             assert(checks, "Properties becomes a fixed slide-over", propertiesStyle.position === "fixed" && propertiesStyle.right === "0px");
             assert(checks, "Narrow shell exposes the Properties trigger", frame.contentWindow.getComputedStyle(propertiesToggle).display !== "none");
-            assert(checks, "Narrow readiness collapses to one review control", visibleSummaryChips.length === 1 && visibleSummaryChips[0].dataset.summaryKey === "to-review");
+            assert(checks, "Narrow readiness collapses to one review control", currentVisibleSummaryChips.length === 1 && currentVisibleSummaryChips[0].dataset.summaryKey === "to-review");
             assert(checks, "Icon-only workspace tabs retain tooltips", workspaceTabs.every(tab => frame.contentWindow.getComputedStyle(tab).fontSize === "0px" && Boolean(tab.title)));
             assert(checks, "Narrow command groups hide button labels", frame.contentWindow.getComputedStyle(doc.querySelector("#ribbonOpenProjectBtn")).fontSize === "0px");
             assert(checks, "Closed Properties cannot receive offscreen focus", propertiesPanel.inert && propertiesPanel.getAttribute("aria-hidden") === "true");
@@ -302,8 +415,26 @@
             const initialPropertyKind = doc.querySelector("#propertiesSelectionControls .properties-form")?.dataset.propertyKind || "";
             assert(checks, "Map starts with document Properties", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='document']")), `kind=${initialPropertyKind} title=${doc.querySelector("#propertiesTitle")?.textContent.trim() || ""}`);
             assert(checks, "Document Properties expose page and canvas size presets", Boolean(doc.querySelector("#propertiesSelectionControls [data-layout-proxy='bookSizeInput']") && doc.querySelector("#propertiesSelectionControls [data-layout-proxy='imageSizeInput']")));
+            assert(checks, "Document Properties expose default label line length", Boolean(doc.querySelector("#propertiesSelectionControls [data-layout-proxy='labelCharsInput']")));
             assert(checks, "Document Properties do not duplicate map scale", !doc.querySelector("#propertiesSelectionControls [data-layout-proxy='mapScaleInput']"));
             assert(checks, "Document context shows map display groups", previewSections.every(section => section && !section.hidden));
+            const previewLanguageInput = doc.querySelector("#previewLanguageInput");
+            if (previewLanguageInput) {
+              previewLanguageInput.value = "fr";
+              previewLanguageInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+              await waitFor(() => /Carte personnalisée/.test(doc.querySelector("#mapSvg title")?.textContent || ""), 12000);
+              assert(checks, "Generated SVG metadata follows the selected map language", doc.documentElement.lang === "fr" && /Carte personnalisée/.test(doc.querySelector("#mapSvg title")?.textContent || "") && /^Carte /.test(doc.querySelector("#mapSvg desc")?.textContent || ""), `${doc.documentElement.lang} | ${doc.querySelector("#mapSvg title")?.textContent || ""} | ${doc.querySelector("#mapSvg desc")?.textContent || ""}`);
+              previewLanguageInput.value = "en";
+              previewLanguageInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+              await waitFor(() => doc.documentElement.lang === "en" && /Custom map/.test(doc.querySelector("#mapSvg title")?.textContent || ""), 12000);
+            }
+            const legendBox = doc.querySelector("#mapSvg .legend-box");
+            const calloutBox = doc.querySelector("#mapSvg .callout-box");
+            const legendRule = doc.querySelector("#mapSvg .legend-heading-rule");
+            const calloutRule = doc.querySelector("#mapSvg .callout-heading-rule");
+            const calloutDash = calloutBox ? frame.contentWindow.getComputedStyle(calloutBox).strokeDasharray : "";
+            const calloutRuleDash = calloutRule ? frame.contentWindow.getComputedStyle(calloutRule).strokeDasharray : "";
+            assert(checks, "Map furniture boxes use solid legend and dashed callout roles", Boolean(legendBox && calloutBox && legendRule && calloutRule && calloutDash !== "none" && calloutRuleDash !== "none"), `box=${calloutDash}, rule=${calloutRuleDash}`);
             const legendInput = doc.querySelector("#showLegendInput");
             const calloutsInput = doc.querySelector("#showCalloutsInput");
             const compactInput = doc.querySelector("#compactFurnitureInput");
@@ -329,6 +460,16 @@
             const legendKind = doc.querySelector("#propertiesSelectionControls .properties-form")?.dataset.propertyKind || "";
             const legendSectionsHidden = previewSections.every(section => section.hidden);
             assert(checks, "Selecting the legend shows only furniture Properties", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='furniture']")) && legendSectionsHidden, `target=${Boolean(legend)} kind=${legendKind} sectionsHidden=${legendSectionsHidden}`);
+            uiFrenchButton?.click();
+            await waitFor(() => doc.documentElement.lang === "fr", 2000);
+            doc.querySelector("#mapSvg .legend-layer")?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
+            await waitFor(() => {
+              const text = doc.querySelector("#propertiesSelectionControls")?.textContent || "";
+              return Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='furniture']")) && /Afficher/.test(text) && /Légende/.test(text);
+            }, 2000);
+            assert(checks, "Selected furniture visibility control switches to French", /Afficher/.test(doc.querySelector("#propertiesSelectionControls")?.textContent || "") && /Légende/.test(doc.querySelector("#propertiesSelectionControls")?.textContent || ""), doc.querySelector("#propertiesSelectionControls")?.textContent || "");
+            uiEnglishButton?.click();
+            await waitFor(() => doc.documentElement.lang === "en", 2000);
             const region = doc.querySelector("#mapSvg .map-layer path");
             region?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
             const regionKind = doc.querySelector("#propertiesSelectionControls .properties-form")?.dataset.propertyKind || "";
@@ -397,6 +538,18 @@
             assert(checks, "Selecting a project row opens row Properties", doc.querySelector("#propertiesTitle")?.textContent.trim() === "Project data" && doc.querySelector("#propertiesSubtitle")?.textContent.trim() === firstNameInput?.value.trim());
             assert(checks, "Project row Properties expose an elbow leader override", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-field='elbowLeader']")));
             assert(checks, "Row selection does not re-plot the map", (doc.querySelector("#mapSvg")?.innerHTML || "") === mapBeforeNavigation);
+            const labelMaxCharsInput = doc.querySelector("#propertiesSelectionControls [data-property-field='labelMaxChars']");
+            assert(checks, "Project row Properties expose a label line-length override", Boolean(labelMaxCharsInput));
+            if (labelMaxCharsInput) {
+              const advancedDetails = labelMaxCharsInput.closest("details");
+              if (advancedDetails) advancedDetails.open = true;
+              assert(checks, "Project row label line-length override starts at the map default", labelMaxCharsInput.value === doc.querySelector("#labelCharsInput")?.value, `row=${labelMaxCharsInput.value}, default=${doc.querySelector("#labelCharsInput")?.value}`);
+              labelMaxCharsInput.value = "12";
+              labelMaxCharsInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+              await waitFor(() => doc.querySelector("#projectTable tbody tr")?.dataset.labelMaxChars === "12", 2000);
+              assert(checks, "Project row label line-length override updates row data", doc.querySelector("#projectTable tbody tr")?.dataset.labelMaxChars === "12");
+              assert(checks, "Project row label line-length override keeps Advanced open", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-field='labelMaxChars']")?.closest("details")?.open));
+            }
             const firstCoordinateClear = doc.querySelector("#projectTable .lon-cell .clear-coordinate-cell");
             const firstCoordinateInput = doc.querySelector("#projectTable .lon-input");
             firstCoordinateClear?.click();
@@ -460,12 +613,49 @@
               await waitFor(() => /custom icon/i.test(doc.querySelector("#categoryList .category-editor small")?.textContent || ""), 4000);
               assert(checks, "Category custom icon upload updates category state", /custom icon/i.test(doc.querySelector("#categoryList .category-editor small")?.textContent || ""));
               assert(checks, "Category custom icon preview renders uploaded image", Boolean(doc.querySelector("#propertiesSelectionControls .custom-icon-preview img")));
+              doc.querySelector("#propertiesSelectionControls [data-property-action='remove-category-icon']")?.click();
+              assert(checks, "Category custom icon removal reports the marker shape label", /returned to the Circle marker/i.test(doc.querySelector("#statusBox")?.textContent || ""), doc.querySelector("#statusBox")?.textContent || "");
             }
             const latestCards = doc.querySelectorAll("#categoryList .category-editor");
             const lastCard = latestCards[latestCards.length - 1];
             lastCard?.focus();
             lastCard?.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
             assert(checks, "Category cards can be selected from the keyboard", lastCard?.classList.contains("is-selected") && doc.activeElement === lastCard);
+            uiFrenchButton?.click();
+            await waitFor(() => doc.documentElement.lang === "fr" && /Catégories/.test(doc.querySelector("#categoriesTableTab")?.textContent || ""), 2000);
+            const categoryColourPreset = doc.querySelector(".category-preset-input");
+            const categoryShapePreset = doc.querySelector(".category-shape-input");
+            const categoryColourOptions = Array.from(categoryColourPreset?.options || []).map(option => option.textContent.trim()).join(" | ");
+            const categoryShapeOptions = Array.from(categoryShapePreset?.options || []).map(option => option.textContent.trim()).join(" | ");
+            assert(checks, "Category colour presets switch to French", /Vert cartographique/.test(categoryColourOptions) && /Rouge alerte/.test(categoryColourOptions), categoryColourOptions);
+            assert(checks, "Category marker shapes switch to French", /Cercle/.test(categoryShapeOptions) && /Épingle/.test(categoryShapeOptions), categoryShapeOptions);
+            assert(checks, "Category card marker metadata switches to French", /points?\s+·\s+(Cercle|Carré|Triangle|Diamant|Épingle|icône personnalisée)/i.test(doc.querySelector("#categoryList .category-editor small")?.textContent || ""), doc.querySelector("#categoryList .category-editor small")?.textContent || "");
+            const categoryAriaText = [
+              doc.querySelector("#categoryList .category-editor")?.getAttribute("aria-label") || "",
+              doc.querySelector("#categoryList .category-drag-handle")?.getAttribute("aria-label") || "",
+              doc.querySelector("#categoryList .remove-category-btn")?.getAttribute("aria-label") || ""
+            ].join(" | ");
+            assert(checks, "Category action accessibility labels switch to French category names", /Modifier/.test(categoryAriaText) && /Projets soumis/.test(categoryAriaText), categoryAriaText);
+            const frenchUploadInput = doc.querySelector("#propertiesSelectionControls [data-category-icon-upload]");
+            if (!visualCapture && frenchUploadInput && frame.contentWindow.DataTransfer) {
+              const canvas = doc.createElement("canvas");
+              canvas.width = 16;
+              canvas.height = 16;
+              const context = canvas.getContext("2d");
+              context.fillStyle = "#217346";
+              context.fillRect(0, 0, 16, 16);
+              const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+              const transfer = new frame.contentWindow.DataTransfer();
+              transfer.items.add(new frame.contentWindow.File([blob], "smoke-icon-fr.png", { type: "image/png" }));
+              Object.defineProperty(frenchUploadInput, "files", { value: transfer.files, configurable: true });
+              frenchUploadInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+              await waitFor(() => Array.from(doc.querySelectorAll("#categoryList .category-editor small")).some(node => /icône personnalisée/i.test(node.textContent || "")), 4000);
+              assert(checks, "Category custom icon upload status switches to French", /utilise maintenant une icône de repère personnalisée/i.test(doc.querySelector("#statusBox")?.textContent || ""), doc.querySelector("#statusBox")?.textContent || "");
+              doc.querySelector("#propertiesSelectionControls [data-property-action='remove-category-icon']")?.click();
+              assert(checks, "Category custom icon removal status switches to French", /est revenu au repère/i.test(doc.querySelector("#statusBox")?.textContent || ""), doc.querySelector("#statusBox")?.textContent || "");
+            }
+            uiEnglishButton?.click();
+            await waitFor(() => doc.documentElement.lang === "en" && /Categories/.test(doc.querySelector("#categoriesTableTab")?.textContent || ""), 2000);
           }
           if (requestedWorkspace === "regions") {
             const switchInput = doc.querySelector("#regionTable .region-included-cell input");
@@ -474,6 +664,14 @@
             assert(checks, "Region inclusion uses switch styling", switchStyle?.appearance === "none");
             assert(checks, "Region editable headers show edit hints", doc.querySelectorAll("#regionTable thead .col-edit-hint").length === 3 && doc.querySelector("#regionTable .region-fill-col")?.textContent.trim().includes("Colour"));
             assert(checks, "Region Properties show map controls", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='map']")));
+            uiFrenchButton?.click();
+            await waitFor(() => doc.documentElement.lang === "fr" && /Fond de carte/.test(doc.querySelector("#regionTableTab")?.textContent || ""), 2000);
+            const frenchRegionTableText = doc.querySelector("#regionTable tbody")?.textContent || "";
+            const frenchRegionRow = Array.from(doc.querySelectorAll("#regionTable tbody tr[data-region-id]")).find(row => /Colombie-Britannique/.test(row.textContent || ""));
+            assert(checks, "Canada baselayer region names switch to French", /Colombie-Britannique/.test(frenchRegionTableText), frenchRegionTableText);
+            assert(checks, "Canada baselayer editable ARIA labels switch to French region names", /Modifier les propriétés de la région Colombie-Britannique/.test(frenchRegionRow?.getAttribute("aria-label") || "") && /Inclure Colombie-Britannique/.test(frenchRegionRow?.querySelector(".region-table-included-input")?.getAttribute("aria-label") || ""));
+            uiEnglishButton?.click();
+            await waitFor(() => doc.documentElement.lang === "en" && /Map baselayer/.test(doc.querySelector("#regionTableTab")?.textContent || ""), 2000);
             const regionRowText = doc.querySelector("#regionTable .region-table-name");
             const regionRowFontSize = regionRowText ? frame.contentWindow.getComputedStyle(regionRowText).fontSize : "";
             doc.querySelector("#projectTableTab")?.click();
@@ -484,6 +682,7 @@
             await waitFor(() => doc.body.dataset.workspaceView === "regions");
             assert(checks, "Project points and Map baselayer row text share the same font size", projectRowFontSize === regionRowFontSize, `projects=${projectRowFontSize}, regions=${regionRowFontSize}`);
             assert(checks, "Map Properties expose page and canvas size presets", Boolean(doc.querySelector("#propertiesSelectionControls [data-layout-proxy='bookSizeInput']") && doc.querySelector("#propertiesSelectionControls [data-layout-proxy='imageSizeInput']")));
+            assert(checks, "Map Properties expose default label line length", Boolean(doc.querySelector("#propertiesSelectionControls [data-layout-proxy='labelCharsInput']")));
             assert(checks, "Map Properties do not duplicate map scale", !doc.querySelector("#propertiesSelectionControls [data-layout-proxy='mapScaleInput']"));
             assert(checks, "Map baselayer Properties omit duplicate region table actions", !doc.querySelector("#propertiesSelectionControls [data-property-action='select-all-regions']") && !doc.querySelector("#propertiesSelectionControls [data-property-action='clear-regions']") && !doc.querySelector("#propertiesSelectionControls [data-property-action='use-project-regions']"));
             const regionIncludedWidth = doc.querySelector("#regionTable .region-included-col")?.getBoundingClientRect().width || 0;
@@ -543,12 +742,24 @@
             secondRegionRow?.focus();
             secondRegionRow?.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
             assert(checks, "Region rows can be selected from the keyboard", secondRegionRow?.classList.contains("is-active-region") && secondRegionRow?.getAttribute("aria-current") === "true");
+            const boundaryInput = doc.querySelector("#boundaryInput");
+            if (boundaryInput) {
+              boundaryInput.value = "world";
+              boundaryInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+              await waitFor(() => doc.querySelector("#boundaryInput")?.value === "world" && doc.querySelector("#regionPresetInput")?.options.length > 2, 8000);
+              uiFrenchButton?.click();
+              await waitFor(() => doc.documentElement.lang === "fr" && /Fond de carte/.test(doc.querySelector("#regionTableTab")?.textContent || ""), 2000);
+              const worldPresetOptions = Array.from(doc.querySelector("#regionPresetInput")?.options || []).map(option => option.textContent.trim()).join(" | ");
+              assert(checks, "World baselayer preset options switch to French", /Choisir un continent/.test(worldPresetOptions) && /Tous les pays/.test(worldPresetOptions) && /Amérique du Nord/.test(worldPresetOptions), worldPresetOptions);
+              uiEnglishButton?.click();
+              await waitFor(() => doc.documentElement.lang === "en" && /Map baselayer/.test(doc.querySelector("#regionTableTab")?.textContent || ""), 2000);
+            }
           }
           if (requestedWorkspace === "translate") {
             assert(checks, "Translation direction is explicit", ["EN → FR", "FR → EN"].includes(doc.querySelector("#translationDirectionText")?.textContent.trim()));
             assert(checks, "Translation groups are rendered", doc.querySelectorAll("#translationGroups .translation-group").length > 0);
             assert(checks, "Translation filters and paste action remain available", doc.querySelectorAll("[data-translation-filter]").length === 2 && Boolean(doc.querySelector("#pasteTranslationColumnBtn")));
-            assert(checks, "Translate Properties are contextual", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='translation']")));
+            assert(checks, "Translate Properties are contextual", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='translation'], #propertiesSelectionControls [data-property-kind='translation-entry']")));
             assert(checks, "Translate column labels explain both columns are editable", /editable source/i.test(doc.querySelector(".translation-column-labels")?.textContent || "") && /editable translation/i.test(doc.querySelector(".translation-column-labels")?.textContent || ""));
             const firstTranslationRow = doc.querySelector(".translation-row[data-entry-id^='project:']");
             const englishTranslationInput = firstTranslationRow?.querySelector(".translation-en-input");

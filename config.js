@@ -200,6 +200,7 @@
       { value: "circle", label: "Circle" },
       { value: "square", label: "Square" },
       { value: "diamond", label: "Diamond" },
+      { value: "drop-pin", label: "Drop pin" },
       { value: "triangle-up", label: "Triangle up" },
       { value: "triangle-down", label: "Triangle down" },
       { value: "star", label: "Star" },

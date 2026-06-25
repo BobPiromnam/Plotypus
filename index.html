@@ -14,56 +14,60 @@
 </head>
 <body>
   <header class="app-header">
-    <div class="app-ribbon command-bar" aria-label="Application actions">
-      <div class="app-brand" aria-label="Application identity">
+    <div class="app-ribbon command-bar" aria-label="Application actions" data-i18n-aria-label="aria.applicationActions">
+      <div class="app-brand" aria-label="Application identity" data-i18n-aria-label="aria.applicationIdentity">
         <img class="app-logo" src="assets/plotypus-pin.png" alt="" aria-hidden="true" width="32" height="32" />
         <div>
           <h1>Plotypus</h1>
-          <p>CSV &rarr; STATIC MAP</p>
+          <p data-i18n="app.strapline">CSV &rarr; STATIC MAP</p>
         </div>
       </div>
-      <div class="ribbon-group command-compact" aria-label="Project file actions">
+      <div class="ribbon-group command-compact" aria-label="Project file actions" data-i18n-aria-label="aria.projectFileActions">
         <div class="ribbon-actions">
-          <button id="ribbonUndoBtn" class="ribbon-button ribbon-icon-only" type="button" data-icon="undo" disabled title="Undo last edit"><span class="visually-hidden">Undo</span></button>
-          <button id="ribbonOpenProjectBtn" class="ribbon-button" type="button" data-icon="folder-open" title="Open project">Open</button>
-          <button id="ribbonSaveProjectBtn" class="ribbon-button" type="button" data-icon="save" title="Save project">Save</button>
+          <button id="ribbonUndoBtn" class="ribbon-button ribbon-icon-only" type="button" data-icon="undo" disabled title="Undo last edit" data-i18n-title="action.undo.title"><span class="visually-hidden" data-i18n="action.undo">Undo</span></button>
+          <button id="ribbonOpenProjectBtn" class="ribbon-button" type="button" data-icon="folder-open" title="Open project" data-i18n="action.open" data-i18n-title="action.open.title">Open</button>
+          <button id="ribbonSaveProjectBtn" class="ribbon-button" type="button" data-icon="save" title="Save project" data-i18n="action.save" data-i18n-title="action.save.title">Save</button>
         </div>
       </div>
-      <div class="ribbon-group command-compact" aria-label="Project data actions">
+      <div class="ribbon-group command-compact" aria-label="Project data actions" data-i18n-aria-label="aria.projectDataActions">
         <div class="ribbon-actions">
-          <button id="ribbonLoadSampleBtn" class="ribbon-button" type="button" data-icon="table" title="Load sample">Sample</button>
-          <button id="ribbonImportCsvBtn" class="ribbon-button" type="button" data-icon="upload" title="Import CSV">Import CSV</button>
-          <button id="ribbonExportCsvBtn" class="ribbon-button" type="button" data-icon="download" title="Export CSV">Export CSV</button>
+          <button id="ribbonLoadSampleBtn" class="ribbon-button" type="button" data-icon="table" title="Load sample" data-i18n="action.sample" data-i18n-title="action.sample.title">Sample</button>
+          <button id="ribbonImportCsvBtn" class="ribbon-button" type="button" data-icon="upload" title="Import CSV" data-i18n="action.importCsv" data-i18n-title="action.importCsv.title">Import CSV</button>
+          <button id="ribbonExportCsvBtn" class="ribbon-button" type="button" data-icon="download" title="Export CSV" data-i18n="action.exportCsv" data-i18n-title="action.exportCsv.title">Export CSV</button>
         </div>
       </div>
-      <div class="ribbon-group ribbon-appearance" aria-label="Map appearance actions">
+      <div class="ribbon-group ribbon-appearance" aria-label="Map appearance actions" data-i18n-aria-label="aria.mapAppearanceActions">
         <div class="ribbon-actions ribbon-field-actions">
-          <button id="mapDetailsBtn" class="ribbon-button map-details-button" type="button" data-icon="file-text">Map details <span id="frMetaWarning" class="warning-badge">FR</span></button>
-          <button id="propertiesToggleBtn" class="ribbon-button properties-toggle-button" type="button" data-icon="sliders" aria-expanded="false" aria-controls="propertiesPanel">Properties</button>
+          <button id="mapDetailsBtn" class="ribbon-button map-details-button" type="button" data-icon="file-text"><span data-i18n="action.mapDetails">Map details</span> <span id="frMetaWarning" class="warning-badge">FR</span></button>
+          <button id="propertiesToggleBtn" class="ribbon-button properties-toggle-button" type="button" data-icon="sliders" aria-expanded="false" aria-controls="propertiesPanel" data-i18n="action.properties">Properties</button>
           <label class="ribbon-field map-style-ribbon-field">
-            <span>Map style</span>
+            <span data-i18n="properties.field.mapStyle">Map style</span>
             <select id="mapStylePresetInput">
-              <option value="goc-green">GoC green</option>
+              <option value="goc-green" data-i18n="properties.mapStyle.goc-green">GoC green</option>
             </select>
           </label>
-          <label class="ribbon-field map-language-ribbon-field">
-            <span>Language</span>
-            <select id="mapLanguageInput">
-              <option value="en">English</option>
-              <option value="fr">Francais</option>
+          <div class="ribbon-field map-language-ribbon-field" role="group" aria-label="Language" data-i18n-aria-label="language.label">
+            <span data-i18n="language.label">Language</span>
+            <div class="map-language-toggle">
+              <button type="button" class="is-active" data-ui-language="en" aria-pressed="true" lang="en" data-i18n="language.en">EN</button>
+              <button type="button" data-ui-language="fr" aria-pressed="false" lang="fr" data-i18n="language.fr">FR</button>
+            </div>
+            <select id="mapLanguageInput" class="visually-hidden" aria-hidden="true" tabindex="-1">
+              <option value="en" data-i18n="dialog.mapDetails.english">English</option>
+              <option value="fr" data-i18n="dialog.mapDetails.french">Français</option>
             </select>
-          </label>
+          </div>
         </div>
       </div>
-      <div class="ribbon-group ribbon-export" aria-label="Map export actions">
+      <div class="ribbon-group ribbon-export" aria-label="Map export actions" data-i18n-aria-label="aria.mapExportActions">
         <div class="export-menu-wrap">
-          <button id="exportMenuBtn" class="ribbon-button primary-action" type="button" data-icon="download" aria-haspopup="menu" aria-expanded="false" aria-controls="exportMenu">Export</button>
+          <button id="exportMenuBtn" class="ribbon-button primary-action" type="button" data-icon="download" aria-haspopup="menu" aria-expanded="false" aria-controls="exportMenu" data-i18n="action.export">Export</button>
           <div id="exportMenu" class="export-menu" role="menu" aria-labelledby="exportMenuBtn" hidden>
             <button id="ribbonExportPngBtn" class="export-menu-item" type="button" role="menuitem" data-icon="image">
-              <span><strong>Export PNG</strong><small>Raster image for documents</small></span>
+              <span><strong data-i18n="export.png.title">Export PNG</strong><small data-i18n="export.png.description">Raster image for documents</small></span>
             </button>
             <button id="ribbonExportSvgBtn" class="export-menu-item" type="button" role="menuitem" data-icon="svg-file">
-              <span><strong>Export SVG</strong><small>Editable vector artwork</small></span>
+              <span><strong data-i18n="export.svg.title">Export SVG</strong><small data-i18n="export.svg.description">Editable vector artwork</small></span>
             </button>
             <div id="exportLanguageNotice" class="export-language-notice" hidden></div>
           </div>
@@ -71,18 +75,18 @@
       </div>
     </div>
     <div class="workspace-nav-band">
-      <nav class="table-tabs workspace-nav" role="tablist" aria-label="Plotypus workspaces">
-        <button id="previewTableTab" class="table-tab is-active" type="button" role="tab" tabindex="0" aria-selected="true" aria-controls="previewTablePane" data-icon="map" title="Map">Map</button>
-        <button id="projectTableTab" class="table-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="projectTablePane" data-icon="table" title="Project points">Project points</button>
-        <button id="categoriesTableTab" class="table-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="categoriesTablePane" data-icon="layers" title="Categories and markers">Categories &amp; markers</button>
-        <button id="regionTableTab" class="table-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="regionTablePane" data-icon="regions" title="Map baselayer">Map baselayer</button>
-        <button id="translateTableTab" class="table-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="translateTablePane" data-icon="languages" title="Translate">Translate</button>
-        <button id="qualityTableTab" class="table-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="qualityTablePane" data-icon="shield-check" title="Map quality">Map quality</button>
+      <nav class="table-tabs workspace-nav" role="tablist" aria-label="Plotypus workspaces" data-i18n-aria-label="aria.workspaces">
+        <button id="previewTableTab" class="table-tab is-active" type="button" role="tab" tabindex="0" aria-selected="true" aria-controls="previewTablePane" data-icon="map" title="Map" data-i18n="tab.map" data-i18n-title="tab.map">Map</button>
+        <button id="projectTableTab" class="table-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="projectTablePane" data-icon="table" title="Project points" data-i18n="tab.projects" data-i18n-title="tab.projects">Project points</button>
+        <button id="categoriesTableTab" class="table-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="categoriesTablePane" data-icon="layers" title="Categories and markers" data-i18n="tab.categories" data-i18n-title="tab.categories">Categories &amp; markers</button>
+        <button id="regionTableTab" class="table-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="regionTablePane" data-icon="regions" title="Map baselayer" data-i18n="tab.regions" data-i18n-title="tab.regions">Map baselayer</button>
+        <button id="translateTableTab" class="table-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="translateTablePane" data-icon="languages" title="Translate" data-i18n="tab.translate" data-i18n-title="tab.translate">Translate</button>
+        <button id="qualityTableTab" class="table-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="qualityTablePane" data-icon="shield-check" title="Map quality" data-i18n="tab.quality" data-i18n-title="tab.quality">Map quality</button>
       </nav>
       <div id="workspaceSummary" class="workspace-summary status-spine" aria-live="polite">
         <div class="workspace-summary-title" hidden>
           <span id="workspaceSummaryMode">Map</span>
-          <strong id="workspaceSummaryHeadline">Review and refine before export</strong>
+          <strong id="workspaceSummaryHeadline" data-i18n="summary.headline.preview">Review and refine before export</strong>
         </div>
         <div id="workspaceSummaryMetrics" class="workspace-summary-metrics"></div>
       </div>
@@ -114,7 +118,7 @@
         <input id="markerSizeInput" type="number" min="4" max="20" step="1" value="10" />
         <input id="lineWidthInput" type="number" min="1" max="8" step="0.5" value="2" />
         <input id="labelCharsInput" type="number" min="12" max="42" step="1" value="24" />
-      <button id="resetRegionColoursBtn" type="button">Reset colours</button>
+      <button id="resetRegionColoursBtn" type="button" data-i18n="region.action.resetColours">Reset colours</button>
     </div>
 
     <section class="workspace">
@@ -124,80 +128,80 @@
             <strong id="tablePanelTitle">Map</strong>
           </div>
           <div class="button-row table-actions workspace-rail-actions" data-table-actions="projects">
-            <div class="project-table-filters" aria-label="Project point filters">
-              <button type="button" class="is-active" data-project-filter="all">All</button>
-              <button type="button" data-project-filter="missing">Missing coordinates</button>
-              <button type="button" data-project-filter="callouts"><span class="filter-label-wide">No-coordinate callouts</span><span class="filter-label-compact">Callouts</span></button>
-              <select id="projectFilterSelect" aria-label="Filter project points">
-                <option value="all">All rows</option>
-                <option value="missing">Missing coordinates</option>
-                <option value="callouts">Callouts</option>
+            <div class="project-table-filters" aria-label="Project point filters" data-i18n-aria-label="toolbar.filters.projects">
+              <button type="button" class="is-active" data-project-filter="all" data-i18n="toolbar.filters.all">All</button>
+              <button type="button" data-project-filter="missing" data-i18n="toolbar.filters.missingCoordinates">Missing coordinates</button>
+              <button type="button" data-project-filter="callouts"><span class="filter-label-wide" data-i18n="toolbar.filters.noCoordinateCallouts">No-coordinate callouts</span><span class="filter-label-compact" data-i18n="toolbar.filters.callouts">Callouts</span></button>
+              <select id="projectFilterSelect" aria-label="Filter project points" data-i18n-aria-label="toolbar.filters.projects">
+                <option value="all" data-i18n="toolbar.filters.allRows">All rows</option>
+                <option value="missing" data-i18n="toolbar.filters.missingCoordinates">Missing coordinates</option>
+                <option value="callouts" data-i18n="toolbar.filters.callouts">Callouts</option>
               </select>
             </div>
-            <div class="authoring-language" role="group" aria-label="Project title authoring language">
-              <span>Lang</span>
+            <div class="authoring-language" role="group" aria-label="Project title authoring language" data-i18n-aria-label="toolbar.authoring.aria">
+              <span data-i18n="toolbar.authoring.label">Lang</span>
               <button type="button" class="is-active" data-authoring-language="en" aria-pressed="true">EN</button>
               <button type="button" data-authoring-language="fr" aria-pressed="false">FR</button>
             </div>
-            <div class="add-actions" aria-label="Add project points">
-              <span class="toolbar-group-label">Add</span>
-              <button id="addRowBtn" type="button" data-icon="plus">Row</button>
-              <button id="addPointsBtn" type="button" data-icon="map-pin">From source</button>
+            <div class="add-actions" aria-label="Add project points" data-i18n-aria-label="toolbar.add.aria">
+              <span class="toolbar-group-label" data-i18n="toolbar.add.label">Add</span>
+              <button id="addRowBtn" type="button" data-icon="plus" data-i18n="toolbar.add.row">Row</button>
+              <button id="addPointsBtn" type="button" data-icon="map-pin" data-i18n="toolbar.add.fromSource">From source</button>
             </div>
-            <div class="selection-actions" aria-label="Actions for selected rows and cells">
-              <span class="toolbar-group-label">Multi select</span>
-              <select id="bulkPriorityInput" aria-label="Set selected priority cells" disabled>
-                <option value="">Priority</option>
-                <option value="0">Priority 0</option>
-                <option value="1">Priority 1</option>
-                <option value="2">Priority 2</option>
-                <option value="3">Priority 3</option>
-                <option value="4">Priority 4</option>
-                <option value="5">Priority 5</option>
+            <div class="selection-actions" aria-label="Actions for selected rows and cells" data-i18n-aria-label="toolbar.selection.aria">
+              <span class="toolbar-group-label" data-i18n="toolbar.selection.label">Multi select</span>
+              <select id="bulkPriorityInput" aria-label="Set selected priority cells" data-i18n-aria-label="properties.field.priority" disabled>
+                <option value="" data-i18n="toolbar.selection.priority">Priority</option>
+                <option value="0" data-i18n="toolbar.selection.priorityValue" data-i18n-params='{"value":"0"}'>Priority 0</option>
+                <option value="1" data-i18n="toolbar.selection.priorityValue" data-i18n-params='{"value":"1"}'>Priority 1</option>
+                <option value="2" data-i18n="toolbar.selection.priorityValue" data-i18n-params='{"value":"2"}'>Priority 2</option>
+                <option value="3" data-i18n="toolbar.selection.priorityValue" data-i18n-params='{"value":"3"}'>Priority 3</option>
+                <option value="4" data-i18n="toolbar.selection.priorityValue" data-i18n-params='{"value":"4"}'>Priority 4</option>
+                <option value="5" data-i18n="toolbar.selection.priorityValue" data-i18n-params='{"value":"5"}'>Priority 5</option>
               </select>
-              <button id="bulkClearCoordinatesBtn" type="button" data-icon="eraser" disabled>Clear coordinates</button>
-              <button id="deleteSelectedBtn" class="is-danger project-danger-action" type="button" data-icon="trash" title="Delete selected rows" disabled>Delete</button>
+              <button id="bulkClearCoordinatesBtn" type="button" data-icon="eraser" data-i18n="toolbar.selection.clearCoordinates" disabled>Clear coordinates</button>
+              <button id="deleteSelectedBtn" class="is-danger project-danger-action" type="button" data-icon="trash" title="Delete selected rows" data-i18n="toolbar.selection.delete" data-i18n-title="toolbar.selection.delete.title" disabled>Delete</button>
             </div>
-            <button id="projectImportCsvBtn" type="button" data-icon="upload">Import CSV</button>
-            <button id="clearRowsBtn" class="is-danger project-danger-action" type="button" data-icon="eraser" title="Clear project table">Clear table</button>
-            <span class="project-field-legend" aria-label="Field editing guide">
+            <button id="projectImportCsvBtn" type="button" data-icon="upload" data-i18n="toolbar.project.importCsv">Import CSV</button>
+            <button id="clearRowsBtn" class="is-danger project-danger-action" type="button" data-icon="eraser" title="Clear project table" data-i18n="toolbar.project.clearTable" data-i18n-title="toolbar.project.clearTable.title">Clear table</button>
+            <span class="project-field-legend" aria-label="Field editing guide" data-i18n-aria-label="toolbar.project.fieldGuide">
               <span data-icon="pencil" aria-hidden="true"></span>
-              <span>You enter the value - hover any cell to edit</span>
+              <span data-i18n="toolbar.project.manualFields">You enter the value - hover any cell to edit</span>
               <span aria-hidden="true">·</span>
               <span data-icon="lock" aria-hidden="true"></span>
-              <span>Status is set automatically</span>
+              <span data-i18n="toolbar.project.automaticFields">Status is set automatically</span>
             </span>
-            <span id="projectTableSummary" class="visually-hidden" aria-live="polite">No project rows.</span>
+            <span id="projectTableSummary" class="visually-hidden" aria-live="polite" data-i18n="project.summary.empty">No project rows.</span>
           </div>
           <div class="table-actions preview-actions workspace-rail-actions is-active" data-table-actions="preview" hidden>
             <label class="toolbar-check language-toolbar-check">
-              <span>Map language</span>
-              <select id="previewLanguageInput" aria-label="Map language">
-                <option value="en">English</option>
-                <option value="fr">Francais</option>
+              <span data-i18n="aria.mapLanguage">Map language</span>
+              <select id="previewLanguageInput" aria-label="Map language" data-i18n-aria-label="aria.mapLanguage">
+                <option value="en" data-i18n="dialog.mapDetails.english">English</option>
+                <option value="fr" data-i18n="dialog.mapDetails.french">Français</option>
               </select>
             </label>
           </div>
         </div>
         <div id="projectTablePane" class="table-pane" role="tabpanel" aria-labelledby="projectTableTab" data-workspace="projects">
         <div id="projectTableEmptyState" class="project-table-empty" hidden>
-          <strong>No project points yet.</strong>
-          <span>Add a row, paste from a spreadsheet, import CSV, or load the sample data.</span>
+          <strong data-i18n="project.empty.title">No project points yet.</strong>
+          <span data-i18n="project.empty.body">Load the sample, paste from a spreadsheet, or import a CSV to begin.</span>
         </div>
         <div id="csvImportPreview" class="csv-import-preview" hidden></div>
         <div class="table-wrap">
           <table id="projectTable">
             <thead>
               <tr>
-                <th class="name-col"><span class="editable-col-heading">Project name <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
-                <th class="footnote-col" title="Superscript footnote marker">Fnote</th>
-                <th class="type-col"><span class="editable-col-heading">Type <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
-                <th class="priority-col" title="Priority controls label placement order. Higher numbers are placed earlier when labels compete for space."><span class="editable-col-heading">Priority <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
-                <th class="coordinate-col lon-col"><span class="editable-col-heading">Longitude <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
-                <th class="coordinate-col lat-col"><span class="editable-col-heading">Latitude <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
-                <th class="status-col">Status <span class="col-auto-chip"><span data-icon="lock" aria-hidden="true"></span>Auto</span></th>
-                <th class="line-col">Hide line</th>
-                <th class="select-col">Select</th>
+                <th class="name-col"><span class="editable-col-heading"><span data-i18n="table.projectName">Project name</span> <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
+                <th class="footnote-col" title="Superscript footnote marker" data-i18n="table.footnote" data-i18n-title="table.footnote.title">Fnote</th>
+                <th class="type-col"><span class="editable-col-heading"><span data-i18n="table.type">Type</span> <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
+                <th class="priority-col" title="Priority controls label placement order. Higher numbers are placed earlier when labels compete for space." data-i18n-title="table.priority.title"><span class="editable-col-heading"><span data-i18n="table.priority">Priority</span> <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
+                <th class="coordinate-col lon-col"><span class="editable-col-heading"><span data-i18n="table.longitude">Longitude</span> <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
+                <th class="coordinate-col lat-col"><span class="editable-col-heading"><span data-i18n="table.latitude">Latitude</span> <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
+                <th class="status-col"><span data-i18n="table.status">Status</span> <span class="col-auto-chip"><span data-icon="lock" aria-hidden="true"></span><span data-i18n="table.auto">Auto</span></span></th>
+                <th class="line-col" data-i18n="table.hideLine">Hide line</th>
+                <th class="select-col" data-i18n="table.select">Select</th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -207,41 +211,41 @@
         <div id="categoriesTablePane" class="table-pane categories-table-pane" role="tabpanel" aria-labelledby="categoriesTableTab" data-workspace="categories">
           <div class="categories-workspace-intro">
             <div>
-              <span class="workspace-eyebrow">Legend structure</span>
-              <h2>Categories &amp; markers</h2>
-              <p>Define the legend before importing or editing rows. Marker shape &amp; colour belong to map output and never restyle the app chrome.</p>
+              <span class="workspace-eyebrow" data-i18n="categories.intro.eyebrow">Legend structure</span>
+              <h2 data-i18n="categories.intro.title">Categories &amp; markers</h2>
+              <p data-i18n="categories.intro.body">Define the legend before importing or editing rows. Marker shape &amp; colour belong to map output and never restyle the app chrome.</p>
             </div>
-            <button id="addCategoryBtn" type="button" data-icon="plus">Add legend marker</button>
+            <button id="addCategoryBtn" type="button" data-icon="plus" data-i18n="categories.action.add">Add legend marker</button>
           </div>
           <div id="categoryList" class="category-workspace-grid"></div>
         </div>
         <div id="regionTablePane" class="table-pane region-management-panel" role="tabpanel" aria-labelledby="regionTableTab" data-workspace="regions">
           <div class="region-management-controls workspace-rail">
             <label>
-              Map boundary
+              <span data-i18n="properties.field.mapBoundary">Map boundary</span>
               <select id="boundaryInput">
-                <option value="canada">Canada provinces and territories</option>
-                <option value="world">World countries</option>
+                <option value="canada" data-i18n="region.boundary.canada">Canada provinces and territories</option>
+                <option value="world" data-i18n="region.boundary.world">World countries</option>
               </select>
             </label>
             <label>
-              Region preset
+              <span data-i18n="properties.field.regionPreset">Region preset</span>
               <select id="regionPresetInput">
-                <option value="">Choose preset</option>
-                <option value="all">All Canada</option>
-                <option value="territories">Territories</option>
-                <option value="western">Western Canada</option>
-                <option value="prairies">Prairies</option>
-                <option value="central">Central Canada</option>
-                <option value="atlantic">Atlantic Canada</option>
+                <option value="" data-i18n="region.preset.choose">Choose preset</option>
+                <option value="all" data-i18n="region.preset.all">All Canada</option>
+                <option value="territories" data-i18n="region.preset.territories">Territories</option>
+                <option value="western" data-i18n="region.preset.western">Western Canada</option>
+                <option value="prairies" data-i18n="region.preset.prairies">Prairies</option>
+                <option value="central" data-i18n="region.preset.central">Central Canada</option>
+                <option value="atlantic" data-i18n="region.preset.atlantic">Atlantic Canada</option>
               </select>
             </label>
             <div class="region-management-buttons workspace-rail-actions">
-              <button id="selectAllRegionsBtn" type="button">Select all</button>
-              <button id="clearRegionsBtn" type="button">Clear</button>
-              <button id="selectProjectRegionsBtn" type="button">Use project regions</button>
-              <button id="applyRegionValueColoursBtn" type="button" data-icon="palette">Apply colours</button>
-              <button id="resetRegionValuesBtn" type="button" data-icon="reset">Reset values</button>
+              <button id="selectAllRegionsBtn" type="button" data-i18n="region.action.selectAll">Select all</button>
+              <button id="clearRegionsBtn" type="button" data-i18n="region.action.clear">Clear</button>
+              <button id="selectProjectRegionsBtn" type="button" data-i18n="region.action.useProjectRegions">Use project regions</button>
+              <button id="applyRegionValueColoursBtn" type="button" data-icon="palette" data-i18n="region.action.applyColours">Apply colours</button>
+              <button id="resetRegionValuesBtn" type="button" data-icon="reset" data-i18n="region.action.resetValues">Reset values</button>
             </div>
             <div class="region-summary-actions">
               <div id="regionSummary" class="mini-status"></div>
@@ -251,12 +255,12 @@
             <table id="regionTable">
               <thead>
                 <tr>
-                  <th class="region-name-col">Region</th>
-                  <th class="region-included-col"><span class="editable-col-heading">Included <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
-                  <th class="region-count-col">Points</th>
-                  <th class="region-value-col"><span class="editable-col-heading">Colour order <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
-                  <th class="region-preset-col">Colour preset</th>
-                  <th class="region-fill-col"><span class="editable-col-heading">Colour <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
+                  <th class="region-name-col" data-i18n="region.table.region">Region</th>
+                  <th class="region-included-col"><span class="editable-col-heading"><span data-i18n="region.table.included">Included</span> <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
+                  <th class="region-count-col" data-i18n="region.table.points">Points</th>
+                  <th class="region-value-col"><span class="editable-col-heading"><span data-i18n="region.table.colourOrder">Colour order</span> <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
+                  <th class="region-preset-col" data-i18n="region.table.colourPreset">Colour preset</th>
+                  <th class="region-fill-col"><span class="editable-col-heading"><span data-i18n="region.table.colour">Colour</span> <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
                 </tr>
               </thead>
               <tbody></tbody>
@@ -267,25 +271,25 @@
           <div class="translate-workbench">
             <div class="translate-header workspace-rail">
               <div>
-                <strong>Translate</strong>
-                <span id="translationProgressText">0 / 0 bilingual strings complete</span>
+                <strong data-i18n="translate.title">Translate</strong>
+                <span id="translationProgressText" data-i18n="translate.progress" data-i18n-params='{"complete":"0","total":"0"}'>0 / 0 bilingual strings complete</span>
               </div>
-              <div class="translation-direction" aria-label="Translation focus">
-                <span>Focus</span>
+              <div class="translation-direction" aria-label="Translation focus" data-i18n-aria-label="aria.translationFocus">
+                <span data-i18n="translate.focus">Focus</span>
                 <button type="button" class="is-active" data-translation-direction="en-fr">EN</button>
                 <button type="button" data-translation-direction="fr-en">FR</button>
                 <output id="translationDirectionText" class="visually-hidden">EN → FR</output>
               </div>
-              <div class="translate-filters" aria-label="Translation filters">
-                <button type="button" class="is-active" data-translation-filter="all">All</button>
-                <button type="button" data-translation-filter="missing">Missing</button>
-                <button id="pasteTranslationColumnBtn" type="button" data-icon="paste">Paste column</button>
+              <div class="translate-filters" aria-label="Translation filters" data-i18n-aria-label="translate.filters.aria">
+                <button type="button" class="is-active" data-translation-filter="all" data-i18n="translate.filters.all">All</button>
+                <button type="button" data-translation-filter="missing" data-i18n="translate.filters.missing">Missing</button>
+                <button id="pasteTranslationColumnBtn" type="button" data-icon="paste" data-i18n="translate.pasteColumn">Paste column</button>
               </div>
               <div class="translation-column-labels" aria-hidden="true">
                 <span></span>
-                <span><span data-icon="pencil"></span> English · editable source</span>
-                <span><span data-icon="pencil"></span> Français · editable translation</span>
-                <span>Status</span>
+                <span><span data-icon="pencil"></span> <span data-i18n="translate.column.english">English - editable source</span></span>
+                <span><span data-icon="pencil"></span> <span data-i18n="translate.column.french">Français - editable translation</span></span>
+                <span data-i18n="translate.column.status">Status</span>
               </div>
               <div class="translation-progress" aria-hidden="true">
                 <span id="translationProgressBar"></span>
@@ -305,33 +309,33 @@
                   <span class="plotypus-loader-ring"></span>
                   <img class="plotypus-loader-pin" src="assets/plotypus-pin.png" alt="" />
                 </span>
-                <span class="preview-loading-label">Plotting map</span>
+                <span class="preview-loading-label" data-i18n="loading.plottingMap">Plotting map</span>
               </div>
               <div id="previewEmptyState" class="preview-state-card preview-empty-state" hidden>
-                <strong>No project points yet</strong>
-                <span>Load the sample, paste from a spreadsheet, or import a CSV to begin.</span>
+                <strong data-i18n="project.empty.title">No project points yet</strong>
+                <span data-i18n="project.empty.body">Load the sample, paste from a spreadsheet, or import a CSV to begin.</span>
                 <div class="empty-state-actions">
-                  <button id="previewLoadSampleBtn" type="button" class="primary-action" data-empty-action="load-sample">Load sample</button>
-                  <button id="previewImportCsvBtn" type="button" data-empty-action="import-csv">Import CSV</button>
+                  <button id="previewLoadSampleBtn" type="button" class="primary-action" data-empty-action="load-sample" data-i18n="project.empty.loadSample">Load sample</button>
+                  <button id="previewImportCsvBtn" type="button" data-empty-action="import-csv" data-i18n="project.empty.importCsv">Import CSV</button>
                 </div>
               </div>
               <div id="previewErrorState" class="preview-state-card preview-error-state" hidden aria-live="polite"></div>
               <div id="canvasPlaceholder" class="canvas-placeholder" aria-hidden="true" hidden>
                 <div class="canvas-placeholder-copy">
-                  <strong>map canvas</strong>
-                  <span>#mapSvg - 792 x 570 pt - output style controlled separately</span>
+                  <strong data-i18n="map.canvasPlaceholder.title">Map canvas</strong>
+                  <span data-i18n="properties.size.canvasPoints" data-i18n-params='{"width":"792","height":"570"}'>792 x 570 pt canvas</span>
                 </div>
               </div>
-              <div id="canvasToolbar" class="canvas-toolbar" aria-label="Canvas controls">
-                <div class="canvas-zoom-group" role="group" aria-label="Map scale">
-                  <button id="canvasZoomOutBtn" type="button" aria-label="Decrease map scale">&minus;</button>
+              <div id="canvasToolbar" class="canvas-toolbar" aria-label="Canvas controls" data-i18n-aria-label="aria.canvasControls">
+                <div class="canvas-zoom-group" role="group" aria-label="Map scale" data-i18n-aria-label="aria.mapScale">
+                  <button id="canvasZoomOutBtn" type="button" aria-label="Decrease map scale" data-i18n-aria-label="canvas.zoomOut">&minus;</button>
                   <output id="canvasZoomReadout" for="mapScaleInput">Map 100%</output>
-                  <button id="canvasZoomInBtn" type="button" aria-label="Increase map scale">+</button>
+                  <button id="canvasZoomInBtn" type="button" aria-label="Increase map scale" data-i18n-aria-label="canvas.zoomIn">+</button>
                 </div>
                 <div class="canvas-auto-place-group" role="group" aria-labelledby="canvasAutoPlaceLabel">
-                  <span id="canvasAutoPlaceLabel" class="canvas-auto-place-label">Auto-place</span>
-                  <button id="canvasAutoPlaceBtn" type="button" class="primary-action" data-icon="auto-fit" title="Auto-place labels and reduce the map size if needed"><span class="canvas-label-wide">Fit map + labels</span><span class="canvas-label-compact">Map + labels</span></button>
-                  <button id="canvasPlaceLabelsOnlyBtn" type="button" data-icon="label-place" title="Auto-place labels while preserving the current map size"><span class="canvas-label-wide">Labels only</span><span class="canvas-label-compact">Labels</span></button>
+                  <span id="canvasAutoPlaceLabel" class="canvas-auto-place-label" data-i18n="canvas.autoPlace.label">Auto-place</span>
+                  <button id="canvasAutoPlaceBtn" type="button" class="primary-action" data-icon="auto-fit" title="Auto-place labels and reduce the map size if needed" data-i18n-title="canvas.autoPlace.title"><span class="canvas-label-wide" data-i18n="canvas.autoPlace.wide">Fit map + labels</span><span class="canvas-label-compact" data-i18n="canvas.autoPlace.compact">Map + labels</span></button>
+                  <button id="canvasPlaceLabelsOnlyBtn" type="button" data-icon="label-place" title="Auto-place labels while preserving the current map size" data-i18n-title="canvas.labelsOnly.title"><span class="canvas-label-wide" data-i18n="canvas.labelsOnly.wide">Labels only</span><span class="canvas-label-compact" data-i18n="canvas.labelsOnly.compact">Labels</span></button>
                 </div>
               </div>
               <svg id="mapSvg" role="img"></svg>
@@ -346,82 +350,82 @@
             <section class="performance-telemetry" aria-labelledby="performanceTelemetryTitle" hidden>
               <header>
                 <div>
-                  <span class="workspace-eyebrow">Runtime</span>
-                  <h3 id="performanceTelemetryTitle">Render performance</h3>
+                  <span class="workspace-eyebrow" data-i18n="quality.performance.runtime">Runtime</span>
+                  <h3 id="performanceTelemetryTitle" data-i18n="quality.performance.title">Render performance</h3>
                 </div>
-                <span id="performanceTelemetryStatus" class="performance-telemetry-status" data-state="neutral">No timings yet</span>
+                <span id="performanceTelemetryStatus" class="performance-telemetry-status" data-state="neutral" data-i18n="quality.performance.none">No timings yet</span>
               </header>
               <div id="performanceTelemetryMetrics" class="performance-telemetry-metrics" aria-live="polite"></div>
             </section>
             <details class="quality-detail-checklist">
-              <summary>Detailed publishing checklist</summary>
-              <div id="statusBox" class="status-box">Load data to generate the map.</div>
+              <summary data-i18n="quality.checklist.summary">Detailed publishing checklist</summary>
+              <div id="statusBox" class="status-box" data-i18n="quality.checklist.empty">Load data to generate the map.</div>
             </details>
           </div>
         </div>
       </div>
     </section>
 
-    <aside id="propertiesPanel" class="properties-panel" aria-label="Properties">
-      <div id="propertiesResizeHandle" class="properties-resize-handle" role="separator" aria-orientation="vertical" aria-label="Resize Properties panel" tabindex="0"></div>
+    <aside id="propertiesPanel" class="properties-panel" aria-label="Properties" data-i18n-aria-label="aria.properties">
+      <div id="propertiesResizeHandle" class="properties-resize-handle" role="separator" aria-orientation="vertical" aria-label="Resize Properties panel" data-i18n-aria-label="aria.resizeProperties" tabindex="0"></div>
       <div class="properties-card">
         <div class="properties-panel-top">
-          <span class="properties-eyebrow">Properties</span>
-          <button id="propertiesCollapseBtn" class="properties-collapse-button" type="button" aria-label="Collapse Properties panel" aria-expanded="true" aria-controls="propertiesPanel">
+          <span class="properties-eyebrow" data-i18n="aria.properties">Properties</span>
+          <button id="propertiesCollapseBtn" class="properties-collapse-button" type="button" aria-label="Collapse Properties panel" data-i18n-aria-label="aria.collapseProperties" aria-expanded="true" aria-controls="propertiesPanel">
             <span class="properties-collapse-glyph" aria-hidden="true">›</span>
           </button>
         </div>
         <div class="properties-heading">
           <span id="propertiesIcon" class="properties-entity-icon" aria-hidden="true"></span>
-          <h2 id="propertiesTitle">Document</h2>
-          <p id="propertiesSubtitle">Map display and interaction settings.</p>
-          <p id="propertiesDescription" class="properties-description">Click the map, a label, legend, or callout to inspect what you are adjusting.</p>
+          <h2 id="propertiesTitle" data-i18n="properties.title.document">Document</h2>
+          <p id="propertiesSubtitle" data-i18n="properties.subtitle.document">Map display &amp; interaction</p>
+          <p id="propertiesDescription" class="properties-description" data-i18n="properties.hint.document">Click the map, a label, legend, or callout for object-specific controls.</p>
         </div>
         <div id="propertiesSelectionControls" class="properties-selection-controls"></div>
 
         <div id="previewDisplayPropertiesSection" class="properties-section" data-props-context="preview-display">
-          <h3>Display</h3>
-          <div class="properties-control-list" aria-label="Map display settings">
+          <h3 data-i18n="properties.section.display">Display</h3>
+          <div class="properties-control-list" aria-label="Map display settings" data-i18n-aria-label="aria.mapDisplaySettings">
             <label class="toolbar-check">
               <input id="showLegendInput" type="checkbox" checked />
               <span class="setting-icon" data-setting-icon="legend" aria-hidden="true"></span>
-              <span>Legend</span>
+              <span data-i18n="settings.legend">Legend</span>
             </label>
             <label class="toolbar-check">
               <input id="showCalloutsInput" type="checkbox" checked />
               <span class="setting-icon" data-setting-icon="callout" aria-hidden="true"></span>
-              <span>No-coordinate callouts</span>
+              <span data-i18n="settings.noCoordinateCallouts">No-coordinate callouts</span>
             </label>
             <label class="toolbar-check">
               <input id="compactFurnitureInput" type="checkbox" checked />
               <span class="setting-icon" data-setting-icon="box" aria-hidden="true"></span>
-              <span>Compact boxes</span>
+              <span data-i18n="settings.compactBoxes">Compact boxes</span>
             </label>
             <label class="toolbar-check">
               <input id="showLineCasingInput" type="checkbox" checked />
               <span class="setting-icon" data-setting-icon="line-casing" aria-hidden="true"></span>
-              <span>Leader border</span>
+              <span data-i18n="settings.leaderBorder">Leader border</span>
             </label>
             <label class="toolbar-check">
               <input id="routeDenseLeadersInput" type="checkbox" />
               <span class="setting-icon" data-setting-icon="elbow" aria-hidden="true"></span>
-              <span>Elbow leaders</span>
+              <span data-i18n="settings.elbowLeaders">Elbow leaders</span>
             </label>
           </div>
         </div>
 
         <div id="previewInteractionPropertiesSection" class="properties-section" data-props-context="preview-interaction">
-          <h3>Interaction</h3>
+          <h3 data-i18n="properties.section.interaction">Interaction</h3>
           <div class="properties-control-list">
             <label class="toolbar-check">
               <input id="lockMarkerCoordinatesInput" type="checkbox" checked />
               <span class="setting-icon" data-setting-icon="lock" aria-hidden="true"></span>
-              <span>Lock markers</span>
+              <span data-i18n="settings.lockMarkers">Lock markers</span>
             </label>
             <label class="toolbar-check">
               <input id="showDistanceMarkersInput" type="checkbox" />
               <span class="setting-icon" data-setting-icon="ruler" aria-hidden="true"></span>
-              <span>Distance guides</span>
+              <span data-i18n="settings.distanceGuides">Distance guides</span>
             </label>
           </div>
         </div>
@@ -437,35 +441,35 @@
         <div class="dialog-title-row">
           <span class="dialog-title-icon" data-icon="file-text" aria-hidden="true"></span>
           <div>
-            <h2 id="mapDetailsTitle">Map details</h2>
-            <p>Title and text version · English and French · for web and Word</p>
+            <h2 id="mapDetailsTitle" data-i18n="dialog.mapDetails.title">Map details</h2>
+            <p data-i18n="dialog.mapDetails.subtitle">Title and text version - English and French - for web and Word</p>
           </div>
         </div>
-        <button type="button" class="icon-button dialog-close" data-dialog-close="map-details" aria-label="Close Map details" data-icon="x"></button>
+        <button type="button" class="icon-button dialog-close" data-dialog-close="map-details" aria-label="Close Map details" data-i18n-aria-label="dialog.mapDetails.close" data-icon="x"></button>
       </header>
       <div class="dialog-body map-details-body">
         <div class="dialog-note" data-icon="shield-check">
-          <strong>Both languages are required.</strong>
-          <span>Map details support bilingual publishing and accessible non-visual alternatives. They are not drawn in SVG or PNG exports.</span>
+          <strong data-i18n="dialog.mapDetails.noteTitle">Both languages are required.</strong>
+          <span data-i18n="dialog.mapDetails.noteBody">Map details support bilingual publishing and accessible non-visual alternatives. They are not drawn in SVG or PNG exports.</span>
         </div>
         <section class="dialog-field-group">
-          <h3>Map title</h3>
+          <h3 data-i18n="dialog.mapDetails.mapTitle">Map title</h3>
           <div class="bilingual-field-grid">
-            <label><span><span class="language-code">EN</span> English</span><input id="mapTitleEnInput" name="titleEn" type="text" data-dialog-initial-focus /></label>
-            <label><span><span class="language-code">FR</span> Français</span><input id="mapTitleFrInput" name="titleFr" type="text" /></label>
+            <label><span><span class="language-code">EN</span> <span data-i18n="dialog.mapDetails.english">English</span></span><input id="mapTitleEnInput" name="titleEn" type="text" data-dialog-initial-focus /></label>
+            <label><span><span class="language-code">FR</span> <span data-i18n="dialog.mapDetails.french">Français</span></span><input id="mapTitleFrInput" name="titleFr" type="text" /></label>
           </div>
         </section>
         <section class="dialog-field-group">
-          <h3>Text version · long description</h3>
+          <h3 data-i18n="dialog.mapDetails.textVersion">Text version - long description</h3>
           <div class="bilingual-field-grid">
-            <label><span><span class="language-code">EN</span> English</span><textarea id="mapTextEnInput" name="textEn" rows="7"></textarea></label>
-            <label><span><span class="language-code">FR</span> Français</span><textarea id="mapTextFrInput" name="textFr" rows="7"></textarea></label>
+            <label><span><span class="language-code">EN</span> <span data-i18n="dialog.mapDetails.english">English</span></span><textarea id="mapTextEnInput" name="textEn" rows="7"></textarea></label>
+            <label><span><span class="language-code">FR</span> <span data-i18n="dialog.mapDetails.french">Français</span></span><textarea id="mapTextFrInput" name="textFr" rows="7"></textarea></label>
           </div>
         </section>
       </div>
       <footer class="dialog-footer">
-        <button type="button" data-dialog-close="map-details">Cancel</button>
-        <button type="submit" class="primary-action">Save map details</button>
+        <button type="button" data-dialog-close="map-details" data-i18n="dialog.common.cancel">Cancel</button>
+        <button type="submit" class="primary-action" data-i18n="dialog.mapDetails.save">Save map details</button>
       </footer>
     </form>
   </div>
@@ -476,69 +480,69 @@
       <header class="dialog-header">
         <div class="dialog-title-row">
           <span class="dialog-title-icon" data-icon="map-pin" aria-hidden="true"></span>
-          <div><h2 id="pointCatalogTitle">Add points from a source</h2><p>Curated presets or connected open data &mdash; added as project points</p></div>
+          <div><h2 id="pointCatalogTitle" data-i18n="dialog.pointCatalog.title">Add points from a source</h2><p data-i18n="dialog.pointCatalog.subtitle">Curated presets or connected open data - added as project points</p></div>
         </div>
-        <button type="button" class="icon-button dialog-close" data-dialog-close="point-catalog" aria-label="Close point catalog" data-icon="x"></button>
+        <button type="button" class="icon-button dialog-close" data-dialog-close="point-catalog" aria-label="Close point catalog" data-i18n-aria-label="dialog.pointCatalog.close" data-icon="x"></button>
       </header>
       <div class="catalog-toolbar">
-        <div class="catalog-tabs" role="tablist" aria-label="Point source type">
-          <button id="pointCatalogPresetsTab" class="is-active" type="button" role="tab" aria-selected="true" aria-controls="pointCatalogPresetsPanel" data-catalog-view="presets" data-icon="star" data-dialog-initial-focus>Presets</button>
-          <button id="pointCatalogSourcesTab" type="button" role="tab" aria-selected="false" aria-controls="pointCatalogSourcesPanel" data-catalog-view="sources" data-icon="database">Open data</button>
+        <div class="catalog-tabs" role="tablist" aria-label="Point source type" data-i18n-aria-label="dialog.pointCatalog.tabs.aria">
+          <button id="pointCatalogPresetsTab" class="is-active" type="button" role="tab" aria-selected="true" aria-controls="pointCatalogPresetsPanel" data-catalog-view="presets" data-icon="star" data-dialog-initial-focus data-i18n="dialog.pointCatalog.presets">Presets</button>
+          <button id="pointCatalogSourcesTab" type="button" role="tab" aria-selected="false" aria-controls="pointCatalogSourcesPanel" data-catalog-view="sources" data-icon="database" data-i18n="dialog.pointCatalog.openData">Open data</button>
         </div>
-        <span id="pointCatalogScope" class="catalog-scope">Project points · scoped to included regions · points outside are skipped</span>
+        <span id="pointCatalogScope" class="catalog-scope" data-i18n="dialog.pointCatalog.scopeStatic">Project points · scoped to included regions · points outside are skipped</span>
       </div>
       <div class="dialog-body catalog-body">
         <section id="pointCatalogPresetsPanel" class="catalog-grid" role="tabpanel" aria-labelledby="pointCatalogPresetsTab">
           <button type="button" class="catalog-card" data-catalog-preset="capitals">
             <span class="catalog-card-icon catalog-mark" aria-hidden="true">☆</span>
-            <span><strong>Capital cities</strong><small>Provincial &amp; territorial · Natural Earth</small></span>
-            <span class="catalog-card-count">13 pts</span>
+            <span><strong data-i18n="dialog.pointCatalog.capitals.title">Capital cities</strong><small data-i18n="dialog.pointCatalog.capitals.meta">Provincial &amp; territorial - Natural Earth</small></span>
+            <span class="catalog-card-count" data-i18n="dialog.pointCatalog.pointsCount" data-i18n-params='{"count":"13"}'>13 pts</span>
             <span class="catalog-card-check" aria-hidden="true"></span>
           </button>
           <button type="button" class="catalog-card" data-catalog-preset="major-cities">
             <span class="catalog-card-icon catalog-mark" aria-hidden="true">●</span>
-            <span><strong>Major cities (100k+)</strong><small>Populated places · GeoNames</small></span>
-            <span class="catalog-card-count">31 pts</span>
+            <span><strong data-i18n="dialog.pointCatalog.majorCities.title">Major cities (100k+)</strong><small data-i18n="dialog.pointCatalog.majorCities.meta">Populated places - GeoNames</small></span>
+            <span class="catalog-card-count" data-i18n="dialog.pointCatalog.pointsCount" data-i18n-params='{"count":"31"}'>31 pts</span>
             <span class="catalog-card-check" aria-hidden="true"></span>
           </button>
           <button type="button" class="catalog-card" data-catalog-preset="ports">
             <span class="catalog-card-icon catalog-mark" aria-hidden="true">⌁</span>
-            <span><strong>Sea &amp; inland ports</strong><small>Transport · Natural Earth</small></span>
-            <span class="catalog-card-count">18 pts</span>
+            <span><strong data-i18n="dialog.pointCatalog.ports.title">Sea &amp; inland ports</strong><small data-i18n="dialog.pointCatalog.ports.meta">Transport - Natural Earth</small></span>
+            <span class="catalog-card-count" data-i18n="dialog.pointCatalog.pointsCount" data-i18n-params='{"count":"18"}'>18 pts</span>
             <span class="catalog-card-check" aria-hidden="true"></span>
           </button>
           <button type="button" class="catalog-card" data-catalog-preset="airports">
             <span class="catalog-card-icon catalog-mark" aria-hidden="true">▲</span>
-            <span><strong>International airports</strong><small>Transport · OurAirports</small></span>
-            <span class="catalog-card-count">14 pts</span>
+            <span><strong data-i18n="dialog.pointCatalog.airports.title">International airports</strong><small data-i18n="dialog.pointCatalog.airports.meta">Transport - OurAirports</small></span>
+            <span class="catalog-card-count" data-i18n="dialog.pointCatalog.pointsCount" data-i18n-params='{"count":"14"}'>14 pts</span>
             <span class="catalog-card-check" aria-hidden="true"></span>
           </button>
           <button type="button" class="catalog-card" data-catalog-preset="parks">
             <span class="catalog-card-icon catalog-mark" aria-hidden="true">◆</span>
-            <span><strong>National parks</strong><small>Protected areas · CPCAD</small></span>
-            <span class="catalog-card-count">22 pts</span>
+            <span><strong data-i18n="dialog.pointCatalog.parks.title">National parks</strong><small data-i18n="dialog.pointCatalog.parks.meta">Protected areas - CPCAD</small></span>
+            <span class="catalog-card-count" data-i18n="dialog.pointCatalog.pointsCount" data-i18n-params='{"count":"22"}'>22 pts</span>
             <span class="catalog-card-check" aria-hidden="true"></span>
           </button>
           <button type="button" class="catalog-card" data-catalog-preset="universities">
             <span class="catalog-card-icon catalog-mark" aria-hidden="true">■</span>
-            <span><strong>Universities</strong><small>Education · StatCan</small></span>
-            <span class="catalog-card-count">47 pts</span>
+            <span><strong data-i18n="dialog.pointCatalog.universities.title">Universities</strong><small data-i18n="dialog.pointCatalog.universities.meta">Education - StatCan</small></span>
+            <span class="catalog-card-count" data-i18n="dialog.pointCatalog.pointsCount" data-i18n-params='{"count":"47"}'>47 pts</span>
             <span class="catalog-card-check" aria-hidden="true"></span>
           </button>
         </section>
         <section id="pointCatalogSourcesPanel" class="catalog-grid" role="tabpanel" aria-labelledby="pointCatalogSourcesTab" hidden>
           <div class="catalog-card is-informational">
             <span class="catalog-card-icon" data-icon="database" aria-hidden="true"></span>
-            <span><strong>Government open data</strong><small>Download an authoritative geographic CSV, then map its columns locally in Plotypus.</small></span>
-            <button id="catalogImportCsvBtn" type="button" class="quiet-link" data-icon="upload">Import local CSV</button>
+            <span><strong data-i18n="dialog.pointCatalog.openData.title">Government open data</strong><small data-i18n="dialog.pointCatalog.openData.meta">Download an authoritative geographic CSV, then map its columns locally in Plotypus.</small></span>
+            <button id="catalogImportCsvBtn" type="button" class="quiet-link" data-icon="upload" data-i18n="dialog.pointCatalog.importLocalCsv">Import local CSV</button>
           </div>
         </section>
       </div>
       <footer class="dialog-footer catalog-footer">
-        <span>Select presets or sources to add points</span>
+        <span data-i18n="dialog.pointCatalog.footer">Select presets or sources to add points</span>
         <div>
-          <button type="button" data-dialog-close="point-catalog">Cancel</button>
-          <button id="catalogAddPointsBtn" type="button" class="primary-action" disabled>Add points</button>
+          <button type="button" data-dialog-close="point-catalog" data-i18n="dialog.common.cancel">Cancel</button>
+          <button id="catalogAddPointsBtn" type="button" class="primary-action" data-i18n="dialog.pointCatalog.addPoints" disabled>Add points</button>
         </div>
       </footer>
     </div>
@@ -550,23 +554,23 @@
       <header class="dialog-header">
         <div class="dialog-title-row">
           <span class="dialog-title-icon" data-icon="table" aria-hidden="true"></span>
-          <div><h2 id="csvMapTitle">Map CSV columns</h2><p id="csvMapFileMeta">Confirm how source columns match Plotypus fields before importing.</p></div>
+          <div><h2 id="csvMapTitle" data-i18n="dialog.csv.title">Map CSV columns</h2><p id="csvMapFileMeta" data-i18n="dialog.csv.subtitle">Confirm how source columns match Plotypus fields before importing.</p></div>
         </div>
-        <button type="button" class="icon-button dialog-close" data-dialog-close="csv-map" aria-label="Close CSV mapping" data-icon="x"></button>
+        <button type="button" class="icon-button dialog-close" data-dialog-close="csv-map" aria-label="Close CSV mapping" data-i18n-aria-label="dialog.csv.close" data-icon="x"></button>
       </header>
       <div class="dialog-body">
         <div class="csv-map-guidance">
-          <span>Match each Plotypus field to a column from your file. Recognized headings are matched automatically.</span>
-          <strong>Required fields must be mapped to import.</strong>
+          <span data-i18n="dialog.csv.guidance">Match each Plotypus field to a column from your file. Recognized headings are matched automatically.</span>
+          <strong data-i18n="dialog.csv.required">Required fields must be mapped to import.</strong>
         </div>
-        <label class="toolbar-check csv-header-toggle"><input id="csvFirstRowHeadersInput" type="checkbox" checked /><span>First row contains column headers</span></label>
-        <div class="csv-map-heading" aria-hidden="true"><span>Plotypus field</span><span>Your CSV column</span><span>Sample value</span></div>
+        <label class="toolbar-check csv-header-toggle"><input id="csvFirstRowHeadersInput" type="checkbox" checked /><span data-i18n="dialog.csv.firstRowHeaders">First row contains column headers</span></label>
+        <div class="csv-map-heading" aria-hidden="true"><span data-i18n="dialog.csv.plotypusField">Plotypus field</span><span data-i18n="dialog.csv.yourColumn">Your CSV column</span><span data-i18n="dialog.csv.sampleValue">Sample value</span></div>
         <div id="csvMapRows" class="csv-map-rows"></div>
-        <label class="toolbar-check"><input id="csvSavePresetInput" type="checkbox" /><span>Save this mapping as a browser preset</span></label>
+        <label class="toolbar-check"><input id="csvSavePresetInput" type="checkbox" /><span data-i18n="dialog.csv.savePreset">Save this mapping as a browser preset</span></label>
       </div>
       <footer class="dialog-footer">
-        <button type="button" data-dialog-close="csv-map">Cancel</button>
-        <button id="confirmCsvMapBtn" type="button" class="primary-action">Import mapped rows</button>
+        <button type="button" data-dialog-close="csv-map" data-i18n="dialog.common.cancel">Cancel</button>
+        <button id="confirmCsvMapBtn" type="button" class="primary-action" data-i18n="dialog.csv.importRows">Import mapped rows</button>
       </footer>
     </div>
   </div>
@@ -574,17 +578,17 @@
   <div id="shortcutsOverlay" class="shortcuts-overlay" role="dialog" aria-modal="true" aria-labelledby="shortcutsTitle" hidden>
     <div class="shortcuts-card">
       <div class="shortcuts-heading">
-        <span>Keyboard</span>
-        <h2 id="shortcutsTitle">Shortcuts</h2>
+        <span data-i18n="keyboard.eyebrow">Keyboard</span>
+        <h2 id="shortcutsTitle" data-i18n="keyboard.title">Shortcuts</h2>
       </div>
       <dl class="shortcuts-list">
-        <div><dt>?</dt><dd>Show or hide this shortcut list</dd></div>
-        <div><dt>Arrow up/down</dt><dd>Move between Project points rows</dd></div>
-        <div><dt>Enter</dt><dd>Select the focused project row</dd></div>
-        <div><dt>Esc</dt><dd>Clear the current row or map selection</dd></div>
-        <div><dt>Delete</dt><dd>Delete checked Project points rows</dd></div>
+        <div><dt data-i18n="keyboard.toggle">?</dt><dd data-i18n="keyboard.toggleHelp">Show or hide this shortcut list</dd></div>
+        <div><dt data-i18n="keyboard.arrow">Arrow up/down</dt><dd data-i18n="keyboard.arrowHelp">Move between Project points rows</dd></div>
+        <div><dt data-i18n="keyboard.enter">Enter</dt><dd data-i18n="keyboard.enterHelp">Select the focused project row</dd></div>
+        <div><dt data-i18n="keyboard.escape">Esc</dt><dd data-i18n="keyboard.escapeHelp">Clear the current row or map selection</dd></div>
+        <div><dt data-i18n="keyboard.delete">Delete</dt><dd data-i18n="keyboard.deleteHelp">Delete checked Project points rows</dd></div>
       </dl>
-      <button id="closeShortcutsBtn" type="button">Close</button>
+      <button id="closeShortcutsBtn" type="button" data-i18n="keyboard.close">Close</button>
     </div>
   </div>
 
@@ -600,7 +604,8 @@
   <script src="label-layout.js?v=20260622-module-extraction"></script>
   <script src="project-io.js?v=20260622-module-extraction"></script>
   <script src="workspace.js?v=20260622-module-extraction"></script>
-  <script src="properties.js?v=20260623-placeholder-size-sync"></script>
-  <script src="app.js?v=20260623-project-toolbar-state"></script>
+  <script src="properties.js?v=20260624-i18n-quality"></script>
+  <script src="i18n.js?v=20260624-i18n-quality"></script>
+  <script src="app.js?v=20260624-i18n-quality"></script>
 </body>
 </html>

@@ -1,15 +1,6 @@
 (function (global) {
   "use strict";
 
-  const tabHeadlines = Object.freeze({
-    preview: "Review and refine before export",
-    projects: "Edit rows, coordinates, and labels",
-    categories: "Define bilingual categories and markers",
-    regions: "Choose regions and colour order",
-    translate: "Translate English strings into French",
-    quality: "Review export readiness"
-  });
-
   function normalizeProjectFilter(filter) {
     return ["all", "missing", "callouts"].includes(filter) ? filter : "all";
   }
@@ -73,8 +64,8 @@
     }, { total: (rows || []).length, mapped: 0, callouts: 0, coordinateIssues: 0 });
   }
 
-  function getQualitySummary(report, pluralize) {
-    if (!report) return { value: "Not checked", state: "neutral", issues: 0 };
+  function getQualitySummary(report, pluralize, labels = {}) {
+    if (!report) return { value: labels.notChecked || "", state: "neutral", issues: 0 };
     const issues = Number(report.overlaps || 0)
       + Number(report.crossings || 0)
       + Number(report.longLines || 0)
@@ -82,7 +73,11 @@
       + (report.projectedProblems ? report.projectedProblems.length : 0)
       + (report.hiddenRegionProblems ? report.hiddenRegionProblems.length : 0);
     return {
-      value: issues ? pluralize(issues, "issue") : "Ready",
+      value: issues
+        ? (labels.issueCount
+        ? labels.issueCount(issues)
+          : pluralize(issues, labels.issueSingular || "", labels.issuePlural || ""))
+        : labels.ready || "",
       state: issues ? "warning" : "ok",
       issues
     };
@@ -125,7 +120,6 @@
     normalizeTranslationFilter,
     rowMatchesProjectFilter,
     summarizeProjectRows,
-    summaryChip,
-    tabHeadlines
+    summaryChip
   });
 })(window);
