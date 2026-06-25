@@ -123,6 +123,36 @@ function getConfigBackedI18nKeys(config) {
   return [...keys].sort();
 }
 
+function getPropertiesRenderCallsMissingTranslator() {
+  const source = fs.readFileSync(path.join(repoRoot, "app.js"), "utf8");
+  const pattern = /properties\.render[A-Za-z]+PropertyControls\(\{/g;
+  const missing = [];
+  let match;
+  while ((match = pattern.exec(source))) {
+    const callStart = match.index;
+    const objectStart = pattern.lastIndex - 1;
+    let depth = 0;
+    let index = objectStart;
+    for (; index < source.length; index += 1) {
+      const char = source[index];
+      if (char === "{") depth += 1;
+      if (char === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          index += 1;
+          break;
+        }
+      }
+    }
+    const callSource = source.slice(callStart, index);
+    if (!/(\bt\b|t:)/.test(callSource)) {
+      const line = source.slice(0, callStart).split(/\r?\n/).length;
+      missing.push(`${match[0].slice(0, -2)} at app.js:${line}`);
+    }
+  }
+  return missing;
+}
+
 test("bundled file-mode defaults match the editable JSON configuration", () => {
   const bundled = loadBundledConfig();
   const external = JSON.parse(fs.readFileSync(path.join(repoRoot, "plotypus.config.json"), "utf8"));
@@ -277,5 +307,13 @@ test("project validation errors expose structured i18n field labels", () => {
       assert.deepEqual(JSON.parse(JSON.stringify(error.i18nParams.labelParams)), { id: "qc" });
       return true;
     }
+  );
+});
+
+test("Properties renderers receive the active translator", () => {
+  assert.deepEqual(
+    getPropertiesRenderCallsMissingTranslator(),
+    [],
+    "Properties render calls must pass t so raw i18n keys do not leak into the UI"
   );
 });

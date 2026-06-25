@@ -59,6 +59,150 @@
       checks.push({ name, pass: Boolean(pass), detail });
     }
 
+    const rawUiKeyPattern = /\b(?:app|aria|catalog|csv|dialog|export|map|properties|project|quality|region|settings|status|table|toolbar|translate|workspace)\.[A-Za-z0-9_.-]+/;
+    const knownEnglishUiPhrases = [
+      /\bNo project points yet\b/i,
+      /\bLoad the sample\b/i,
+      /\bLoad sample\b/i,
+      /\bSave project\b/i,
+      /\bOpen project\b/i,
+      /\bExport CSV\b/i,
+      /\bImport CSV\b/i,
+      /\bMap details\b/i,
+      /\bProject points\b/i,
+      /\bCategories & markers\b/i,
+      /\bMap baselayer\b/i,
+      /\bMap quality\b/i,
+      /\bReview and refine before export\b/i,
+      /\bRows\b/i,
+      /\bMapped\b/i,
+      /\bRegions\b/i,
+      /\bProperties\b/i,
+      /\bNo selection\b/i,
+      /\bAdd row\b/i,
+      /\bAdd from source\b/i,
+      /\bFrom source\b/i,
+      /\bMulti select\b/i,
+      /\bClear coordinates\b/i,
+      /\bClear table\b/i,
+      /\bDelete selected\b/i,
+      /\bDelete\b/i,
+      /\bOpen data\b/i,
+      /\bChoose preset\b/i,
+      /\bSelect all\b/i,
+      /\bClear regions\b/i,
+      /\bUse project regions\b/i,
+      /\bReset colours\b/i,
+      /\bReset colors\b/i,
+      /\bMissing coordinates\b/i,
+      /\bNo-coordinate callouts\b/i,
+      /\bRender performance\b/i,
+      /\bRuntime\b/i,
+      /\bNo timings yet\b/i,
+      /\bMap style\b/i,
+      /\bMap size\b/i,
+      /\bCanvas size\b/i,
+      /\bPage preset\b/i,
+      /\bDefault characters per line\b/i,
+      /\bMap display\b/i,
+      /\bLegend\b/i,
+      /\bCompact boxes\b/i,
+      /\bLeader border\b/i,
+      /\bElbow leaders\b/i,
+      /\bLock markers\b/i,
+      /\bDistance guides\b/i,
+      /\bDetailed publishing checklist\b/i,
+      /\bLoad data to generate the map\b/i,
+      /\bMap canvas\b/i,
+      /\bAuto-place\b/i,
+      /\bFit map \+ labels\b/i,
+      /\bLabels only\b/i,
+      /\bExport readiness\b/i,
+      /\bAdd points from a source\b/i,
+      /\bCurated presets\b/i,
+      /\bCapital cities\b/i,
+      /\bMajor cities\b/i,
+      /\bSea & inland ports\b/i,
+      /\bInternational airports\b/i,
+      /\bNational parks\b/i,
+      /\bUniversities\b/i,
+      /\bGovernment open data\b/i,
+      /\bSave map details\b/i,
+      /\bMap CSV columns\b/i,
+      /\bPlotypus field\b/i,
+      /\bYour CSV column\b/i,
+      /\bSample value\b/i,
+      /\bRequired fields must be mapped\b/i,
+      /\bImport mapped rows\b/i,
+      /\bKeyboard shortcuts\b/i,
+      /\bShortcuts\b/i,
+      /\bCancel\b/i,
+      /\bClose\b/i
+    ];
+
+    function visibleText(root) {
+      if (!root) return "";
+      const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      const chunks = [];
+      while (walker.nextNode()) {
+        const textNode = walker.currentNode;
+        const text = textNode.textContent.trim();
+        if (!text) continue;
+        let node = textNode.parentElement;
+        let visible = true;
+        while (node && node !== root.parentElement) {
+          const style = node.ownerDocument.defaultView.getComputedStyle(node);
+          if (style.display === "none" || style.visibility === "hidden") {
+            visible = false;
+            break;
+          }
+          node = node.parentElement;
+        }
+        if (visible) chunks.push(text);
+      }
+      return chunks
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    function assertNoRawUiKeys(checks, name, root) {
+      const text = visibleText(root);
+      assert(checks, name, !rawUiKeyPattern.test(text), text);
+    }
+
+    function assertNoRawUiKeysInRoots(checks, name, roots) {
+      const text = roots.map(root => visibleText(root)).join(" ");
+      assert(checks, name, !rawUiKeyPattern.test(text), text);
+    }
+
+    function assertNoKnownEnglishUi(checks, name, roots, allowedPatterns = []) {
+      const text = roots.map(root => visibleText(root)).join(" ");
+      const offending = knownEnglishUiPhrases.find(pattern => pattern.test(text) && !allowedPatterns.some(allowed => allowed.test(text)));
+      assert(checks, name, !offending, offending ? text : "");
+    }
+
+    function uiAttributeText(roots) {
+      return roots.flatMap(root => Array.from(root?.querySelectorAll("[aria-label], [title], [placeholder]") || []))
+        .filter(node => !node.closest("tbody tr[data-row-id], .translation-row, #mapSvg"))
+        .flatMap(node => ["aria-label", "title", "placeholder"].map(attribute => node.getAttribute(attribute) || ""))
+        .filter(Boolean)
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    function assertNoRawUiKeysInAttributes(checks, name, roots) {
+      const text = uiAttributeText(roots);
+      assert(checks, name, !rawUiKeyPattern.test(text), text);
+    }
+
+    function assertNoKnownEnglishUiInAttributes(checks, name, roots, allowedPatterns = []) {
+      const text = uiAttributeText(roots);
+      const offending = knownEnglishUiPhrases.find(pattern => pattern.test(text) && !allowedPatterns.some(allowed => allowed.test(text)));
+      assert(checks, name, !offending, offending ? text : "");
+    }
+
     frame.addEventListener("load", async () => {
       const checks = [];
       try {
@@ -143,6 +287,10 @@
             doc.querySelector("[data-ui-language='fr']")?.click();
             await waitFor(() => doc.documentElement.lang === "fr" && /Détails de la carte/.test(doc.querySelector("#mapDetailsTitle")?.textContent || ""), 2000);
             assert(checks, "Top language toggle switches Map details dialog copy to French", /Les deux langues sont requises/.test(dialog.querySelector(".dialog-note")?.textContent || "") && /Titre de la carte/.test(dialog.textContent || "") && /Enregistrer les détails de la carte/.test(dialog.textContent || ""), dialog.textContent || "");
+            assertNoRawUiKeys(checks, "Map details dialog does not show raw translation keys in French", dialog);
+            assertNoKnownEnglishUi(checks, "Map details dialog does not show known English UI phrases in French", [dialog]);
+            assertNoRawUiKeysInAttributes(checks, "Map details dialog attributes do not show raw translation keys in French", [dialog]);
+            assertNoKnownEnglishUiInAttributes(checks, "Map details dialog attributes do not show known English UI phrases in French", [dialog]);
             doc.querySelector("[data-ui-language='en']")?.click();
             await waitFor(() => doc.documentElement.lang === "en" && /Map details/.test(doc.querySelector("#mapDetailsTitle")?.textContent || ""), 2000);
             dialog.querySelector("#mapTitleEnInput").value = "";
@@ -181,6 +329,10 @@
             doc.querySelector("[data-ui-language='fr']")?.click();
             await waitFor(() => doc.documentElement.lang === "fr" && /Associer les colonnes CSV/.test(doc.querySelector("#csvMapTitle")?.textContent || ""), 2000);
             assert(checks, "Top language toggle switches CSV mapping dialog copy to French", /Champ Plotypus/.test(dialog.textContent || "") && /Colonne du CSV/.test(dialog.textContent || "") && /Nom anglais du projet/.test(dialog.textContent || "") && /Requis/.test(dialog.textContent || "") && /Non associé/.test(dialog.textContent || "") && /Importer les lignes associées/.test(dialog.textContent || ""), dialog.textContent || "");
+            assertNoRawUiKeys(checks, "CSV mapping dialog does not show raw translation keys in French", dialog);
+            assertNoKnownEnglishUi(checks, "CSV mapping dialog does not show known English UI phrases in French", [dialog], [/mapped-sample\.csv/i]);
+            assertNoRawUiKeysInAttributes(checks, "CSV mapping dialog attributes do not show raw translation keys in French", [dialog]);
+            assertNoKnownEnglishUiInAttributes(checks, "CSV mapping dialog attributes do not show known English UI phrases in French", [dialog]);
             doc.querySelector("[data-ui-language='en']")?.click();
             await waitFor(() => doc.documentElement.lang === "en" && /Map CSV columns/.test(doc.querySelector("#csvMapTitle")?.textContent || ""), 2000);
             dispatchKey(doc, "Escape");
@@ -207,6 +359,10 @@
             await waitFor(() => doc.documentElement.lang === "fr" && /Ajouter des points/.test(doc.querySelector("#pointCatalogTitle")?.textContent || ""), 2000);
             const catalogCountText = Array.from(doc.querySelectorAll(".catalog-card-count")).map(node => node.textContent.trim());
             assert(checks, "Top language toggle switches Point catalog copy to French", /Points de projet/.test(doc.querySelector("#pointCatalogScope")?.textContent || "") && /Capitales/.test(doc.querySelector("[data-catalog-preset='capitals'] strong")?.textContent || "") && catalogCountText.every(text => /^\d+ pts$/.test(text)), `${doc.querySelector("#pointCatalogScope")?.textContent || ""} | ${catalogCountText.join(", ")}`);
+            assertNoRawUiKeys(checks, "Point catalog dialog does not show raw translation keys in French", dialog);
+            assertNoKnownEnglishUi(checks, "Point catalog dialog does not show known English UI phrases in French", [dialog]);
+            assertNoRawUiKeysInAttributes(checks, "Point catalog dialog attributes do not show raw translation keys in French", [dialog]);
+            assertNoKnownEnglishUiInAttributes(checks, "Point catalog dialog attributes do not show known English UI phrases in French", [dialog]);
             doc.querySelector("[data-ui-language='en']")?.click();
             await waitFor(() => doc.documentElement.lang === "en" && /Add points/.test(doc.querySelector("#pointCatalogTitle")?.textContent || ""), 2000);
             dispatchKey(presetsTab, "ArrowRight");
@@ -242,6 +398,10 @@
             doc.querySelector("[data-ui-language='fr']")?.click();
             await waitFor(() => doc.documentElement.lang === "fr" && /Raccourcis/.test(doc.querySelector("#shortcutsTitle")?.textContent || ""), 2000);
             assert(checks, "Top language toggle switches Shortcuts dialog copy to French", /Clavier/.test(dialog.textContent || "") && /Afficher ou masquer/.test(dialog.textContent || "") && /Fermer/.test(dialog.textContent || ""), dialog.textContent || "");
+            assertNoRawUiKeys(checks, "Shortcuts dialog does not show raw translation keys in French", dialog);
+            assertNoKnownEnglishUi(checks, "Shortcuts dialog does not show known English UI phrases in French", [dialog]);
+            assertNoRawUiKeysInAttributes(checks, "Shortcuts dialog attributes do not show raw translation keys in French", [dialog]);
+            assertNoKnownEnglishUiInAttributes(checks, "Shortcuts dialog attributes do not show known English UI phrases in French", [dialog]);
             doc.querySelector("[data-ui-language='en']")?.click();
             await waitFor(() => doc.documentElement.lang === "en" && /Shortcuts/.test(doc.querySelector("#shortcutsTitle")?.textContent || ""), 2000);
             dispatchKey(doc, "Escape");
@@ -258,6 +418,10 @@
             doc.querySelector("[data-ui-language='fr']")?.click();
             await waitFor(() => doc.documentElement.lang === "fr" && /Exporter PNG/.test(menu.textContent || ""), 2000);
             assert(checks, "Top language toggle switches Export menu copy to French", /Image matricielle pour les documents/.test(menu.textContent || "") && /Illustration vectorielle modifiable/.test(menu.textContent || ""), menu.textContent || "");
+            assertNoRawUiKeys(checks, "Export menu does not show raw translation keys in French", menu);
+            assertNoKnownEnglishUi(checks, "Export menu does not show known English UI phrases in French", [menu]);
+            assertNoRawUiKeysInAttributes(checks, "Export menu attributes do not show raw translation keys in French", [menu]);
+            assertNoKnownEnglishUiInAttributes(checks, "Export menu attributes do not show known English UI phrases in French", [menu]);
             doc.querySelector("[data-ui-language='en']")?.click();
             await waitFor(() => doc.documentElement.lang === "en" && /Export PNG/.test(menu.textContent || ""), 2000);
             dispatchKey(doc, "Escape");
@@ -279,6 +443,8 @@
             await waitFor(() => /Échec du chargement/.test(doc.querySelector("#statusBox")?.textContent || ""), 4000);
             const statusText = doc.querySelector("#statusBox")?.textContent || "";
             assert(checks, "Project load validation error is translated to French", /Échec du chargement/.test(statusText) && /tableau des lignes/.test(statusText), statusText);
+            assertNoRawUiKeys(checks, "Project load validation error does not show raw translation keys in French", doc.querySelector("#statusBox"));
+            assertNoKnownEnglishUi(checks, "Project load validation error does not show known English UI phrases in French", [doc.querySelector("#statusBox")]);
           }
           const failed = checks.filter(check => !check.pass);
           result.textContent = JSON.stringify({
@@ -309,7 +475,11 @@
           await waitFor(() => doc.body.dataset.workspaceView === requestedWorkspace);
           const pane = doc.querySelector(target[1]);
           assert(checks, `${requestedWorkspace} workspace is active`, pane.classList.contains("is-active") && !pane.hidden);
-          assert(checks, "Sample rows are available", doc.querySelectorAll("#projectTable tbody tr").length > 0);
+          if (loadSample) {
+            assert(checks, "Sample rows are available", doc.querySelectorAll("#projectTable tbody tr").length > 0);
+          } else {
+            assert(checks, "No-data workspace starts without sample rows", doc.querySelectorAll("#projectTable tbody tr").length === 0);
+          }
           assert(checks, "Workspace navigation does not re-plot the map", (doc.querySelector("#mapSvg")?.innerHTML || "") === mapBeforeNavigation);
           assert(checks, "Workspace navigation records no render timing", (performanceApi?.snapshot().samples.length || 0) === renderSamplesBeforeNavigation);
           assert(checks, "Properties panel has a contextual heading", Boolean(doc.querySelector("#propertiesTitle")?.textContent.trim()));
@@ -342,6 +512,23 @@
             const placeholderText = doc.querySelector("#canvasPlaceholder")?.textContent || "";
             assert(checks, "Top language toggle switches empty canvas fallback to French", /Canevas de carte/.test(placeholderText) && /Canevas de \d+ x \d+ pt/.test(placeholderText), placeholderText);
             assert(checks, "Top language toggle switches map scale readout to French", /^Carte \d+%$/.test(doc.querySelector("#canvasZoomReadout")?.textContent.trim() || ""), doc.querySelector("#canvasZoomReadout")?.textContent.trim() || "");
+            const distanceGuidesInput = doc.querySelector("#showDistanceMarkersInput");
+            if (distanceGuidesInput) {
+              const nextDistanceState = !distanceGuidesInput.checked;
+              distanceGuidesInput.click();
+              await waitFor(() => /Repères de distance/.test(doc.querySelector("#statusBox")?.textContent || ""), 2000);
+              const distanceStatusText = doc.querySelector("#statusBox")?.textContent || "";
+              assert(checks, "Map display setting status switches to French", /Repères de distance/.test(distanceStatusText) && (nextDistanceState ? /activés/.test(distanceStatusText) : /désactivés/.test(distanceStatusText)), distanceStatusText);
+            }
+            if (loadSample) {
+              await waitFor(() => {
+                const svgText = doc.querySelector("#mapSvg")?.textContent || "";
+                const qualityText = doc.querySelector("#canvasQualityPill")?.textContent || "";
+                return /Légende/.test(svgText) && /Repères sans coordonnées/.test(svgText) && /Chevauchements/.test(qualityText);
+              }, 12000);
+              assert(checks, "Top language toggle switches generated map furniture to French", /Légende/.test(doc.querySelector("#mapSvg")?.textContent || "") && /Repères sans coordonnées/.test(doc.querySelector("#mapSvg")?.textContent || ""), doc.querySelector("#mapSvg")?.textContent || "");
+              assert(checks, "Top language toggle switches canvas quality pill to French", /Chevauchements/.test(doc.querySelector("#canvasQualityPill")?.textContent || "") && /Localiser/.test(doc.querySelector("#canvasQualityPill")?.textContent || ""), doc.querySelector("#canvasQualityPill")?.textContent || "");
+            }
           }
           if (requestedWorkspace === "projects") {
             const projectToolbarText = `${doc.querySelector("#addRowBtn")?.textContent || ""} ${doc.querySelector("#addPointsBtn")?.textContent || ""} ${doc.querySelector("#clearRowsBtn")?.textContent || ""}`;
@@ -363,6 +550,96 @@
           if (requestedWorkspace === "quality") {
             const qualityText = `${doc.querySelector("#qualitySummaryBanner")?.textContent || ""} ${doc.querySelector("#statusBox")?.textContent || ""}`;
             assert(checks, "Top language toggle switches Map quality copy to French", /problèmes à réviser|Éléments à corriger|Localiser le premier/.test(qualityText), qualityText);
+          }
+          const rawPropertiesKeyPattern = /\b(?:properties|toolbar|dialog|region|quality|translate|status|project|table|settings|categories)\.[A-Za-z0-9_.-]+/;
+          const frenchPropertiesText = doc.querySelector("#propertiesPanel")?.textContent || "";
+          assert(checks, "Properties panel does not show raw translation keys in French", !rawPropertiesKeyPattern.test(frenchPropertiesText), frenchPropertiesText);
+          const activePaneUiRoots = requestedWorkspace === "translate"
+            ? [
+              pane.querySelector(".translate-header"),
+              pane.querySelector(".translation-column-labels"),
+              pane.querySelector("#exportLanguageNotice")
+            ].filter(Boolean)
+            : [pane];
+          const frenchWorkspaceUiRoots = [
+            doc.querySelector(".app-ribbon.command-bar"),
+            doc.querySelector(".workspace-nav"),
+            doc.querySelector("#workspaceSummaryMetrics"),
+            ...activePaneUiRoots,
+            doc.querySelector("#propertiesPanel")
+          ].filter(Boolean);
+          assertNoRawUiKeysInRoots(checks, `${requestedWorkspace} workspace does not show raw translation keys in French`, frenchWorkspaceUiRoots);
+          assertNoKnownEnglishUi(checks, `${requestedWorkspace} workspace does not show known English UI phrases in French`, frenchWorkspaceUiRoots);
+          assertNoRawUiKeysInAttributes(checks, `${requestedWorkspace} workspace attributes do not show raw translation keys in French`, frenchWorkspaceUiRoots);
+          assertNoKnownEnglishUiInAttributes(checks, `${requestedWorkspace} workspace attributes do not show known English UI phrases in French`, frenchWorkspaceUiRoots);
+          if (!loadSample) {
+            const noDataText = `${visibleText(pane)} ${visibleText(doc.querySelector("#propertiesPanel"))}`;
+            const expectedNoDataCopy = {
+              preview: /Aucun point de projet|Canevas de carte/,
+              projects: /Aucun point de projet|Chargez l'exemple/,
+              categories: /Catégories et repères|Ajouter un repère de légende/,
+              regions: /Fond de carte|Région|Incluse/,
+              translate: /Traduire|chaînes bilingues complètes|Catégories/,
+              quality: /Chargez des données pour générer la carte/
+            };
+            assert(checks, `${requestedWorkspace} no-data state shows French UI copy`, expectedNoDataCopy[requestedWorkspace]?.test(noDataText), noDataText);
+            if (requestedWorkspace === "projects") {
+              doc.querySelector("#addRowBtn")?.click();
+              await waitFor(() => doc.querySelectorAll("#projectTable tbody tr").length === 1, 2000);
+              doc.querySelector("#ribbonUndoBtn")?.click();
+              await waitFor(() => /ajout de ligne de projet annulé/i.test(doc.querySelector("#statusBox")?.textContent || ""), 2000);
+              const undoStatusText = doc.querySelector("#statusBox")?.textContent || "";
+              assert(checks, "French undo status translates dynamic action labels", /ajout de ligne de projet annulé/i.test(undoStatusText), undoStatusText);
+              assertNoRawUiKeys(checks, "French undo status does not show raw translation keys", doc.querySelector("#statusBox"));
+              assertNoKnownEnglishUi(checks, "French undo status does not show known English UI phrases", [doc.querySelector("#statusBox")]);
+            }
+            const failed = checks.filter(check => !check.pass);
+            result.textContent = JSON.stringify({
+              status: failed.length ? "failed" : "ok",
+              workspace: requestedWorkspace,
+              viewport: { width: innerWidth, height: innerHeight },
+              checks,
+              failures: failed.length,
+              frameErrors
+            }, null, 2);
+            return;
+          }
+          if (requestedWorkspace === "projects") {
+            const frenchStatusBadge = doc.querySelector("#projectTable .row-status-badge:not([data-state='blank'])");
+            assert(checks, "Project row status ARIA switches to French", /^État\s*:/.test(frenchStatusBadge?.getAttribute("aria-label") || ""), frenchStatusBadge?.getAttribute("aria-label") || "");
+            assert(checks, "Project row edit ARIA labels switch to French", /Nom du projet/i.test(doc.querySelector("#projectTable .name-input")?.getAttribute("aria-label") || "") && /Type de projet/i.test(doc.querySelector("#projectTable .type-input")?.getAttribute("aria-label") || ""), `${doc.querySelector("#projectTable .name-input")?.getAttribute("aria-label") || ""} | ${doc.querySelector("#projectTable .type-input")?.getAttribute("aria-label") || ""}`);
+            const originalConfirm = frame.contentWindow.confirm;
+            let clearTablePrompt = "";
+            frame.contentWindow.confirm = message => {
+              clearTablePrompt = String(message || "");
+              return false;
+            };
+            doc.querySelector("#clearRowsBtn")?.click();
+            frame.contentWindow.confirm = originalConfirm;
+            const cancelledStatusText = doc.querySelector("#statusBox")?.textContent || "";
+            assert(checks, "French Clear table confirmation is translated", /Vider \d+ lignes de projet de Points de projet/i.test(clearTablePrompt) && /Utilisez Annuler/.test(clearTablePrompt), clearTablePrompt);
+            assert(checks, "French Clear table cancellation status is translated", /Vidage du tableau annulé/i.test(cancelledStatusText), cancelledStatusText);
+            assertNoRawUiKeys(checks, "French Clear table cancellation does not show raw translation keys", doc.querySelector("#statusBox"));
+            assertNoKnownEnglishUi(checks, "French Clear table cancellation does not show known English UI phrases", [doc.querySelector("#statusBox")]);
+            const firstRowSelect = doc.querySelector("#projectTable .row-select");
+            let deleteSelectedPrompt = "";
+            if (firstRowSelect) {
+              firstRowSelect.checked = true;
+              firstRowSelect.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+              frame.contentWindow.confirm = message => {
+                deleteSelectedPrompt = String(message || "");
+                return false;
+              };
+              doc.querySelector("#deleteSelectedBtn")?.click();
+              frame.contentWindow.confirm = originalConfirm;
+              firstRowSelect.checked = false;
+              firstRowSelect.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+            }
+            const deleteCancelledStatusText = doc.querySelector("#statusBox")?.textContent || "";
+            assert(checks, "French Delete selected confirmation is translated", /Supprimer 1 ligne sélectionnée de Points de projet/i.test(deleteSelectedPrompt) && /Utilisez Annuler/.test(deleteSelectedPrompt), deleteSelectedPrompt);
+            assert(checks, "French Delete selected cancellation status is translated", /Suppression annulée/i.test(deleteCancelledStatusText), deleteCancelledStatusText);
+            assertNoRawUiKeys(checks, "French Delete selected cancellation does not show raw translation keys", doc.querySelector("#statusBox"));
+            assertNoKnownEnglishUi(checks, "French Delete selected cancellation does not show known English UI phrases", [doc.querySelector("#statusBox")]);
           }
           uiEnglishButton?.click();
           await waitFor(() => doc.documentElement.lang === "en" && doc.querySelector("#previewTableTab")?.textContent.trim() === "Map", 2000);
@@ -435,6 +712,26 @@
             const calloutDash = calloutBox ? frame.contentWindow.getComputedStyle(calloutBox).strokeDasharray : "";
             const calloutRuleDash = calloutRule ? frame.contentWindow.getComputedStyle(calloutRule).strokeDasharray : "";
             assert(checks, "Map furniture boxes use solid legend and dashed callout roles", Boolean(legendBox && calloutBox && legendRule && calloutRule && calloutDash !== "none" && calloutRuleDash !== "none"), `box=${calloutDash}, rule=${calloutRuleDash}`);
+            if (legendBox && calloutBox && legendRule && calloutRule) {
+              const numberAttr = (node, name) => Number(node.getAttribute(name) || 0);
+              const legendHeading = doc.querySelector("#mapSvg .legend-heading");
+              const calloutHeading = doc.querySelector("#mapSvg .callout-heading");
+              const legendText = doc.querySelector("#mapSvg .legend-text");
+              const calloutText = doc.querySelector("#mapSvg .callout-text");
+              const legendMarker = doc.querySelector("#mapSvg .legend-layer .marker");
+              const calloutMarker = doc.querySelector("#mapSvg .callout-layer .marker");
+              const legendWidth = numberAttr(legendBox, "width");
+              const legendHeight = numberAttr(legendBox, "height");
+              const calloutWidth = numberAttr(calloutBox, "width");
+              const calloutHeight = numberAttr(calloutBox, "height");
+              const legendRuleY = numberAttr(legendRule, "y1");
+              const calloutRuleY = numberAttr(calloutRule, "y1");
+              const legendRuleInset = numberAttr(legendRule, "x1");
+              const calloutRuleInset = numberAttr(calloutRule, "x1");
+              assert(checks, "Legend box keeps reference-style padding and row rhythm", legendWidth >= 260 && legendHeight >= 118 && legendRuleInset >= 22 && legendHeading && legendRuleY - numberAttr(legendHeading, "y") >= 20 && legendText && numberAttr(legendText, "y") - legendRuleY >= 14, `legend=${legendWidth}x${legendHeight}, rule=${legendRuleY}`);
+              assert(checks, "No-coordinate callouts keep reference-style padding and row rhythm", calloutWidth >= 280 && calloutHeight >= 90 && calloutRuleInset >= 22 && calloutHeading && calloutRuleY - numberAttr(calloutHeading, "y") >= 20 && calloutText && numberAttr(calloutText, "y") - calloutRuleY >= 14 && calloutMarker, `callout=${calloutWidth}x${calloutHeight}, rule=${calloutRuleY}`);
+              assert(checks, "Legend and no-coordinate callout rows use matching marker and text columns", legendMarker && calloutMarker && legendText && calloutText && Math.abs(numberAttr(legendText, "x") - numberAttr(calloutText, "x")) <= 1 && Math.abs(numberAttr(legendMarker, "cx") - (numberAttr(calloutMarker, "x") + numberAttr(calloutMarker, "width") / 2)) <= 1, `legend=${numberAttr(legendMarker, "cx")}/${numberAttr(legendText, "x")}, callout=${numberAttr(calloutMarker, "x") + numberAttr(calloutMarker, "width") / 2}/${numberAttr(calloutText, "x")}`);
+            }
             const legendInput = doc.querySelector("#showLegendInput");
             const calloutsInput = doc.querySelector("#showCalloutsInput");
             const compactInput = doc.querySelector("#compactFurnitureInput");
@@ -505,7 +802,7 @@
             const selectionActions = doc.querySelector(".selection-actions");
             assert(checks, "Project selection actions are grouped", selectionActions && selectionActions.contains(doc.querySelector("#bulkPriorityInput")) && selectionActions.contains(doc.querySelector("#bulkClearCoordinatesBtn")) && selectionActions.contains(doc.querySelector("#deleteSelectedBtn")));
             assert(checks, "Project selection action group is labelled", selectionActions?.querySelector(".toolbar-group-label")?.textContent.trim() === "Multi select" && doc.querySelector("#deleteSelectedBtn")?.textContent.trim() === "Delete");
-            assert(checks, "Project field legend explains editable and automatic fields", /hover any cell to edit/i.test(doc.querySelector(".project-field-legend")?.textContent || "") && /automatically/i.test(doc.querySelector(".project-field-legend")?.textContent || ""));
+            assert(checks, "Project field guide is removed from the toolbar", !doc.querySelector(".project-field-legend"));
             const projectToolbarControls = Array.from(doc.querySelectorAll("[data-table-actions='projects'] > button, [data-table-actions='projects'] > select, .add-actions > button, .selection-actions > button, .selection-actions > select"))
               .filter(control => frame.contentWindow.getComputedStyle(control).display !== "none");
             const projectToolbarHeights = projectToolbarControls.map(control => Math.round(control.getBoundingClientRect().height));
@@ -513,7 +810,7 @@
             const centeredHeaderClasses = [".priority-col", ".lon-col", ".lat-col", ".status-col"];
             assert(checks, "Project numeric/status headers are centered", centeredHeaderClasses.every(selector => frame.contentWindow.getComputedStyle(doc.querySelector(`#projectTable ${selector}`)).textAlign === "center"));
             assert(checks, "Project Priority header explains label placement order", /label placement order/i.test(doc.querySelector("#projectTable .priority-col")?.title || ""));
-            assert(checks, "Project editable headers show edit hints", doc.querySelectorAll("#projectTable thead .col-edit-hint").length === 5 && /Auto/i.test(doc.querySelector("#projectTable .col-auto-chip")?.textContent || ""));
+            assert(checks, "Project headers show editable or automatic hints", doc.querySelectorAll("#projectTable thead .col-edit-hint[data-icon='pencil']").length === 8 && Boolean(doc.querySelector("#projectTable thead .col-auto-chip [data-icon='wand']")));
             const projectHeadersWithoutEllipses = [".priority-col", ".lon-col", ".lat-col", ".status-col"].every(selector => {
               const header = doc.querySelector(`#projectTable ${selector}`);
               return header && header.scrollWidth <= header.clientWidth + 1;
@@ -589,6 +886,29 @@
             firstLatInput?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true, shiftKey: true }));
             doc.querySelector("#bulkClearCoordinatesBtn")?.click();
             assert(checks, "Selected coordinate cells can be bulk cleared", firstLonInput?.value === "" && firstLatInput?.value === "");
+            const deleteFromCellSelectionBtn = doc.querySelector("#deleteSelectedBtn");
+            const rowsBeforeCellDelete = doc.querySelectorAll("#projectTable tbody tr").length;
+            firstPriorityCell?.querySelector("input")?.click();
+            assert(checks, "Delete enables from a selected Project cell", deleteFromCellSelectionBtn && !deleteFromCellSelectionBtn.disabled);
+            const originalDeleteConfirm = frame.contentWindow.confirm;
+            frame.contentWindow.confirm = () => true;
+            deleteFromCellSelectionBtn?.click();
+            frame.contentWindow.confirm = originalDeleteConfirm;
+            await waitFor(() => doc.querySelectorAll("#projectTable tbody tr").length === rowsBeforeCellDelete - 1, 2000);
+            assert(checks, "Delete removes rows represented by selected Project cells", doc.querySelectorAll("#projectTable tbody tr").length === rowsBeforeCellDelete - 1);
+            const rowsBeforeAnyColumnDelete = doc.querySelectorAll("#projectTable tbody tr").length;
+            const firstNameCellForDelete = doc.querySelector("#projectTable tbody tr:nth-child(1) .name-cell");
+            const secondStatusCellForDelete = doc.querySelector("#projectTable tbody tr:nth-child(2) .status-cell");
+            firstNameCellForDelete?.querySelector("input")?.click();
+            secondStatusCellForDelete?.dispatchEvent(new frame.contentWindow.PointerEvent("pointerdown", { bubbles: true, ctrlKey: true }));
+            secondStatusCellForDelete?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true, ctrlKey: true }));
+            assert(checks, "Delete enables from selected Project cells in any column", deleteFromCellSelectionBtn && !deleteFromCellSelectionBtn.disabled && firstNameCellForDelete?.classList.contains("is-cell-selected") && secondStatusCellForDelete?.classList.contains("is-cell-selected"));
+            const confirmForAnyColumnDelete = frame.contentWindow.confirm;
+            frame.contentWindow.confirm = () => true;
+            deleteFromCellSelectionBtn?.click();
+            frame.contentWindow.confirm = confirmForAnyColumnDelete;
+            await waitFor(() => doc.querySelectorAll("#projectTable tbody tr").length === rowsBeforeAnyColumnDelete - 2, 2000);
+            assert(checks, "Delete removes every row that has a selected Project cell", doc.querySelectorAll("#projectTable tbody tr").length === rowsBeforeAnyColumnDelete - 2);
           }
           if (requestedWorkspace === "categories") {
             const cards = doc.querySelectorAll("#categoryList .category-editor");
@@ -662,7 +982,7 @@
             const switchStyle = switchInput ? frame.contentWindow.getComputedStyle(switchInput) : null;
             assert(checks, "Region boundary and preset controls remain available", Boolean(doc.querySelector("#boundaryInput") && doc.querySelector("#regionPresetInput")));
             assert(checks, "Region inclusion uses switch styling", switchStyle?.appearance === "none");
-            assert(checks, "Region editable headers show edit hints", doc.querySelectorAll("#regionTable thead .col-edit-hint").length === 3 && doc.querySelector("#regionTable .region-fill-col")?.textContent.trim().includes("Colour"));
+            assert(checks, "Region headers show editable or automatic hints", doc.querySelectorAll("#regionTable thead .col-edit-hint[data-icon='pencil']").length === 3 && doc.querySelectorAll("#regionTable thead .col-auto-chip [data-icon='wand']").length === 2 && doc.querySelector("#regionTable .region-fill-col")?.textContent.trim().includes("Colour"));
             assert(checks, "Region Properties show map controls", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='map']")));
             uiFrenchButton?.click();
             await waitFor(() => doc.documentElement.lang === "fr" && /Fond de carte/.test(doc.querySelector("#regionTableTab")?.textContent || ""), 2000);
@@ -760,7 +1080,7 @@
             assert(checks, "Translation groups are rendered", doc.querySelectorAll("#translationGroups .translation-group").length > 0);
             assert(checks, "Translation filters and paste action remain available", doc.querySelectorAll("[data-translation-filter]").length === 2 && Boolean(doc.querySelector("#pasteTranslationColumnBtn")));
             assert(checks, "Translate Properties are contextual", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='translation'], #propertiesSelectionControls [data-property-kind='translation-entry']")));
-            assert(checks, "Translate column labels explain both columns are editable", /editable source/i.test(doc.querySelector(".translation-column-labels")?.textContent || "") && /editable translation/i.test(doc.querySelector(".translation-column-labels")?.textContent || ""));
+            assert(checks, "Translate column labels show editable and automatic hints", doc.querySelectorAll(".translation-column-labels [data-icon='pencil']").length === 2 && Boolean(doc.querySelector(".translation-column-labels .col-auto-chip [data-icon='wand']")));
             const firstTranslationRow = doc.querySelector(".translation-row[data-entry-id^='project:']");
             const englishTranslationInput = firstTranslationRow?.querySelector(".translation-en-input");
             const frenchTranslationInput = firstTranslationRow?.querySelector(".translation-fr-input");

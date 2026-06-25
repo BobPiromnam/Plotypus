@@ -1,6 +1,6 @@
 param(
   [int]$VirtualTimeBudgetMs = 6000,
-  [int]$MapScale = 100,
+  [int]$MapScale = 50,
   [int]$LabelSize = 12,
   [int]$LabelChars = 24,
   [switch]$SkipScreenshot,

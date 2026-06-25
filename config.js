@@ -121,7 +121,7 @@
     },
     tableFields: ["name", "footnote", "type", "priority", "lon", "lat"],
     layoutDefaults: {
-      bookSizeInput: "wide-map",
+      bookSizeInput: "letter",
       imageSizeInput: "full",
       labelSizeInput: 12,
       mapScaleInput: 100,
@@ -133,26 +133,6 @@
       layoutPreferences: "plotypus.layoutPreferences"
     },
     imageSizePresets: {
-      "wide-map": {
-        label: "Wide map",
-        sizes: [
-          { value: "full", label: "Full page", width: 1000, height: 620 },
-          { value: "two-thirds", label: "2/3 page", width: 1000, height: 430 },
-          { value: "half", label: "1/2 page", width: 1000, height: 310 },
-          { value: "third", label: "1/3 page", width: 1000, height: 210 },
-          { value: "quarter", label: "1/4 page", width: 1000, height: 160 }
-        ]
-      },
-      "letter-landscape": {
-        label: "11 x 8.5",
-        sizes: [
-          { value: "full", label: "Full page", width: 792, height: 570 },
-          { value: "two-thirds", label: "2/3 page", width: 792, height: 395 },
-          { value: "half", label: "1/2 page", width: 792, height: 285 },
-          { value: "third", label: "1/3 page", width: 792, height: 190 },
-          { value: "quarter", label: "1/4 page", width: 792, height: 145 }
-        ]
-      },
       letter: {
         label: "8.5 x 11",
         sizes: [

@@ -186,7 +186,7 @@
   };
   const tableFields = appConfig.tableFields || ["name", "footnote", "type", "priority", "lon", "lat"];
   const layoutDefaults = appConfig.layoutDefaults || {
-    bookSizeInput: "wide-map",
+    bookSizeInput: "letter",
     imageSizeInput: "full",
     labelSizeInput: 12,
     mapScaleInput: 100,
@@ -408,7 +408,7 @@
   let activeTranslationEntryId = "";
   let activePointCatalogView = "presets";
   let selectedPointCatalogPresets = new Set();
-  const selectableProjectCellFields = ["priority", "lon", "lat"];
+  const selectableProjectCellFields = ["name", "footnote", "type", "priority", "lon", "lat", "status", "hideLine"];
   const selectedProjectCells = new Set();
   let projectCellSelectionAnchor = null;
   let lastProjectCellPointerSelectionAt = 0;
@@ -1219,7 +1219,7 @@
           <div class="category-title-block">
             <span class="category-swatch">${getCategorySwatchSvg(category)}</span>
             <span>
-              <strong title="${escapeHtml(category.label)}">${escapeHtml(category.label)}</strong>
+              <strong title="${escapeHtml(categoryUiLabel)}">${escapeHtml(categoryUiLabel)}</strong>
               <small>${categoryCounts[category.id] || 0} ${escapeHtml((categoryCounts[category.id] || 0) === 1 ? t("properties.category.point") : t("properties.category.points"))} · ${escapeHtml(category.customIcon ? t("properties.category.customIcon") : getMarkerShapeLabel(category.shape))}</small>
             </span>
           </div>
@@ -1384,9 +1384,9 @@
     const numericRowId = Number(rowId);
     nextRowId = Number.isFinite(numericRowId) ? Math.max(nextRowId, numericRowId + 1) : nextRowId + 1;
     tr.innerHTML = `
-      <td class="name-cell vcell"><input class="name-input" type="text" value="${escapeHtml(activeAuthoringLanguage === "fr" ? row.nameFr || "" : row.name || "")}" title="${escapeHtml(activeAuthoringLanguage === "fr" ? row.nameFr || "" : row.name || "")}" aria-label="${escapeHtml(t("table.projectName.aria"))}"><span class="row-validation-badge" aria-hidden="true"></span><button class="row-fix-link" type="button" hidden>${escapeHtml(t("table.fix"))}</button></td>
-      <td><input class="footnote-input" type="text" value="${escapeHtml(row.footnote || "")}" aria-label="${escapeHtml(t("table.footnote.title"))}" maxlength="2" pattern="[A-Za-z0-9]*|[*]"></td>
-      <td class="vcell">
+      <td class="name-cell vcell" data-cell-field="name"><input class="name-input" type="text" value="${escapeHtml(activeAuthoringLanguage === "fr" ? row.nameFr || "" : row.name || "")}" title="${escapeHtml(activeAuthoringLanguage === "fr" ? row.nameFr || "" : row.name || "")}" aria-label="${escapeHtml(t("table.projectName.aria"))}"><span class="row-validation-badge" aria-hidden="true"></span><button class="row-fix-link" type="button" hidden>${escapeHtml(t("table.fix"))}</button></td>
+      <td data-cell-field="footnote"><input class="footnote-input" type="text" value="${escapeHtml(row.footnote || "")}" aria-label="${escapeHtml(t("table.footnote.title"))}" maxlength="2" pattern="[A-Za-z0-9]*|[*]"></td>
+      <td class="vcell" data-cell-field="type">
         <select class="type-input" title="${escapeHtml(getCategoryLabel(row.type, activeAuthoringLanguage))}" aria-label="${escapeHtml(t("table.projectType.aria"))}">
           ${getTypeOptions(row.type)}
         </select>
@@ -1394,8 +1394,8 @@
       <td class="bulk-edit-cell priority-cell vcell" data-cell-field="priority"><input class="priority-input" type="number" min="0" max="5" step="1" value="${priority}" aria-label="${escapeHtml(t("properties.field.priority"))}"></td>
       <td class="bulk-edit-cell coordinate-cell lon-cell vcell" data-cell-field="lon"><input class="lon-input" type="text" inputmode="decimal" value="${escapeHtml(formatProjectCoordinate(row.lon))}" aria-label="${escapeHtml(t("table.longitude"))}"><button class="clear-coordinate-cell" type="button" data-clear-coordinate="lon" aria-label="${escapeHtml(t("table.clearLongitude"))}" title="${escapeHtml(t("table.clearLongitude"))}" hidden>&times;</button></td>
       <td class="bulk-edit-cell coordinate-cell lat-cell vcell" data-cell-field="lat"><input class="lat-input" type="text" inputmode="decimal" value="${escapeHtml(formatProjectCoordinate(row.lat))}" aria-label="${escapeHtml(t("table.latitude"))}"><button class="clear-coordinate-cell" type="button" data-clear-coordinate="lat" aria-label="${escapeHtml(t("table.clearLatitude"))}" title="${escapeHtml(t("table.clearLatitude"))}" hidden>&times;</button></td>
-      <td class="status-cell" aria-readonly="true"><span class="row-status-badge"></span></td>
-      <td class="line-cell"><input type="checkbox" class="hide-line-input" aria-label="${escapeHtml(t("properties.field.hideLeaderLine"))}"${row.hideLine ? " checked" : ""}></td>
+      <td class="status-cell" data-cell-field="status" aria-readonly="true"><span class="row-status-badge"></span></td>
+      <td class="line-cell" data-cell-field="hideLine"><input type="checkbox" class="hide-line-input" aria-label="${escapeHtml(t("properties.field.hideLeaderLine"))}"${row.hideLine ? " checked" : ""}></td>
       <td hidden><input type="checkbox" class="elbow-leader-input" aria-label="${escapeHtml(t("properties.field.useElbowLeader"))}"${row.elbowLeader ? " checked" : ""}></td>
       <td class="select-cell"><input type="checkbox" class="row-select" aria-label="${escapeHtml(t("table.selectRow"))}"></td>
     `;
@@ -1635,6 +1635,37 @@
 
     rows.forEach(tr => {
       const state = getProjectRowState(tr);
+      const nameInput = tr.querySelector(".name-input");
+      const typeInput = tr.querySelector(".type-input");
+      const footnoteInput = tr.querySelector(".footnote-input");
+      const priorityInput = tr.querySelector(".priority-input");
+      const lonInput = tr.querySelector(".lon-input");
+      const latInput = tr.querySelector(".lat-input");
+      const hideLineInput = tr.querySelector(".hide-line-input");
+      const elbowLeaderInput = tr.querySelector(".elbow-leader-input");
+      const selectInput = tr.querySelector(".row-select");
+      const clearLonButton = tr.querySelector("[data-clear-coordinate='lon']");
+      const clearLatButton = tr.querySelector("[data-clear-coordinate='lat']");
+      if (nameInput) nameInput.setAttribute("aria-label", t("table.projectName.aria"));
+      if (typeInput) {
+        typeInput.setAttribute("aria-label", t("table.projectType.aria"));
+        typeInput.title = getCategoryLabel(typeInput.value, activeAuthoringLanguage);
+      }
+      if (footnoteInput) footnoteInput.setAttribute("aria-label", t("table.footnote.title"));
+      if (priorityInput) priorityInput.setAttribute("aria-label", t("properties.field.priority"));
+      if (lonInput) lonInput.setAttribute("aria-label", t("table.longitude"));
+      if (latInput) latInput.setAttribute("aria-label", t("table.latitude"));
+      if (hideLineInput) hideLineInput.setAttribute("aria-label", t("properties.field.hideLeaderLine"));
+      if (elbowLeaderInput) elbowLeaderInput.setAttribute("aria-label", t("properties.field.useElbowLeader"));
+      if (selectInput) selectInput.setAttribute("aria-label", t("table.selectRow"));
+      if (clearLonButton) {
+        clearLonButton.setAttribute("aria-label", t("table.clearLongitude"));
+        clearLonButton.title = t("table.clearLongitude");
+      }
+      if (clearLatButton) {
+        clearLatButton.setAttribute("aria-label", t("table.clearLatitude"));
+        clearLatButton.title = t("table.clearLatitude");
+      }
       if (!state.isBlank) dataRows += 1;
       if (state.isMapped) mappedRows += 1;
       if (state.isCallout) calloutRows += 1;
@@ -1859,6 +1890,7 @@
       if (!hasPriority) els.bulkPriorityInput.value = "";
     }
     if (els.bulkClearCoordinatesBtn) els.bulkClearCoordinatesBtn.disabled = !hasCoordinate;
+    updateDeleteButtonState();
   }
 
   function selectProjectCell(selection, event = {}) {
@@ -2398,8 +2430,8 @@
     }
     const extra = lines.length - count;
     showTranslationHint(extra > 0
-      ? `${count} strings pasted. ${extra} extra line${extra === 1 ? "" : "s"} did not fit in this group.`
-      : `${count} strings pasted.`, extra > 0 ? "warning" : "ok");
+      ? t("translate.pasteResult.extra", { count, extra })
+      : t("translate.pasteResult", { count }), extra > 0 ? "warning" : "ok");
     renderTranslationWorkbench();
     const nextInput = getTranslationInputsForGroup(startInput.dataset.translationGroup)[Math.min(startIndex + count, writable.length - 1)];
     if (nextInput) nextInput.focus();
@@ -4279,7 +4311,7 @@
     const usedCategories = new Set(rows.map(row => cleanType(row.type)));
     return categorySettings
       .filter(category => !usedCategories.has(category.id))
-      .map(category => category.label);
+      .map(category => getCategoryLabel(category.id, currentUiLanguage));
   }
 
   function getExportSizeMessage(settings) {
@@ -4379,7 +4411,7 @@
     const mappedCount = rows.filter(row => row.lon !== "" && row.lat !== "").length;
     const missingCoordinateCount = rows.filter(row => (row.lon === "") !== (row.lat === "")).length;
     const calloutCount = rows.filter(row => row.lon === "" && row.lat === "").length;
-    const categoryNames = Array.from(new Set(rows.map(row => getCategoryLabel(row.type))));
+    const categoryNames = Array.from(new Set(rows.map(row => getCategoryLabel(row.type, currentUiLanguage))));
     return { mappedCount, calloutCount, missingCoordinateCount, categoryNames };
   }
 
@@ -4707,7 +4739,7 @@
 
   function renderTranslationPropertyControls() {
     const summary = getTranslationSummary();
-    return properties.renderTranslationPropertyControls({ summary, escapeHtml, qualityMetricItem });
+    return properties.renderTranslationPropertyControls({ summary, escapeHtml, qualityMetricItem, t });
   }
 
   function renderCategoryPropertyControls() {
@@ -4716,6 +4748,7 @@
       category,
       markerShapes: markerShapes.map(shape => ({ ...shape, label: getMarkerShapeLabel(shape) })),
       escapeHtml,
+      t,
       markerShapeIcon: shape => getCategorySwatchSvg({ ...category, shape, customIcon: null })
     });
   }
@@ -4723,7 +4756,7 @@
   function renderRegionPropertyControls(regionId) {
     const region = getRegionTableRows().find(item => item.id === regionId);
     if (!region) return renderMapPropertyControls();
-    return properties.renderRegionPropertyControls({ region, pluralize, escapeHtml });
+    return properties.renderRegionPropertyControls({ region, pluralize, escapeHtml, t });
   }
 
   function setCategoryPropertiesContext() {
@@ -4773,7 +4806,7 @@
       const category = categorySettings.find(item => item.id === activeCategoryId) || categorySettings[0];
       if (category) activeCategoryId = category.id;
       context = {
-        title: category ? category.label : t("properties.title.categories"),
+        title: category ? getCategoryLabel(category.id, currentUiLanguage) : t("properties.title.categories"),
         subtitle: category ? t("properties.subtitle.legendMarker") : t("properties.subtitle.legendCategories"),
         hint: t("properties.hint.categories"),
         controls: renderCategoryPropertyControls(),
@@ -4948,7 +4981,7 @@
         updateWorkspaceSummary();
         requestPreviewRefresh();
         setCategoryPropertiesContext();
-        setStatusMessage(t("status.categoryCustomIcon", { label: category.label }), "ok");
+        setStatusMessage(t("status.categoryCustomIcon", { label: getCategoryLabel(category.id, currentUiLanguage) }), "ok");
       } catch (error) {
         setStatusMessage(t("status.customIconLoadFailedGeneric", { message: translateErrorMessage(error) }), "danger");
       } finally {
@@ -5151,7 +5184,7 @@
       updateWorkspaceSummary();
       requestPreviewRefresh();
       setCategoryPropertiesContext();
-      setStatusMessage(t("status.categoryReturnedToMarker", { label: category.label, shape: getMarkerShapeLabel(category.shape) }), "ok");
+      setStatusMessage(t("status.categoryReturnedToMarker", { label: getCategoryLabel(category.id, currentUiLanguage), shape: getMarkerShapeLabel(category.shape) }), "ok");
       return;
     }
 
@@ -5520,6 +5553,7 @@
     activeDataTable = activeName;
     updateWorkspaceSummary();
     if (activeName === "translate") renderTranslationWorkbench();
+    if (activeName === "projects") refreshProjectTableUx();
     renderPropertiesForActiveState(getDefaultPropertiesSelectionForWorkspace(activeName));
     if (activeName === "categories") renderCategoryEditors();
     if (activeName === "quality") refreshQualityMetricsPanel();
@@ -6267,9 +6301,15 @@
   }
 
   function updateDeleteButtonState() {
-    const hasSelection = Array.from(els.tableBody.querySelectorAll(".row-select"))
-      .some(checkbox => checkbox.checked);
+    const hasSelection = getProjectRowsSelectedForDelete().length > 0;
     els.deleteSelectedBtn.disabled = !hasSelection;
+  }
+
+  function getProjectRowsSelectedForDelete() {
+    const selectedCellRowIds = new Set(Array.from(selectedProjectCells).map(key => parseProjectCellKey(key).rowId));
+    return Array.from(els.tableBody.querySelectorAll("tr")).filter(tr => {
+      return tr.querySelector(".row-select")?.checked || selectedCellRowIds.has(String(tr.dataset.rowId));
+    });
   }
 
   function isTextEntryControl(element) {
@@ -6409,7 +6449,12 @@
       category.colour = editor.querySelector(".category-colour-input").value;
       category.markerSize = optionalNumber(editor.querySelector(".category-marker-size-input").value) || settings.markerSize;
       category.lineWidth = optionalNumber(editor.querySelector(".category-line-width-input").value) || settings.lineWidth;
-      editor.querySelector(".category-header strong").textContent = category.label;
+      const categoryTitle = editor.querySelector(".category-header strong");
+      if (categoryTitle) {
+        const displayLabel = getCategoryLabel(category.id, currentUiLanguage);
+        categoryTitle.textContent = displayLabel;
+        categoryTitle.title = displayLabel;
+      }
       editor.querySelector(".category-swatch").innerHTML = getCategorySwatchSvg(category);
     });
   }
@@ -6747,23 +6792,34 @@
     };
   }
 
+  function getFurnitureRowMetrics(settings) {
+    const compact = settings.compactFurniture !== false;
+    return {
+      insetX: compact ? 24 : 30,
+      markerX: compact ? 46 : 52,
+      textX: compact ? 72 : 82,
+      rightPad: compact ? 24 : 30
+    };
+  }
+
   function getLegendBoxLayout(settings) {
     const compact = settings.compactFurniture !== false;
+    const rowMetrics = getFurnitureRowMetrics(settings);
     const headingSize = Math.max(settings.labelSize, Math.round(settings.labelSize * 1.02));
     const headingSizeRender = Math.max(settings.labelSizeRender, Math.round(settings.labelSizeRender * 1.02));
-    const rowHeight = Math.max(compact ? 26 : 31, Math.round(settings.labelSize * (compact ? 1.85 : 2.15)));
-    const headingHeight = Math.max(compact ? 24 : 30, Math.round(headingSize * (compact ? 1.45 : 1.7)));
-    const verticalPadding = Math.max(compact ? 10 : 14, Math.round(settings.labelSize * (compact ? 0.8 : 1.05)));
+    const rowHeight = Math.max(compact ? 30 : 34, Math.round(settings.labelSize * (compact ? 2.25 : 2.45)));
+    const headingHeight = Math.max(compact ? 26 : 31, Math.round(headingSize * (compact ? 1.85 : 2.1)));
+    const verticalPadding = Math.max(compact ? 18 : 22, Math.round(settings.labelSize * (compact ? 1.45 : 1.7)));
     const headingRuleY = verticalPadding + headingHeight;
     const headingText = getChromeText("legendHeading", settings.mapLanguage);
     const longestLabelLength = Math.max(6, headingText.length, ...categorySettings.map(category => getCategoryText(category, settings.mapLanguage).length));
-    const widthPad = compact ? 75 : 105;
+    const widthPad = compact ? 112 : 126;
     const fallbackDimensions = {
-      width: Math.max(compact ? 235 : 275, Math.min(390, Math.round(longestLabelLength * settings.labelSize * 0.58 + widthPad))),
+      width: Math.max(compact ? 270 : 300, Math.min(420, Math.round(longestLabelLength * settings.labelSize * 0.58 + widthPad))),
       height: verticalPadding * 2 + headingHeight + categorySettings.length * rowHeight
     };
     const constraints = {
-      minWidth: Math.max(compact ? 210 : 250, Math.round(longestLabelLength * settings.labelSizeRender * 0.58 + (compact ? 82 : 110))),
+      minWidth: Math.max(compact ? 260 : 290, Math.round(longestLabelLength * settings.labelSizeRender * 0.58 + (compact ? 106 : 126))),
       minHeight: fallbackDimensions.height,
       maxWidth: settings.width - 20,
       maxHeight: settings.height - 20
@@ -6779,24 +6835,24 @@
       headingRuleY,
       rowHeight,
       headingHeight,
-      verticalPadding
+      verticalPadding,
+      ...rowMetrics
     };
   }
 
   function getCalloutContentLayout(calloutRows, settings, width) {
     const compact = settings.compactFurniture !== false;
+    const rowMetrics = getFurnitureRowMetrics(settings);
     const headingText = getChromeText("calloutHeading", settings.mapLanguage);
     const headingSize = Math.max(settings.labelSizeRender, Math.round(settings.labelSizeRender * 1.02));
-    const headingHeight = Math.max(compact ? 24 : 30, Math.round(headingSize * (compact ? 1.45 : 1.7)));
+    const headingHeight = Math.max(compact ? 26 : 31, Math.round(headingSize * (compact ? 1.85 : 2.1)));
     const nameSize = settings.labelSizeRender;
-    const lineH = Math.max(compact ? 18 : 21, Math.round(nameSize * (compact ? 1.45 : 1.65)));
-    const rowGap = Math.max(compact ? 6 : 10, Math.round(settings.labelSizeRender * (compact ? 0.55 : 0.75)));
-    const padV = Math.max(compact ? 12 : 16, Math.round(settings.labelSize * (compact ? 0.75 : 1.05)));
+    const lineH = Math.max(compact ? 20 : 23, Math.round(nameSize * (compact ? 1.6 : 1.75)));
+    const rowGap = Math.max(compact ? 9 : 12, Math.round(settings.labelSizeRender * (compact ? 0.7 : 0.9)));
+    const padV = Math.max(compact ? 18 : 22, Math.round(settings.labelSize * (compact ? 1.45 : 1.7)));
     const headingRuleY = padV + headingHeight;
-    const headingRuleGap = compact ? 8 : 10;
-    const textX = 52;
-    const markerX = 26;
-    const rightPad = compact ? 18 : 26;
+    const headingRuleGap = compact ? 16 : 18;
+    const { textX, markerX, rightPad } = rowMetrics;
     const textWidth = Math.max(90, width - textX - rightPad);
     const maxNameChars = Math.max(12, Math.floor(textWidth / Math.max(6, nameSize * 0.58)));
     let cursorY = headingRuleY + headingRuleGap;
@@ -6823,8 +6879,7 @@
       lineH,
       rowGap,
       padV,
-      textX,
-      markerX,
+      ...rowMetrics,
       rows,
       contentHeight: Math.max(padV * 2, cursorY + padV)
     };
@@ -6834,12 +6889,12 @@
     const compact = settings.compactFurniture !== false;
     const headingText = getChromeText("calloutHeading", settings.mapLanguage);
     const longestNameLen = Math.max(0, ...calloutRows.map(row => getLabelText(row, settings.mapLanguage).length));
-    const boxPad = compact ? 80 : 110;
+    const boxPad = compact ? 118 : 132;
     const nameWidth = longestNameLen * settings.labelSize * 0.58 + boxPad;
     const headingWidth = headingText.length * Math.max(settings.labelSize, Math.round(settings.labelSize * 1.02)) * 0.58 + boxPad;
-    const fallbackWidth = Math.max(compact ? 220 : 260, Math.min(settings.width - 40, Math.round(Math.max(nameWidth, headingWidth))));
+    const fallbackWidth = Math.max(compact ? 270 : 300, Math.min(settings.width - 40, Math.round(Math.max(nameWidth, headingWidth))));
     const widthConstraints = {
-      minWidth: compact ? 220 : 260,
+      minWidth: compact ? 260 : 290,
       minHeight: 40,
       maxWidth: settings.width - 20,
       maxHeight: settings.height - 20
@@ -7042,7 +7097,9 @@
       headingRuleY,
       rowHeight,
       headingHeight,
-      verticalPadding
+      verticalPadding,
+      markerX,
+      textX
     } = getLegendBoxLayout(settings);
     const group = svg.append("g")
       .attr("class", "legend-layer movable-map-box")
@@ -7084,10 +7141,10 @@
     categorySettings.forEach((category, index) => {
       const itemY = verticalPadding + headingHeight + index * rowHeight + rowHeight / 2;
       const legendMarkerSize = Math.max(8, Math.min(18, getCategoryMarkerSize(category, settings)));
-      drawMarkerSymbol(group, category, 46, itemY, legendMarkerSize);
+      drawMarkerSymbol(group, category, markerX, itemY, legendMarkerSize);
       group.append("text")
         .attr("class", "legend-text")
-        .attr("x", 72)
+        .attr("x", textX)
         .attr("y", itemY)
         .attr("font-size", settings.labelSizeRender)
         .attr("font-family", settings.fontFamily)
@@ -7888,7 +7945,7 @@
     const hasColumn = aliases => aliases.some(alias => fields.includes(alias));
 
     if (!hasColumn(csvColumnAliases.name)) messages.push(t("status.csvMissingNameColumn"));
-    if (!hasColumn(csvColumnAliases.type)) messages.push(t("status.csvMissingTypeColumn", { category: getDefaultCategory().label }));
+    if (!hasColumn(csvColumnAliases.type)) messages.push(t("status.csvMissingTypeColumn", { category: getCategoryLabel(getDefaultCategory().id, currentUiLanguage) }));
     if (!hasColumn(csvColumnAliases.lon)) messages.push(t("status.csvMissingLongitudeColumn"));
     if (!hasColumn(csvColumnAliases.lat)) messages.push(t("status.csvMissingLatitudeColumn"));
 
@@ -7975,8 +8032,7 @@
     });
     on(els.clearRowsBtn, "click", confirmClearProjectRows);
     on(els.deleteSelectedBtn, "click", () => {
-      const selectedRows = Array.from(els.tableBody.querySelectorAll("tr"))
-        .filter(tr => tr.querySelector(".row-select").checked);
+      const selectedRows = getProjectRowsSelectedForDelete();
       if (!selectedRows.length) {
         setStatusMessage(t("status.selectRowsBeforeDelete"), "warning");
         return;
@@ -7993,6 +8049,7 @@
       els.deleteSelectedBtn.disabled = true;
       window.setTimeout(() => {
         selectedRows.forEach(tr => tr.remove());
+        clearProjectCellSelection();
         updateDeleteButtonState();
         refreshProjectTableUx();
         requestPreviewRefresh();

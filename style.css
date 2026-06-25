@@ -2681,7 +2681,7 @@ th {
   display: none;
 }
 
-#projectTable tbody tr:nth-child(even):not(.is-active-row):not(.is-row-selected) td:not(.name-cell) {
+#projectTable tbody tr:nth-child(even):not(.is-active-row):not(.is-row-selected) td {
   background: color-mix(in srgb, var(--surface-strong) 28%, transparent);
 }
 
@@ -5235,7 +5235,6 @@ body[data-workspace-view="projects"] #projectTable .status-cell {
 }
 
 .col-edit-hint svg,
-.project-field-legend svg,
 .col-auto-chip svg {
   width: 1em;
   height: 1em;
@@ -5252,25 +5251,6 @@ body[data-workspace-view="projects"] #projectTable .status-cell {
   background: var(--field-computed-tint);
   color: var(--muted);
   vertical-align: middle;
-}
-
-.project-field-legend {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-3);
-  min-height: var(--control-h-lg);
-  padding: 0 var(--space-6);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-pill);
-  background: var(--surface);
-  color: var(--muted);
-  font: 600 var(--text-body)/var(--line-ui) var(--font-content);
-  white-space: nowrap;
-}
-
-.project-field-legend [data-icon] {
-  display: inline-flex;
-  color: var(--accent);
 }
 
 body[data-workspace-view="projects"] #projectTable .line-col,
@@ -5722,7 +5702,7 @@ body[data-workspace-view="regions"] .region-fill-picker span {
   grid-template-columns: 36px 1fr 1fr 116px;
   align-items: center;
   gap: var(--space-7);
-  padding: var(--space-2) calc(var(--space-12) + var(--space-10)) 0;
+  padding: var(--space-2) var(--space-10) 0;
   color: var(--muted);
 }
 
@@ -5731,8 +5711,8 @@ body[data-workspace-view="regions"] .region-fill-picker span {
 }
 
 .translation-column-labels > span:last-child {
-  justify-self: end;
-  text-align: right;
+  justify-self: center;
+  text-align: center;
 }
 
 .translation-column-labels [data-icon] {
