@@ -243,6 +243,43 @@ describe("vanillaPlotypusStateAdapter", () => {
     expect(adapter.runProjectPointsCommand({ type: "add-row" }).label).toBe("Read-only bridge ignored add-row");
   });
 
+  it("runs feature-flagged vanilla Properties commands when explicitly enabled", () => {
+    const runPropertiesCommand = vi.fn(() => ({ label: "Toggled vanilla Properties panel" }));
+    const adapter = createVanillaPlotypusStateAdapter(
+      {
+        PLOTYPUS_APP_STATE_READONLY: {
+          getSnapshot: () => ({}),
+          runPropertiesCommand
+        },
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn()
+      },
+      { allowCommands: true }
+    );
+
+    expect(adapter.runPropertiesCommand({ type: "toggle-collapsed" }).label).toBe(
+      "Toggled vanilla Properties panel"
+    );
+    expect(runPropertiesCommand).toHaveBeenCalledWith({ type: "toggle-collapsed" });
+  });
+
+  it("does not run vanilla command methods without the command flag", () => {
+    const runPropertiesCommand = vi.fn(() => ({ label: "Should not run" }));
+    const adapter = createVanillaPlotypusStateAdapter({
+      PLOTYPUS_APP_STATE_READONLY: {
+        getSnapshot: () => ({}),
+        runPropertiesCommand
+      },
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    });
+
+    expect(adapter.runPropertiesCommand({ type: "toggle-collapsed" }).label).toBe(
+      "Read-only bridge ignored toggle-collapsed"
+    );
+    expect(runPropertiesCommand).not.toHaveBeenCalled();
+  });
+
   it("subscribes to vanilla snapshot events", () => {
     const addEventListener = vi.fn();
     const removeEventListener = vi.fn();

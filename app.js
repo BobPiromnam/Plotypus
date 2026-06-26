@@ -1643,14 +1643,41 @@
     window.PLOTYPUS_APP_STATE_READONLY.notify();
   }
 
-  window.PLOTYPUS_APP_STATE_READONLY = Object.freeze({
+  function isReactCommandBridgeEnabled() {
+    try {
+      return new URLSearchParams(window.location.search).get("reactCommands") === "1";
+    } catch {
+      return false;
+    }
+  }
+
+  function runReadonlyPropertiesCommand(command) {
+    if (!command || typeof command !== "object") return { label: "Ignored invalid Properties command" };
+    if (command.type === "toggle-collapsed") {
+      setPropertiesCollapsed(!document.body.classList.contains("properties-collapsed"));
+      return { label: "Toggled vanilla Properties panel" };
+    }
+    if (command.type === "set-collapsed") {
+      setPropertiesCollapsed(Boolean(command.collapsed));
+      return { label: Boolean(command.collapsed) ? "Collapsed vanilla Properties panel" : "Expanded vanilla Properties panel" };
+    }
+    return { label: "Ignored unsupported Properties command" };
+  }
+
+  const readonlyAppStateBridge = {
     getSnapshot: createReadonlyAppSnapshot,
     notify() {
       if (typeof window.CustomEvent === "function") {
         window.dispatchEvent(new window.CustomEvent("plotypus:state-snapshot"));
       }
     }
-  });
+  };
+
+  if (isReactCommandBridgeEnabled()) {
+    readonlyAppStateBridge.runPropertiesCommand = runReadonlyPropertiesCommand;
+  }
+
+  window.PLOTYPUS_APP_STATE_READONLY = Object.freeze(readonlyAppStateBridge);
 
   function getProjectRowState(tr) {
     const row = readRowElement(tr);

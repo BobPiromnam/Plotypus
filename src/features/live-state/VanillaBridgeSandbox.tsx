@@ -16,7 +16,8 @@ export function VanillaBridgeSandbox() {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [adapter, setAdapter] = useState<PlotypusStateAdapter | null>(null);
   const [status, setStatus] = useState<BridgeStatus>("loading");
-  const vanillaSrc = useMemo(() => getVanillaAppUrl(), []);
+  const commandsEnabled = useMemo(() => areVanillaCommandsEnabled(), []);
+  const vanillaSrc = useMemo(() => getVanillaAppUrl(commandsEnabled), [commandsEnabled]);
 
   const handleFrameLoad = () => {
     const frameWindow = iframeRef.current?.contentWindow;
@@ -27,7 +28,7 @@ export function VanillaBridgeSandbox() {
 
     waitForVanillaBridge(frameWindow)
       .then(() => {
-        setAdapter(createVanillaPlotypusStateAdapter(frameWindow));
+        setAdapter(createVanillaPlotypusStateAdapter(frameWindow, { allowCommands: commandsEnabled }));
         setStatus("ready");
       })
       .catch(() => {
@@ -42,11 +43,11 @@ export function VanillaBridgeSandbox() {
           <p className="react-migration-kicker">Read-only bridge</p>
           <h1 id="vanillaBridgeTitle">React preview from the vanilla app</h1>
           <p>
-            This sandbox embeds the current Plotypus app and renders React UI from its read-only state bridge. It does
-            not replace or mutate production controls.
+            This sandbox embeds the current Plotypus app and renders React UI from its state bridge. Commands are
+            {commandsEnabled ? " enabled for feature-flagged bridge testing." : " disabled, so the preview is read-only."}
           </p>
         </div>
-        <BridgeStatusPill status={status} />
+        <BridgeStatusPill commandsEnabled={commandsEnabled} status={status} />
       </section>
 
       <div className="vanilla-bridge-layout">
@@ -57,18 +58,36 @@ export function VanillaBridgeSandbox() {
           src={vanillaSrc}
           onLoad={handleFrameLoad}
         />
-        {adapter ? <LiveVanillaStatePreview adapter={adapter} /> : <BridgeWaitingPanel status={status} />}
+        {adapter ? (
+          <LiveVanillaStatePreview adapter={adapter} commandsEnabled={commandsEnabled} />
+        ) : (
+          <BridgeWaitingPanel status={status} />
+        )}
       </div>
     </main>
   );
 }
 
-export function LiveVanillaStatePreview({ adapter }: { adapter: PlotypusStateAdapter }) {
+export function LiveVanillaStatePreview({
+  adapter,
+  commandsEnabled = false
+}: {
+  adapter: PlotypusStateAdapter;
+  commandsEnabled?: boolean;
+}) {
   const snapshot = useSyncExternalStore(adapter.subscribe, adapter.getSnapshot, adapter.getSnapshot);
-  return <VanillaStateSnapshotPreview snapshot={snapshot} />;
+  return <VanillaStateSnapshotPreview adapter={adapter} commandsEnabled={commandsEnabled} snapshot={snapshot} />;
 }
 
-export function VanillaStateSnapshotPreview({ snapshot }: { snapshot: PlotypusSnapshot }) {
+export function VanillaStateSnapshotPreview({
+  adapter,
+  commandsEnabled = false,
+  snapshot
+}: {
+  adapter?: PlotypusStateAdapter;
+  commandsEnabled?: boolean;
+  snapshot: PlotypusSnapshot;
+}) {
   return (
     <section className="vanilla-bridge-preview" aria-labelledby="vanillaBridgePreviewTitle">
       <div className="vanilla-bridge-preview-heading">
@@ -95,6 +114,11 @@ export function VanillaStateSnapshotPreview({ snapshot }: { snapshot: PlotypusSn
         collapsed={snapshot.properties.collapsed}
         contextKind={snapshot.properties.contextKind}
         guidance="Rendered from the vanilla app's read-only Properties snapshot."
+        onCollapse={
+          commandsEnabled && adapter
+            ? () => adapter.runPropertiesCommand({ type: "toggle-collapsed" })
+            : undefined
+        }
         subtitle={snapshot.properties.subtitle}
         title={snapshot.properties.title}
         sections={[
@@ -127,8 +151,12 @@ function BridgeWaitingPanel({ status }: { status: BridgeStatus }) {
   );
 }
 
-function BridgeStatusPill({ status }: { status: BridgeStatus }) {
-  const label = status === "ready" ? "Connected" : status === "unavailable" ? "Unavailable" : "Loading";
+function BridgeStatusPill({ commandsEnabled, status }: { commandsEnabled: boolean; status: BridgeStatus }) {
+  const label = status === "ready"
+    ? commandsEnabled ? "Connected + commands" : "Connected read-only"
+    : status === "unavailable"
+      ? "Unavailable"
+      : "Loading";
   return <span className={`vanilla-bridge-status is-${status}`}>{label}</span>;
 }
 
@@ -150,9 +178,16 @@ function waitForVanillaBridge(frameWindow: Window): Promise<void> {
   });
 }
 
-function getVanillaAppUrl() {
+function getVanillaAppUrl(commandsEnabled: boolean) {
   const isBuiltReactPage = window.location.pathname.replace(/\\/g, "/").includes("/dist/react/");
-  return new URL(isBuiltReactPage ? "../../index.html?reactBridge=1" : "../index.html?reactBridge=1", window.location.href).toString();
+  const url = new URL(isBuiltReactPage ? "../../index.html" : "../index.html", window.location.href);
+  url.searchParams.set("reactBridge", "1");
+  if (commandsEnabled) url.searchParams.set("reactCommands", "1");
+  return url.toString();
+}
+
+function areVanillaCommandsEnabled() {
+  return new URLSearchParams(window.location.search).get("reactCommands") === "1";
 }
 
 function iframeReload() {

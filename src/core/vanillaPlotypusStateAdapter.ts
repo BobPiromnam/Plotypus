@@ -4,12 +4,14 @@ import {
   type ProjectPointPreviewRow,
   type PlotypusSnapshot,
   type PlotypusStateAdapter,
-  type PlotypusStateListener
+  type PlotypusStateListener,
+  type PropertiesCommand
 } from "./plotypusStateAdapter";
-import { createReadOnlyCommandResult } from "./commandAdapter";
+import { createReadOnlyCommandResult, type AdapterCommandResult } from "./commandAdapter";
 
 type VanillaReadonlyBridge = {
   getSnapshot: () => VanillaSnapshotSource;
+  runPropertiesCommand?: (command: PropertiesCommand) => AdapterCommandResult;
 };
 
 type VanillaPreviewRowSource = Partial<Omit<ProjectPointPreviewRow, "status">> & {
@@ -53,12 +55,22 @@ type WindowLike = {
   removeEventListener: (type: string, listener: EventListener) => void;
 };
 
-export function createVanillaPlotypusStateAdapter(windowRef: WindowLike): PlotypusStateAdapter {
+type VanillaPlotypusStateAdapterOptions = {
+  allowCommands?: boolean;
+};
+
+export function createVanillaPlotypusStateAdapter(
+  windowRef: WindowLike,
+  options: VanillaPlotypusStateAdapterOptions = {}
+): PlotypusStateAdapter {
   return {
     getSnapshot() {
       return normalizeVanillaSnapshot(windowRef.PLOTYPUS_APP_STATE_READONLY?.getSnapshot());
     },
     runPropertiesCommand(command) {
+      if (options.allowCommands && typeof windowRef.PLOTYPUS_APP_STATE_READONLY?.runPropertiesCommand === "function") {
+        return windowRef.PLOTYPUS_APP_STATE_READONLY.runPropertiesCommand(command);
+      }
       return createReadOnlyCommandResult(command.type);
     },
     runProjectPointsCommand(command) {
