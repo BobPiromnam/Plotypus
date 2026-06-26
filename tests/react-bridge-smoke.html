@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Plotypus React bridge smoke</title>
+  <style>
+    html, body { height: 100%; margin: 0; font: 14px system-ui, sans-serif; }
+    #bridge { display: block; width: 100%; height: 100%; border: 0; }
+    #result { position: fixed; left: 8px; bottom: 8px; z-index: 10; width: 360px; max-height: 140px; overflow: auto; margin: 0; padding: 8px; background: rgba(255,255,255,.96); border: 1px solid #333; font: 10px/1.3 monospace; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <iframe id="bridge" title="React bridge under test"></iframe>
+  <pre id="result">{"status":"running"}</pre>
+  <script>
+    const result = document.querySelector("#result");
+    const bridge = document.querySelector("#bridge");
+    const checks = [];
+
+    function assert(name, pass, detail = "") {
+      checks.push({ name, pass: Boolean(pass), detail });
+    }
+
+    function waitFor(predicate, timeout = 10000) {
+      const started = performance.now();
+      return new Promise((resolve, reject) => {
+        const poll = () => {
+          try {
+            const value = predicate();
+            if (value) return resolve(value);
+          } catch (_error) {
+            // Frames may still be navigating.
+          }
+          if (performance.now() - started > timeout) return reject(new Error(`Timed out waiting: ${predicate.toString().slice(0, 90)}`));
+          setTimeout(poll, 50);
+        };
+        poll();
+      });
+    }
+
+    function bridgeUrl(commandMode = false) {
+      const url = new URL("../dist/react/react-vanilla-bridge.html", window.location.href);
+      if (commandMode) url.searchParams.set("reactCommands", "1");
+      return url.toString();
+    }
+
+    function loadBridge(commandMode = false) {
+      return new Promise(resolve => {
+        bridge.addEventListener("load", () => resolve(), { once: true });
+        bridge.src = bridgeUrl(commandMode);
+      });
+    }
+
+    async function getBridgeDocument() {
+      const started = performance.now();
+      while (performance.now() - started < 20000) {
+        const doc = bridge.contentDocument;
+        if (doc?.querySelector(".vanilla-bridge-command-test")) return doc;
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      const doc = bridge.contentDocument;
+      const detail = {
+        bridgeSrc: bridge.src,
+        readyState: doc?.readyState || "",
+        title: doc?.title || "",
+        body: (doc?.body?.textContent || "").replace(/\s+/g, " ").trim().slice(0, 500),
+        html: (doc?.documentElement?.outerHTML || "").slice(0, 500)
+      };
+      throw new Error(`Timed out waiting for React bridge command surface: ${JSON.stringify(detail)}`);
+    }
+
+    async function getVanillaFrameWindow(bridgeDoc) {
+      return waitFor(() => {
+        const frame = bridgeDoc.querySelector(".vanilla-bridge-frame");
+        const frameWindow = frame?.contentWindow;
+        return frameWindow?.PLOTYPUS_APP_STATE_READONLY ? frameWindow : null;
+      }, 15000);
+    }
+
+    async function run() {
+      await loadBridge(false);
+      let bridgeDoc = await getBridgeDocument();
+      let text = bridgeDoc.body.textContent || "";
+      const commandLink = bridgeDoc.querySelector(".vanilla-bridge-command-test a[href*='reactCommands=1']");
+      const vanillaFrame = bridgeDoc.querySelector(".vanilla-bridge-frame");
+
+      assert("Read-only React bridge exposes command test surface", /Command bridge test/.test(text) && /Read-only mode/.test(text), text);
+      assert("Read-only React bridge provides command-mode launch link", Boolean(commandLink), commandLink?.getAttribute("href") || "");
+      assert("Read-only React bridge embeds vanilla app without command flag", !/reactCommands=1/.test(vanillaFrame?.src || ""), vanillaFrame?.src || "");
+
+      await loadBridge(true);
+      bridgeDoc = await getBridgeDocument();
+      text = bridgeDoc.body.textContent || "";
+      const commandButton = bridgeDoc.querySelector(".vanilla-bridge-command-test button");
+      const commandFrame = bridgeDoc.querySelector(".vanilla-bridge-frame");
+      const vanillaWindow = await getVanillaFrameWindow(bridgeDoc);
+      const bridgeApi = vanillaWindow.PLOTYPUS_APP_STATE_READONLY;
+      const wasCollapsed = Boolean(bridgeApi.getSnapshot().properties.collapsed);
+
+      assert("Command-enabled React bridge shows command state", /Commands enabled/.test(text) && /Toggle Properties from React/.test(text), text);
+      assert("Command-enabled React bridge passes command flag to vanilla iframe", /reactCommands=1/.test(commandFrame?.src || ""), commandFrame?.src || "");
+      assert("Command-enabled vanilla bridge exposes Properties command", typeof bridgeApi.runPropertiesCommand === "function");
+
+      commandButton?.click();
+      const nextSnapshot = await waitFor(() => {
+        const snapshot = bridgeApi.getSnapshot();
+        return Boolean(snapshot.properties.collapsed) !== wasCollapsed ? snapshot : null;
+      }, 3000);
+      assert("React command toggles vanilla Properties state", Boolean(nextSnapshot), JSON.stringify(nextSnapshot?.properties || null));
+
+      const failed = checks.filter(check => !check.pass);
+      result.textContent = JSON.stringify({
+        status: failed.length ? "failed" : "ok",
+        checks,
+        failures: failed.length
+      }, null, 2);
+    }
+
+    run().catch(error => {
+      result.textContent = JSON.stringify({ status: "error", message: error.message, checks }, null, 2);
+    });
+  </script>
+</body>
+</html>

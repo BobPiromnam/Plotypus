@@ -63,13 +63,22 @@ export function createVanillaPlotypusStateAdapter(
   windowRef: WindowLike,
   options: VanillaPlotypusStateAdapterOptions = {}
 ): PlotypusStateAdapter {
+  let cachedSnapshot = normalizeVanillaSnapshot(windowRef.PLOTYPUS_APP_STATE_READONLY?.getSnapshot());
+
+  const refreshSnapshot = () => {
+    cachedSnapshot = normalizeVanillaSnapshot(windowRef.PLOTYPUS_APP_STATE_READONLY?.getSnapshot());
+    return cachedSnapshot;
+  };
+
   return {
     getSnapshot() {
-      return normalizeVanillaSnapshot(windowRef.PLOTYPUS_APP_STATE_READONLY?.getSnapshot());
+      return cachedSnapshot;
     },
     runPropertiesCommand(command) {
       if (options.allowCommands && typeof windowRef.PLOTYPUS_APP_STATE_READONLY?.runPropertiesCommand === "function") {
-        return windowRef.PLOTYPUS_APP_STATE_READONLY.runPropertiesCommand(command);
+        const result = windowRef.PLOTYPUS_APP_STATE_READONLY.runPropertiesCommand(command);
+        refreshSnapshot();
+        return result;
       }
       return createReadOnlyCommandResult(command.type);
     },
@@ -86,7 +95,10 @@ export function createVanillaPlotypusStateAdapter(
       return undefined;
     },
     subscribe(listener: PlotypusStateListener) {
-      const handleSnapshot = () => listener();
+      const handleSnapshot = () => {
+        refreshSnapshot();
+        listener();
+      };
       windowRef.addEventListener("plotypus:state-snapshot", handleSnapshot);
 
       return () => {

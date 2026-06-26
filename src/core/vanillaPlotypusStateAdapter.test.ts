@@ -231,6 +231,38 @@ describe("vanillaPlotypusStateAdapter", () => {
     expect(adapter.getSnapshot().projectPoints.rowCount).toBe(12);
   });
 
+  it("keeps a stable snapshot object until the vanilla bridge emits a state event", () => {
+    let rowCount = 12;
+    let eventListener: EventListener | undefined;
+    const adapter = createVanillaPlotypusStateAdapter({
+      PLOTYPUS_APP_STATE_READONLY: {
+        getSnapshot: () => ({
+          projectPoints: {
+            rowCount
+          }
+        })
+      },
+      addEventListener: vi.fn((type: string, listener: EventListener) => {
+        if (type === "plotypus:state-snapshot") eventListener = listener;
+      }),
+      removeEventListener: vi.fn()
+    });
+    const listener = vi.fn();
+    adapter.subscribe(listener);
+
+    const firstSnapshot = adapter.getSnapshot();
+    rowCount = 13;
+
+    expect(adapter.getSnapshot()).toBe(firstSnapshot);
+    expect(adapter.getSnapshot().projectPoints.rowCount).toBe(12);
+
+    eventListener?.({} as Event);
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(adapter.getSnapshot()).not.toBe(firstSnapshot);
+    expect(adapter.getSnapshot().projectPoints.rowCount).toBe(13);
+  });
+
   it("keeps command methods read-only for the vanilla bridge", () => {
     const adapter = createVanillaPlotypusStateAdapter({
       addEventListener: vi.fn(),

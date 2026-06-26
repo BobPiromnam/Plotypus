@@ -1619,7 +1619,9 @@
         }
       },
       properties: {
-        collapsed: document.body.classList.contains("properties-collapsed"),
+        collapsed: propertiesDrawerMedia.matches
+          ? !document.body.classList.contains("properties-open")
+          : document.body.classList.contains("properties-collapsed"),
         contextKind: activePropertiesSelection && activePropertiesSelection.kind || "document",
         sections: createReadonlyPropertySections(),
         subtitle: els.propertiesSubtitle ? els.propertiesSubtitle.textContent || "" : "",
@@ -1654,7 +1656,7 @@
   function runReadonlyPropertiesCommand(command) {
     if (!command || typeof command !== "object") return { label: "Ignored invalid Properties command" };
     if (command.type === "toggle-collapsed") {
-      setPropertiesCollapsed(!document.body.classList.contains("properties-collapsed"));
+      setPropertiesCollapsed(!createReadonlyAppSnapshot().properties.collapsed);
       return { label: "Toggled vanilla Properties panel" };
     }
     if (command.type === "set-collapsed") {
@@ -5720,7 +5722,7 @@
 
   function setPropertiesCollapsed(collapsed, { persist = true } = {}) {
     if (propertiesDrawerMedia.matches) {
-      setPropertiesDrawerOpen(Boolean(collapsed));
+      setPropertiesDrawerOpen(!Boolean(collapsed));
       return;
     }
     document.body.classList.toggle("properties-collapsed", Boolean(collapsed));
