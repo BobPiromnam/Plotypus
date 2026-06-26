@@ -1,4 +1,5 @@
 import type { ProjectPointsToolbarState } from "../features/project-points/ProjectPointsToolbar";
+import { createCommandResult, type AdapterCommandResult } from "./commandAdapter";
 
 export type PlotypusLocale = "en" | "fr";
 
@@ -83,22 +84,14 @@ export type ProjectPointsCommand =
   | { type: "delete-selection" }
   | { priority: string; type: "set-priority" };
 
-export type ProjectPointsCommandResult = {
-  label: string;
-};
-
 export type PropertiesCommand =
   | { collapsed: boolean; type: "set-collapsed" }
   | { type: "toggle-collapsed" };
 
-export type PropertiesCommandResult = {
-  label: string;
-};
-
 export type PlotypusStateAdapter = {
   getSnapshot: () => PlotypusSnapshot;
-  runPropertiesCommand: (command: PropertiesCommand) => PropertiesCommandResult;
-  runProjectPointsCommand: (command: ProjectPointsCommand) => ProjectPointsCommandResult;
+  runPropertiesCommand: (command: PropertiesCommand) => AdapterCommandResult;
+  runProjectPointsCommand: (command: ProjectPointsCommand) => AdapterCommandResult;
   setLocale: (locale: PlotypusLocale) => void;
   setProjectPointsSelection: (selection: Pick<ProjectPointsToolbarState, "selectedCellCount" | "selectedRowCount">) => void;
   setPropertiesCollapsed: (collapsed: boolean) => void;
@@ -219,7 +212,7 @@ export function createMemoryPlotypusStateAdapter(
         }
       });
 
-      return { label: commandLabel };
+      return createCommandResult(commandLabel);
     },
     runProjectPointsCommand(command) {
       const commandLabel = getProjectPointsCommandLabel(command);
@@ -239,7 +232,7 @@ export function createMemoryPlotypusStateAdapter(
         }
       });
 
-      return { label: commandLabel };
+      return createCommandResult(commandLabel);
     },
     setLocale(locale) {
       update({

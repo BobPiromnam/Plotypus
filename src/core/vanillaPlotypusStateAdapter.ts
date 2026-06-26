@@ -6,6 +6,7 @@ import {
   type PlotypusStateAdapter,
   type PlotypusStateListener
 } from "./plotypusStateAdapter";
+import { createReadOnlyCommandResult } from "./commandAdapter";
 
 type VanillaReadonlyBridge = {
   getSnapshot: () => VanillaSnapshotSource;
@@ -58,10 +59,10 @@ export function createVanillaPlotypusStateAdapter(windowRef: WindowLike): Plotyp
       return normalizeVanillaSnapshot(windowRef.PLOTYPUS_APP_STATE_READONLY?.getSnapshot());
     },
     runPropertiesCommand(command) {
-      return { label: `Read-only bridge ignored ${command.type}` };
+      return createReadOnlyCommandResult(command.type);
     },
     runProjectPointsCommand(command) {
-      return { label: `Read-only bridge ignored ${command.type}` };
+      return createReadOnlyCommandResult(command.type);
     },
     setLocale() {
       return undefined;
