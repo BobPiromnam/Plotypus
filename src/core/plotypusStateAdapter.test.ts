@@ -10,6 +10,7 @@ describe("plotypusStateAdapter", () => {
     expect(snapshot.projectPoints.toolbar.selectedCellCount).toBe(3);
     expect(snapshot.properties.sections[0].rows[0].origin).toBe("editable");
     expect(snapshot.properties.title).toBe("Document");
+    expect(snapshot.workspaceSummary.metrics[0].label).toBe("Rows");
   });
 
   it("keeps language state in sync with the project toolbar authoring language", () => {

@@ -1571,6 +1571,10 @@
   function createReadonlyAppSnapshot() {
     const rows = getRows();
     const selectionCounts = getProjectSelectionCounts();
+    const rowSummary = summarizeProjectRows(rows);
+    const regionSummary = getVisibleRegionSummary();
+    const qualitySummary = getQualitySummary();
+    const reviewCount = getReviewIssueCount();
     return {
       activeWorkspace: activeDataTable,
       locale: currentUiLanguage,
@@ -1620,6 +1624,16 @@
         sections: createReadonlyPropertySections(),
         subtitle: els.propertiesSubtitle ? els.propertiesSubtitle.textContent || "" : "",
         title: els.propertiesTitle ? els.propertiesTitle.textContent || "" : ""
+      },
+      workspaceSummary: {
+        activeLabel: els.tablePanelTitle ? els.tablePanelTitle.textContent || "" : t("summary.map"),
+        metrics: [
+          { key: "rows", label: t("summary.rows"), state: rowSummary.total ? "ok" : "warning", value: String(rowSummary.total) },
+          { key: "mapped", label: t("summary.mapped"), state: rowSummary.mapped ? "ok" : "neutral", value: String(rowSummary.mapped) },
+          { key: "regions", label: t("summary.regions"), state: regionSummary.state, value: regionSummary.value },
+          { key: "quality", label: t("summary.toReview"), state: reviewCount ? "warning" : "ok", value: String(reviewCount) }
+        ],
+        qualityLabel: qualitySummary.label || ""
       }
     };
   }

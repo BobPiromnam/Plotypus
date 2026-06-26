@@ -28,12 +28,22 @@ type VanillaPropertiesSource = Partial<Omit<PlotypusSnapshot["properties"], "sec
   sections?: VanillaPropertiesSectionSource[];
 };
 
-type VanillaSnapshotSource = Partial<Omit<PlotypusSnapshot, "mapBaselayer" | "projectPoints" | "properties">> & {
+type VanillaWorkspaceMetricSource = {
+  key?: unknown;
+  label?: unknown;
+  state?: unknown;
+  value?: unknown;
+};
+
+type VanillaSnapshotSource = Partial<Omit<PlotypusSnapshot, "mapBaselayer" | "projectPoints" | "properties" | "workspaceSummary">> & {
   mapBaselayer?: VanillaMapBaselayerSource;
   projectPoints?: Partial<Omit<PlotypusSnapshot["projectPoints"], "previewRows">> & {
     previewRows?: VanillaPreviewRowSource[];
   };
   properties?: VanillaPropertiesSource;
+  workspaceSummary?: Partial<Omit<PlotypusSnapshot["workspaceSummary"], "metrics">> & {
+    metrics?: VanillaWorkspaceMetricSource[];
+  };
 };
 
 type WindowLike = {
@@ -104,6 +114,11 @@ export function normalizeVanillaSnapshot(source: VanillaSnapshotSource | undefin
       sections: normalizePropertySections(source?.properties?.sections, fallback.properties.sections),
       subtitle: stringOrFallback(source?.properties?.subtitle, fallback.properties.subtitle),
       title: stringOrFallback(source?.properties?.title, fallback.properties.title)
+    },
+    workspaceSummary: {
+      activeLabel: stringOrFallback(source?.workspaceSummary?.activeLabel, fallback.workspaceSummary.activeLabel),
+      metrics: normalizeWorkspaceMetrics(source?.workspaceSummary?.metrics, fallback.workspaceSummary.metrics),
+      qualityLabel: stringOrFallback(source?.workspaceSummary?.qualityLabel, fallback.workspaceSummary.qualityLabel)
     }
   };
 }
@@ -176,6 +191,27 @@ function clonePropertySection(section: PlotypusSnapshot["properties"]["sections"
     title: section.title,
     rows: section.rows.map((row) => ({ ...row }))
   };
+}
+
+function normalizeWorkspaceMetrics(value: unknown, fallback: PlotypusSnapshot["workspaceSummary"]["metrics"]) {
+  if (!Array.isArray(value)) return fallback.map((metric) => ({ ...metric }));
+  const metrics = value.slice(0, 8).map((metric, index) => {
+    const source = metric && typeof metric === "object"
+      ? metric as VanillaWorkspaceMetricSource
+      : {};
+    return {
+      key: stringOrFallback(source.key, `metric-${index + 1}`),
+      label: stringOrFallback(source.label, `Metric ${index + 1}`),
+      state: normalizeMetricState(source.state),
+      value: stringOrFallback(source.value, "0")
+    };
+  });
+
+  return metrics.length ? metrics : fallback.map((metric) => ({ ...metric }));
+}
+
+function normalizeMetricState(value: unknown): PlotypusSnapshot["workspaceSummary"]["metrics"][number]["state"] {
+  return value === "ok" || value === "warning" ? value : "neutral";
 }
 
 function normalizeHexColour(value: unknown) {

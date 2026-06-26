@@ -21,6 +21,19 @@ export type PropertiesPreviewSection = {
   title: string;
 };
 
+export type WorkspaceSummaryMetric = {
+  key: string;
+  label: string;
+  state: "neutral" | "ok" | "warning";
+  value: string;
+};
+
+export type WorkspaceSummarySnapshot = {
+  activeLabel: string;
+  metrics: WorkspaceSummaryMetric[];
+  qualityLabel: string;
+};
+
 export type ProjectPointPreviewRow = {
   hasLatitude: boolean;
   hasLongitude: boolean;
@@ -56,6 +69,7 @@ export type PlotypusSnapshot = {
     toolbar: ProjectPointsToolbarState;
   };
   properties: PropertiesPanelSnapshot;
+  workspaceSummary: WorkspaceSummarySnapshot;
 };
 
 export type PlotypusStateListener = () => void;
@@ -138,6 +152,16 @@ export function createDefaultPlotypusSnapshot(): PlotypusSnapshot {
       ],
       subtitle: "Map display and interaction",
       title: "Document"
+    },
+    workspaceSummary: {
+      activeLabel: "Map",
+      metrics: [
+        { key: "rows", label: "Rows", state: "ok", value: "21" },
+        { key: "mapped", label: "Mapped", state: "ok", value: "20" },
+        { key: "regions", label: "Regions", state: "ok", value: "13/13" },
+        { key: "quality", label: "To review", state: "warning", value: "7" }
+      ],
+      qualityLabel: "7 issues"
     }
   };
 }
@@ -225,6 +249,11 @@ function cloneSnapshot(snapshot: PlotypusSnapshot): PlotypusSnapshot {
         title: section.title,
         rows: section.rows.map((row) => ({ ...row }))
       }))
+    },
+    workspaceSummary: {
+      activeLabel: snapshot.workspaceSummary.activeLabel,
+      metrics: snapshot.workspaceSummary.metrics.map((metric) => ({ ...metric })),
+      qualityLabel: snapshot.workspaceSummary.qualityLabel
     }
   };
 }

@@ -8,6 +8,7 @@ import { ProjectPointsPreviewTable } from "../project-points/ProjectPointsPrevie
 import { ProjectPointsToolbar } from "../project-points/ProjectPointsToolbar";
 import { PropertiesFactsPreview } from "../properties/PropertiesFactsPreview";
 import { PropertiesPanelShell } from "../properties/PropertiesPanelShell";
+import { WorkspaceSummaryPreview } from "../workspace/WorkspaceSummaryPreview";
 
 type BridgeStatus = "loading" | "ready" | "unavailable";
 
@@ -80,6 +81,7 @@ export function VanillaStateSnapshotPreview({ snapshot }: { snapshot: PlotypusSn
         </p>
       </div>
 
+      <WorkspaceSummaryPreview summary={snapshot.workspaceSummary} />
       <ProjectPointsToolbar state={snapshot.projectPoints.toolbar} />
       <ProjectPointsPreviewTable rows={snapshot.projectPoints.previewRows} />
       <MapBaselayerPreviewTable

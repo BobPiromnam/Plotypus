@@ -55,6 +55,14 @@ describe("vanillaPlotypusStateAdapter", () => {
         ],
         subtitle: "Points de projet",
         title: "Route et port"
+      },
+      workspaceSummary: {
+        activeLabel: "Points de projet",
+        metrics: [
+          { key: "rows", label: "Lignes", state: "ok", value: "4" },
+          { key: "quality", label: "À réviser", state: "warning", value: "1" }
+        ],
+        qualityLabel: "1 à réviser"
       }
     });
 
@@ -67,6 +75,8 @@ describe("vanillaPlotypusStateAdapter", () => {
     expect(snapshot.projectPoints.previewRows[0].status).toBe("mapped");
     expect(snapshot.properties.collapsed).toBe(true);
     expect(snapshot.properties.sections[0].rows[1].origin).toBe("automatic");
+    expect(snapshot.workspaceSummary.activeLabel).toBe("Points de projet");
+    expect(snapshot.workspaceSummary.metrics[1].state).toBe("warning");
   });
 
   it("sanitizes invalid preview rows from the vanilla bridge", () => {
@@ -157,6 +167,29 @@ describe("vanillaPlotypusStateAdapter", () => {
         { label: "Manual value", origin: "editable", value: "Custom" }
       ]
     });
+  });
+
+  it("sanitizes invalid workspace summary metrics from the vanilla bridge", () => {
+    const snapshot = normalizeVanillaSnapshot({
+      workspaceSummary: {
+        activeLabel: "",
+        metrics: [
+          { key: "", label: "", state: "danger", value: "" },
+          { key: "mapped", label: "Mapped", state: "ok", value: "20" }
+        ],
+        qualityLabel: ""
+      }
+    });
+
+    expect(snapshot.workspaceSummary.activeLabel).toBe("Map");
+    expect(snapshot.workspaceSummary.qualityLabel).toBe("7 issues");
+    expect(snapshot.workspaceSummary.metrics[0]).toEqual({
+      key: "metric-1",
+      label: "Metric 1",
+      state: "neutral",
+      value: "0"
+    });
+    expect(snapshot.workspaceSummary.metrics[1].state).toBe("ok");
   });
 
   it("falls back when the vanilla bridge is unavailable", () => {
