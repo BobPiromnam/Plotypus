@@ -8,6 +8,7 @@ describe("plotypusStateAdapter", () => {
     expect(snapshot.locale).toBe("en");
     expect(snapshot.mapBaselayer.previewRows[0].name).toBe("Alberta");
     expect(snapshot.projectPoints.toolbar.selectedCellCount).toBe(3);
+    expect(snapshot.properties.sections[0].rows[0].origin).toBe("editable");
     expect(snapshot.properties.title).toBe("Document");
   });
 

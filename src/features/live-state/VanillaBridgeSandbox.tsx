@@ -6,6 +6,7 @@ import { createVanillaPlotypusStateAdapter } from "../../core/vanillaPlotypusSta
 import { MapBaselayerPreviewTable } from "../map-baselayer/MapBaselayerPreviewTable";
 import { ProjectPointsPreviewTable } from "../project-points/ProjectPointsPreviewTable";
 import { ProjectPointsToolbar } from "../project-points/ProjectPointsToolbar";
+import { PropertiesFactsPreview } from "../properties/PropertiesFactsPreview";
 import { PropertiesPanelShell } from "../properties/PropertiesPanelShell";
 
 type BridgeStatus = "loading" | "ready" | "unavailable";
@@ -96,23 +97,8 @@ export function VanillaStateSnapshotPreview({ snapshot }: { snapshot: PlotypusSn
         title={snapshot.properties.title}
         sections={[
           {
-            title: "Bridge data",
-            children: (
-              <dl className="vanilla-bridge-facts">
-                <div>
-                  <dt>Selected cells</dt>
-                  <dd>{snapshot.projectPoints.toolbar.selectedCellCount}</dd>
-                </div>
-                <div>
-                  <dt>Selected rows</dt>
-                  <dd>{snapshot.projectPoints.toolbar.selectedRowCount}</dd>
-                </div>
-                <div>
-                  <dt>Authoring language</dt>
-                  <dd>{snapshot.projectPoints.toolbar.activeLanguage.toUpperCase()}</dd>
-                </div>
-              </dl>
-            )
+            title: "Current Properties facts",
+            children: <PropertiesFactsPreview sections={snapshot.properties.sections} />
           }
         ]}
       />

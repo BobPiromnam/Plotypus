@@ -1505,6 +1505,69 @@
     };
   }
 
+  function getSelectedOptionText(select) {
+    if (!select || select.selectedIndex < 0) return "";
+    return select.options[select.selectedIndex]?.textContent?.trim() || "";
+  }
+
+  function onOffLabel(value) {
+    return value ? t("settings.on") : t("settings.off");
+  }
+
+  function createReadonlyPropertySections() {
+    const sections = [
+      {
+        title: t("properties.section.mapSize"),
+        rows: [
+          { label: t("properties.field.pagePreset"), value: getSelectedOptionText(els.bookSizeInput), origin: "editable" },
+          { label: t("properties.field.canvasSize"), value: getSelectedOptionText(els.imageSizeInput), origin: "editable" },
+          { label: t("properties.field.defaultCharactersPerLine"), value: els.labelCharsInput?.value || "", origin: "editable" }
+        ]
+      },
+      {
+        title: t("properties.section.display"),
+        rows: [
+          { label: t("properties.furniture.legend"), value: onOffLabel(Boolean(els.showLegendInput?.checked)), origin: "editable" },
+          { label: t("properties.furniture.callouts"), value: onOffLabel(Boolean(els.showCalloutsInput?.checked)), origin: "editable" },
+          { label: t("settings.compactBoxes"), value: onOffLabel(Boolean(els.compactFurnitureInput?.checked)), origin: "editable" },
+          { label: t("settings.leaderBorder"), value: onOffLabel(Boolean(els.showLineCasingInput?.checked)), origin: "editable" },
+          { label: t("settings.elbowLeaders"), value: onOffLabel(Boolean(els.routeDenseLeadersInput?.checked)), origin: "editable" }
+        ]
+      }
+    ];
+
+    if (activeDataTable === "regions" || activePropertiesSelection?.kind === "map") {
+      sections.unshift({
+        title: t("properties.title.mapBaselayer"),
+        rows: [
+          { label: t("properties.field.mapBoundary"), value: getSelectedOptionText(els.boundaryInput), origin: "editable" },
+          { label: t("properties.field.regionPreset"), value: getSelectedOptionText(els.regionPresetInput), origin: "editable" },
+          { label: t("summary.regions"), value: getVisibleRegionSummary().value, origin: "automatic" }
+        ]
+      });
+    } else {
+      sections.unshift({
+        title: t("properties.section.mapStyle"),
+        rows: [
+          { label: t("properties.field.mapStyle"), value: getSelectedOptionText(els.mapStylePresetInput), origin: "editable" },
+          { label: t("properties.status.titleRequired"), value: els.mapTitleEnInput?.value || els.mapTitleFrInput?.value ? t("properties.status.complete") : t("properties.status.missing"), origin: "automatic" },
+          { label: t("properties.status.textRequired"), value: els.mapTextEnInput?.value || els.mapTextFrInput?.value ? t("properties.status.complete") : t("properties.status.missing"), origin: "automatic" }
+        ]
+      });
+    }
+
+    return sections.map(section => ({
+      title: section.title,
+      rows: section.rows
+        .filter(row => row.label)
+        .map(row => ({
+          label: row.label,
+          origin: row.origin,
+          value: row.value || "—"
+        }))
+    }));
+  }
+
   function createReadonlyAppSnapshot() {
     const rows = getRows();
     const selectionCounts = getProjectSelectionCounts();
@@ -1554,6 +1617,7 @@
       properties: {
         collapsed: document.body.classList.contains("properties-collapsed"),
         contextKind: activePropertiesSelection && activePropertiesSelection.kind || "document",
+        sections: createReadonlyPropertySections(),
         subtitle: els.propertiesSubtitle ? els.propertiesSubtitle.textContent || "" : "",
         title: els.propertiesTitle ? els.propertiesTitle.textContent || "" : ""
       }

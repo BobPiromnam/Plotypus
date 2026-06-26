@@ -265,6 +265,7 @@
         assert(checks, "Read-only app state bridge exposes workspace and project counts", Boolean(readonlySnapshot && readonlySnapshot.activeWorkspace === doc.body.dataset.workspaceView && Number(readonlySnapshot.projectPoints?.rowCount || 0) === doc.querySelectorAll("#projectTable tbody tr").length), JSON.stringify(readonlySnapshot || null));
         assert(checks, "Read-only app state bridge exposes project row previews", Boolean(readonlySnapshot?.projectPoints?.previewRows?.length && readonlySnapshot.projectPoints.previewRows[0].name && ["blank", "callout", "mapped", "missing"].includes(readonlySnapshot.projectPoints.previewRows[0].status)), JSON.stringify(readonlySnapshot?.projectPoints?.previewRows || null));
         assert(checks, "Read-only app state bridge exposes baselayer row previews", Boolean(readonlySnapshot?.mapBaselayer?.previewRows?.length && readonlySnapshot.mapBaselayer.previewRows[0].name && /^#[0-9a-f]{6}$/i.test(readonlySnapshot.mapBaselayer.previewRows[0].colour || "")), JSON.stringify(readonlySnapshot?.mapBaselayer || null));
+        assert(checks, "Read-only app state bridge exposes Properties fact sections", Boolean(readonlySnapshot?.properties?.sections?.length && readonlySnapshot.properties.sections[0].rows?.some(row => row.label && row.value && ["editable", "automatic"].includes(row.origin))), JSON.stringify(readonlySnapshot?.properties?.sections || null));
         let readonlySnapshotEvents = 0;
         frame.contentWindow.addEventListener("plotypus:state-snapshot", () => {
           readonlySnapshotEvents += 1;

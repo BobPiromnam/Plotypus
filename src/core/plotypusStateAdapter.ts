@@ -5,7 +5,19 @@ export type PlotypusLocale = "en" | "fr";
 export type PropertiesPanelSnapshot = {
   collapsed: boolean;
   contextKind: string;
+  sections: PropertiesPreviewSection[];
   subtitle: string;
+  title: string;
+};
+
+export type PropertiesPreviewRow = {
+  label: string;
+  origin: "automatic" | "editable";
+  value: string;
+};
+
+export type PropertiesPreviewSection = {
+  rows: PropertiesPreviewRow[];
   title: string;
 };
 
@@ -115,6 +127,15 @@ export function createDefaultPlotypusSnapshot(): PlotypusSnapshot {
     properties: {
       collapsed: false,
       contextKind: "Document",
+      sections: [
+        {
+          title: "Map style",
+          rows: [
+            { label: "Map style", origin: "editable", value: "GoC green" },
+            { label: "Title", origin: "automatic", value: "Missing" }
+          ]
+        }
+      ],
       subtitle: "Map display and interaction",
       title: "Document"
     }
@@ -198,6 +219,12 @@ function cloneSnapshot(snapshot: PlotypusSnapshot): PlotypusSnapshot {
       rowCount: snapshot.projectPoints.rowCount,
       toolbar: { ...snapshot.projectPoints.toolbar }
     },
-    properties: { ...snapshot.properties }
+    properties: {
+      ...snapshot.properties,
+      sections: snapshot.properties.sections.map((section) => ({
+        title: section.title,
+        rows: section.rows.map((row) => ({ ...row }))
+      }))
+    }
   };
 }

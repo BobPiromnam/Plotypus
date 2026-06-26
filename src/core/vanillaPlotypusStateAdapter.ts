@@ -19,11 +19,21 @@ type VanillaMapBaselayerSource = Partial<Omit<PlotypusSnapshot["mapBaselayer"], 
   previewRows?: Partial<MapBaselayerPreviewRow>[];
 };
 
-type VanillaSnapshotSource = Partial<Omit<PlotypusSnapshot, "mapBaselayer" | "projectPoints">> & {
+type VanillaPropertiesSectionSource = {
+  rows?: Array<{ label?: unknown; origin?: unknown; value?: unknown }>;
+  title?: unknown;
+};
+
+type VanillaPropertiesSource = Partial<Omit<PlotypusSnapshot["properties"], "sections">> & {
+  sections?: VanillaPropertiesSectionSource[];
+};
+
+type VanillaSnapshotSource = Partial<Omit<PlotypusSnapshot, "mapBaselayer" | "projectPoints" | "properties">> & {
   mapBaselayer?: VanillaMapBaselayerSource;
   projectPoints?: Partial<Omit<PlotypusSnapshot["projectPoints"], "previewRows">> & {
     previewRows?: VanillaPreviewRowSource[];
   };
+  properties?: VanillaPropertiesSource;
 };
 
 type WindowLike = {
@@ -91,6 +101,7 @@ export function normalizeVanillaSnapshot(source: VanillaSnapshotSource | undefin
     properties: {
       collapsed: Boolean(source?.properties?.collapsed),
       contextKind: stringOrFallback(source?.properties?.contextKind, fallback.properties.contextKind),
+      sections: normalizePropertySections(source?.properties?.sections, fallback.properties.sections),
       subtitle: stringOrFallback(source?.properties?.subtitle, fallback.properties.subtitle),
       title: stringOrFallback(source?.properties?.title, fallback.properties.title)
     }
@@ -135,6 +146,36 @@ function normalizePreviewRows(value: unknown, fallback: ProjectPointPreviewRow[]
 
 function normalizeStatus(value: unknown): ProjectPointPreviewRow["status"] {
   return value === "callout" || value === "mapped" || value === "missing" ? value : "blank";
+}
+
+function normalizePropertySections(value: unknown, fallback: PlotypusSnapshot["properties"]["sections"]) {
+  if (!Array.isArray(value)) return fallback.map(clonePropertySection);
+  const sections = value.slice(0, 6).map((section, sectionIndex) => {
+    const source = section && typeof section === "object" ? section as VanillaPropertiesSectionSource : {};
+    const rows = Array.isArray(source.rows) ? source.rows : [];
+    return {
+      title: stringOrFallback(source.title, `Section ${sectionIndex + 1}`),
+      rows: rows.slice(0, 12).map((row, rowIndex) => {
+        const rowSource = row && typeof row === "object"
+          ? row as Partial<PlotypusSnapshot["properties"]["sections"][number]["rows"][number]>
+          : {};
+        return {
+          label: stringOrFallback(rowSource.label, `Field ${rowIndex + 1}`),
+          origin: rowSource.origin === "automatic" ? "automatic" as const : "editable" as const,
+          value: stringOrFallback(rowSource.value, "—")
+        };
+      })
+    };
+  });
+
+  return sections.length ? sections : fallback.map(clonePropertySection);
+}
+
+function clonePropertySection(section: PlotypusSnapshot["properties"]["sections"][number]) {
+  return {
+    title: section.title,
+    rows: section.rows.map((row) => ({ ...row }))
+  };
 }
 
 function normalizeHexColour(value: unknown) {

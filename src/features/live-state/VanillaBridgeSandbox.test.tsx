@@ -14,7 +14,8 @@ describe("VanillaStateSnapshotPreview", () => {
     expect(html).toContain("Project points controls");
     expect(html).toContain("Project points preview");
     expect(html).toContain("Map baselayer preview");
-    expect(html).toContain("Bridge data");
+    expect(html).toContain("Current Properties facts");
+    expect(html).toContain("Map style");
   });
 
   it("reflects live project selection counts", () => {
@@ -24,7 +25,7 @@ describe("VanillaStateSnapshotPreview", () => {
 
     const html = renderToStaticMarkup(<VanillaStateSnapshotPreview snapshot={snapshot} />);
 
-    expect(html).toContain("<dd>8</dd>");
-    expect(html).toContain("<dd>3</dd>");
+    expect(html).toContain("Multi select");
+    expect(html).not.toContain("<select disabled");
   });
 });

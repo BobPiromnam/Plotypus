@@ -44,6 +44,15 @@ describe("vanillaPlotypusStateAdapter", () => {
       properties: {
         collapsed: true,
         contextKind: "row",
+        sections: [
+          {
+            title: "Affichage",
+            rows: [
+              { label: "Légende", origin: "editable", value: "Activé" },
+              { label: "Titre", origin: "automatic", value: "Manquant" }
+            ]
+          }
+        ],
         subtitle: "Points de projet",
         title: "Route et port"
       }
@@ -57,6 +66,7 @@ describe("vanillaPlotypusStateAdapter", () => {
     expect(snapshot.projectPoints.previewRows[0].name).toBe("Route et port");
     expect(snapshot.projectPoints.previewRows[0].status).toBe("mapped");
     expect(snapshot.properties.collapsed).toBe(true);
+    expect(snapshot.properties.sections[0].rows[1].origin).toBe("automatic");
   });
 
   it("sanitizes invalid preview rows from the vanilla bridge", () => {
@@ -122,6 +132,30 @@ describe("vanillaPlotypusStateAdapter", () => {
       name: "Region 1",
       pointCount: 0,
       regionId: "1"
+    });
+  });
+
+  it("sanitizes invalid properties sections from the vanilla bridge", () => {
+    const snapshot = normalizeVanillaSnapshot({
+      properties: {
+        sections: [
+          {
+            title: "",
+            rows: [
+              { label: "", origin: "automatic", value: "" },
+              { label: "Manual value", origin: "other", value: "Custom" }
+            ]
+          }
+        ]
+      }
+    });
+
+    expect(snapshot.properties.sections[0]).toEqual({
+      title: "Section 1",
+      rows: [
+        { label: "Field 1", origin: "automatic", value: "—" },
+        { label: "Manual value", origin: "editable", value: "Custom" }
+      ]
     });
   });
 
