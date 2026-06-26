@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import {
   Button,
   IconButton,
@@ -10,12 +10,15 @@ import {
   TableHeaderCell,
   ToolbarGroup
 } from "../components/primitives";
+import { createMemoryPlotypusStateAdapter } from "../core/plotypusStateAdapter";
 import { MapDetailsDialog } from "../features/map-details/MapDetailsDialog";
 import { PropertiesPanelShell } from "../features/properties/PropertiesPanelShell";
 import { ProjectPointsToolbar } from "../features/project-points/ProjectPointsToolbar";
 
 export function PrimitiveGallery() {
-  const [language, setLanguage] = useState<"en" | "fr">("en");
+  const plotypusState = useMemo(() => createMemoryPlotypusStateAdapter(), []);
+  const snapshot = useSyncExternalStore(plotypusState.subscribe, plotypusState.getSnapshot, plotypusState.getSnapshot);
+  const language = snapshot.locale;
   const [legendEnabled, setLegendEnabled] = useState(true);
   const [titleEn, setTitleEn] = useState("Project map");
   const [titleFr, setTitleFr] = useState("Carte du projet");
@@ -71,16 +74,21 @@ export function PrimitiveGallery() {
       </PropertySection>
 
       <PropertySection title="Project points toolbar slice">
-        <ProjectPointsToolbar state={{ activeLanguage: language, selectedCellCount: 3, selectedRowCount: 2 }} />
+        <ProjectPointsToolbar
+          onLanguageChange={plotypusState.setLocale}
+          state={snapshot.projectPoints.toolbar}
+        />
       </PropertySection>
 
       <PropertySection title="Properties panel shell slice">
         <PropertiesPanelShell
-          contextKind="Document"
+          collapsed={snapshot.properties.collapsed}
+          contextKind={snapshot.properties.contextKind}
           contextIcon="file-text"
           guidance="Click the map, a label, legend, or callout to inspect object-specific controls."
-          subtitle="Map display and interaction"
-          title="Document"
+          onCollapse={() => plotypusState.setPropertiesCollapsed(!snapshot.properties.collapsed)}
+          subtitle={snapshot.properties.subtitle}
+          title={snapshot.properties.title}
           sections={[
             {
               title: "Map style",
@@ -118,7 +126,7 @@ export function PrimitiveGallery() {
               { label: "FR", value: "fr" }
             ]}
             value={language}
-            onChange={setLanguage}
+            onChange={plotypusState.setLocale}
           />
           <Switch
             checked={legendEnabled}
