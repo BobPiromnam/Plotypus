@@ -6,6 +6,7 @@ describe("plotypusStateAdapter", () => {
     const snapshot = createDefaultPlotypusSnapshot();
 
     expect(snapshot.locale).toBe("en");
+    expect(snapshot.mapBaselayer.previewRows[0].name).toBe("Alberta");
     expect(snapshot.projectPoints.toolbar.selectedCellCount).toBe(3);
     expect(snapshot.properties.title).toBe("Document");
   });

@@ -460,6 +460,11 @@
 }
 
 .project-preview-table caption {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  justify-content: space-between;
+  align-items: baseline;
   margin-bottom: var(--space-4);
   color: var(--accent);
   font-family: var(--font-data);
@@ -468,6 +473,13 @@
   letter-spacing: 0.14em;
   text-align: left;
   text-transform: uppercase;
+}
+
+.project-preview-table caption span {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  letter-spacing: 0.04em;
+  text-transform: none;
 }
 
 .project-preview-table th,
@@ -504,6 +516,20 @@
 .project-preview-empty {
   color: var(--muted);
   text-align: center !important;
+}
+
+.map-baselayer-preview-colour {
+  display: inline-flex;
+  gap: var(--space-4);
+  align-items: center;
+  font-family: var(--font-data);
+}
+
+.map-baselayer-preview-colour span {
+  width: 28px;
+  height: 18px;
+  display: inline-block;
+  border: 1px solid var(--border-strong);
 }
 
 @media (max-width: 980px) {

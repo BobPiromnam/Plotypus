@@ -19,9 +19,24 @@ export type ProjectPointPreviewRow = {
   type: string;
 };
 
+export type MapBaselayerPreviewRow = {
+  colour: string;
+  colourOrder: number | string;
+  included: boolean;
+  name: string;
+  pointCount: number;
+  regionId: string;
+};
+
 export type PlotypusSnapshot = {
   activeWorkspace: string;
   locale: PlotypusLocale;
+  mapBaselayer: {
+    boundary: string;
+    includedCount: number;
+    previewRows: MapBaselayerPreviewRow[];
+    regionCount: number;
+  };
   mapLanguage: PlotypusLocale;
   projectPoints: {
     previewRows: ProjectPointPreviewRow[];
@@ -45,6 +60,29 @@ export function createDefaultPlotypusSnapshot(): PlotypusSnapshot {
   return {
     activeWorkspace: "preview",
     locale: "en",
+    mapBaselayer: {
+      boundary: "Canada provinces and territories",
+      includedCount: 13,
+      previewRows: [
+        {
+          colour: "#c7ded5",
+          colourOrder: 0,
+          included: true,
+          name: "Alberta",
+          pointCount: 0,
+          regionId: "alberta"
+        },
+        {
+          colour: "#c7ded5",
+          colourOrder: 0,
+          included: true,
+          name: "British Columbia",
+          pointCount: 3,
+          regionId: "british-columbia"
+        }
+      ],
+      regionCount: 13
+    },
     mapLanguage: "en",
     projectPoints: {
       previewRows: [
@@ -148,6 +186,12 @@ function cloneSnapshot(snapshot: PlotypusSnapshot): PlotypusSnapshot {
   return {
     activeWorkspace: snapshot.activeWorkspace,
     locale: snapshot.locale,
+    mapBaselayer: {
+      boundary: snapshot.mapBaselayer.boundary,
+      includedCount: snapshot.mapBaselayer.includedCount,
+      previewRows: snapshot.mapBaselayer.previewRows.map((row) => ({ ...row })),
+      regionCount: snapshot.mapBaselayer.regionCount
+    },
     mapLanguage: snapshot.mapLanguage,
     projectPoints: {
       previewRows: snapshot.projectPoints.previewRows.map((row) => ({ ...row })),

@@ -1,5 +1,6 @@
 import {
   createDefaultPlotypusSnapshot,
+  type MapBaselayerPreviewRow,
   type ProjectPointPreviewRow,
   type PlotypusSnapshot,
   type PlotypusStateAdapter,
@@ -14,7 +15,12 @@ type VanillaPreviewRowSource = Partial<Omit<ProjectPointPreviewRow, "status">> &
   status?: unknown;
 };
 
-type VanillaSnapshotSource = Partial<Omit<PlotypusSnapshot, "projectPoints">> & {
+type VanillaMapBaselayerSource = Partial<Omit<PlotypusSnapshot["mapBaselayer"], "previewRows">> & {
+  previewRows?: Partial<MapBaselayerPreviewRow>[];
+};
+
+type VanillaSnapshotSource = Partial<Omit<PlotypusSnapshot, "mapBaselayer" | "projectPoints">> & {
+  mapBaselayer?: VanillaMapBaselayerSource;
   projectPoints?: Partial<Omit<PlotypusSnapshot["projectPoints"], "previewRows">> & {
     previewRows?: VanillaPreviewRowSource[];
   };
@@ -60,6 +66,12 @@ export function normalizeVanillaSnapshot(source: VanillaSnapshotSource | undefin
   return {
     activeWorkspace: typeof source?.activeWorkspace === "string" ? source.activeWorkspace : fallback.activeWorkspace,
     locale,
+    mapBaselayer: {
+      boundary: stringOrFallback(source?.mapBaselayer?.boundary, fallback.mapBaselayer.boundary),
+      includedCount: normalizeCount(source?.mapBaselayer?.includedCount, fallback.mapBaselayer.includedCount),
+      previewRows: normalizeBaselayerRows(source?.mapBaselayer?.previewRows, fallback.mapBaselayer.previewRows),
+      regionCount: normalizeCount(source?.mapBaselayer?.regionCount, fallback.mapBaselayer.regionCount)
+    },
     mapLanguage,
     projectPoints: {
       previewRows: normalizePreviewRows(source?.projectPoints?.previewRows, fallback.projectPoints.previewRows),
@@ -90,6 +102,21 @@ function normalizeCount(value: unknown, fallback: number) {
   return Number.isFinite(count) && count >= 0 ? Math.round(count) : fallback;
 }
 
+function normalizeBaselayerRows(value: unknown, fallback: MapBaselayerPreviewRow[]) {
+  if (!Array.isArray(value)) return fallback.map((row) => ({ ...row }));
+  return value.slice(0, 12).map((row, index) => {
+    const source = row && typeof row === "object" ? row as Partial<MapBaselayerPreviewRow> : {};
+    return {
+      colour: normalizeHexColour(source.colour),
+      colourOrder: normalizeColourOrder(source.colourOrder),
+      included: Boolean(source.included),
+      name: stringOrFallback(source.name, `Region ${index + 1}`),
+      pointCount: normalizeCount(source.pointCount, 0),
+      regionId: stringOrFallback(source.regionId, String(index + 1))
+    };
+  });
+}
+
 function normalizePreviewRows(value: unknown, fallback: ProjectPointPreviewRow[]) {
   if (!Array.isArray(value)) return fallback.map((row) => ({ ...row }));
   return value.slice(0, 12).map((row, index) => {
@@ -108,6 +135,16 @@ function normalizePreviewRows(value: unknown, fallback: ProjectPointPreviewRow[]
 
 function normalizeStatus(value: unknown): ProjectPointPreviewRow["status"] {
   return value === "callout" || value === "mapped" || value === "missing" ? value : "blank";
+}
+
+function normalizeHexColour(value: unknown) {
+  return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value) ? value : "#c7ded5";
+}
+
+function normalizeColourOrder(value: unknown) {
+  if (typeof value === "string" && value.trim()) return value;
+  const count = Number(value);
+  return Number.isFinite(count) && count >= 0 ? Math.round(count) : 0;
 }
 
 function stringOrFallback(value: unknown, fallback: string) {

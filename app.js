@@ -1512,6 +1512,19 @@
       activeWorkspace: activeDataTable,
       locale: currentUiLanguage,
       mapLanguage: currentMapLanguage,
+      mapBaselayer: {
+        boundary: getBoundaryLabel(currentBoundary, activeAuthoringLanguage),
+        includedCount: getRegionRows().filter(region => regionVisibility[region.id] !== false).length,
+        previewRows: getRegionTableRows().slice(0, 6).map(region => ({
+          colour: region.colour,
+          colourOrder: region.value,
+          included: Boolean(region.included),
+          name: region.name,
+          pointCount: region.count,
+          regionId: region.id
+        })),
+        regionCount: getRegionRows().length
+      },
       projectPoints: {
         previewRows: rows.slice(0, 6).map(row => {
           const hasLongitude = row.lon !== "";

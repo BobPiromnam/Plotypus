@@ -3,6 +3,7 @@ import { Button } from "../../components/primitives";
 import type { PlotypusSnapshot, PlotypusStateAdapter } from "../../core/plotypusStateAdapter";
 import { createDefaultPlotypusSnapshot } from "../../core/plotypusStateAdapter";
 import { createVanillaPlotypusStateAdapter } from "../../core/vanillaPlotypusStateAdapter";
+import { MapBaselayerPreviewTable } from "../map-baselayer/MapBaselayerPreviewTable";
 import { ProjectPointsPreviewTable } from "../project-points/ProjectPointsPreviewTable";
 import { ProjectPointsToolbar } from "../project-points/ProjectPointsToolbar";
 import { PropertiesPanelShell } from "../properties/PropertiesPanelShell";
@@ -80,6 +81,12 @@ export function VanillaStateSnapshotPreview({ snapshot }: { snapshot: PlotypusSn
 
       <ProjectPointsToolbar state={snapshot.projectPoints.toolbar} />
       <ProjectPointsPreviewTable rows={snapshot.projectPoints.previewRows} />
+      <MapBaselayerPreviewTable
+        boundary={snapshot.mapBaselayer.boundary}
+        includedCount={snapshot.mapBaselayer.includedCount}
+        regionCount={snapshot.mapBaselayer.regionCount}
+        rows={snapshot.mapBaselayer.previewRows}
+      />
 
       <PropertiesPanelShell
         collapsed={snapshot.properties.collapsed}

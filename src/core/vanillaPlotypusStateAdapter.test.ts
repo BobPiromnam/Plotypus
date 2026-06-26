@@ -6,6 +6,21 @@ describe("vanillaPlotypusStateAdapter", () => {
     const snapshot = normalizeVanillaSnapshot({
       activeWorkspace: "projects",
       locale: "fr",
+      mapBaselayer: {
+        boundary: "Provinces et territoires du Canada",
+        includedCount: 1,
+        previewRows: [
+          {
+            colour: "#24745f",
+            colourOrder: 3,
+            included: true,
+            name: "Colombie-Britannique",
+            pointCount: 4,
+            regionId: "british-columbia"
+          }
+        ],
+        regionCount: 13
+      },
       mapLanguage: "fr",
       projectPoints: {
         previewRows: [
@@ -36,6 +51,8 @@ describe("vanillaPlotypusStateAdapter", () => {
 
     expect(snapshot.activeWorkspace).toBe("projects");
     expect(snapshot.locale).toBe("fr");
+    expect(snapshot.mapBaselayer.boundary).toBe("Provinces et territoires du Canada");
+    expect(snapshot.mapBaselayer.previewRows[0].name).toBe("Colombie-Britannique");
     expect(snapshot.projectPoints.toolbar.selectedCellCount).toBe(2);
     expect(snapshot.projectPoints.previewRows[0].name).toBe("Route et port");
     expect(snapshot.projectPoints.previewRows[0].status).toBe("mapped");
@@ -76,6 +93,38 @@ describe("vanillaPlotypusStateAdapter", () => {
     });
   });
 
+  it("sanitizes invalid baselayer rows from the vanilla bridge", () => {
+    const snapshot = normalizeVanillaSnapshot({
+      mapBaselayer: {
+        boundary: "",
+        includedCount: -1,
+        previewRows: [
+          {
+            colour: "tomato",
+            colourOrder: -3,
+            included: true,
+            name: "",
+            pointCount: -2,
+            regionId: ""
+          }
+        ],
+        regionCount: -5
+      }
+    });
+
+    expect(snapshot.mapBaselayer.boundary).toBe("Canada provinces and territories");
+    expect(snapshot.mapBaselayer.includedCount).toBe(13);
+    expect(snapshot.mapBaselayer.regionCount).toBe(13);
+    expect(snapshot.mapBaselayer.previewRows[0]).toEqual({
+      colour: "#c7ded5",
+      colourOrder: 0,
+      included: true,
+      name: "Region 1",
+      pointCount: 0,
+      regionId: "1"
+    });
+  });
+
   it("falls back when the vanilla bridge is unavailable", () => {
     const snapshot = normalizeVanillaSnapshot(undefined);
 
@@ -89,6 +138,12 @@ describe("vanillaPlotypusStateAdapter", () => {
       PLOTYPUS_APP_STATE_READONLY: {
         getSnapshot: () => ({
           activeWorkspace: "regions",
+          mapBaselayer: {
+            boundary: "Canada provinces and territories",
+            includedCount: 2,
+            previewRows: [],
+            regionCount: 4
+          },
           projectPoints: {
             previewRows: [],
             rowCount: 12,
@@ -105,6 +160,7 @@ describe("vanillaPlotypusStateAdapter", () => {
     });
 
     expect(adapter.getSnapshot().activeWorkspace).toBe("regions");
+    expect(adapter.getSnapshot().mapBaselayer.regionCount).toBe(4);
     expect(adapter.getSnapshot().projectPoints.rowCount).toBe(12);
   });
 
