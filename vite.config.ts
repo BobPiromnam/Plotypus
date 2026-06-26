@@ -8,7 +8,10 @@ export default defineConfig({
     outDir: "dist/react",
     emptyOutDir: true,
     rollupOptions: {
-      input: "react-entry.html"
+      input: {
+        "react-entry": "react-entry.html",
+        "react-vanilla-bridge": "react-vanilla-bridge.html"
+      }
     }
   },
   publicDir: false,
