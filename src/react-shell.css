@@ -85,6 +85,172 @@
   align-items: end;
 }
 
+.project-points-toolbar-sandbox {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8);
+  align-items: end;
+}
+
+.project-points-language-toggle {
+  display: inline-flex;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-xl);
+  background: var(--surface-strong);
+}
+
+.project-points-language-toggle button {
+  min-width: 56px;
+  min-height: var(--control-h-lg);
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--muted);
+  font: 800 var(--text-control) / var(--line-ui) var(--font-content);
+}
+
+.project-points-language-toggle button.is-active {
+  border-color: var(--border);
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: var(--shadow-soft);
+}
+
+.properties-shell {
+  width: min(100%, 360px);
+  display: grid;
+  gap: var(--space-8);
+  padding: var(--space-8);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: var(--shadow-soft);
+}
+
+.properties-shell-header {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-6);
+  align-items: center;
+  padding-bottom: var(--space-6);
+  border-bottom: 1px solid var(--border);
+  color: var(--accent);
+  font-family: var(--font-data);
+  font-size: var(--text-ui);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.properties-shell-header button,
+.properties-shell-rail-button {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.properties-shell-context {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.properties-shell-icon {
+  width: var(--control-h-xl);
+  height: var(--control-h-xl);
+  display: inline-grid;
+  place-items: center;
+  border-radius: var(--radius-card);
+  background: var(--ink);
+  color: var(--panel);
+  font-size: var(--text-title);
+}
+
+.properties-shell-context h2,
+.properties-shell-context p,
+.properties-shell-kind,
+.properties-shell-guidance {
+  margin: 0;
+}
+
+.properties-shell-context h2 {
+  font-size: var(--text-heading);
+  line-height: var(--line-tight);
+}
+
+.properties-shell-context p,
+.properties-shell-guidance {
+  color: var(--muted);
+  font-size: var(--text-body);
+  line-height: var(--line-copy);
+}
+
+.properties-shell-kind {
+  color: var(--accent) !important;
+  font-family: var(--font-data);
+  font-size: var(--text-ui) !important;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.properties-shell-section {
+  display: grid;
+  gap: var(--space-5);
+  padding-top: var(--space-7);
+  border-top: 1px solid var(--border);
+}
+
+.properties-shell-section-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-5);
+  align-items: center;
+}
+
+.properties-shell-section h3 {
+  margin: 0;
+  color: var(--muted);
+  font-family: var(--font-data);
+  font-size: var(--text-ui);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.properties-shell-section-body,
+.properties-shell-demo-stack {
+  display: grid;
+  gap: var(--space-6);
+}
+
+.properties-shell-footer {
+  display: flex;
+  justify-content: end;
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--border);
+}
+
+.properties-shell-collapsed {
+  width: 56px;
+  min-height: 240px;
+  padding: var(--space-5);
+}
+
+.properties-shell-rail-button {
+  min-height: 220px;
+  display: grid;
+  gap: var(--space-4);
+  justify-items: center;
+  writing-mode: vertical-rl;
+  text-transform: uppercase;
+}
+
 .react-dom-mount-sandbox {
   width: min(calc(100% - var(--space-12) * 2), 880px);
   margin: 0 auto var(--space-12);

@@ -11,6 +11,8 @@ import {
   ToolbarGroup
 } from "../components/primitives";
 import { MapDetailsDialog } from "../features/map-details/MapDetailsDialog";
+import { PropertiesPanelShell } from "../features/properties/PropertiesPanelShell";
+import { ProjectPointsToolbar } from "../features/project-points/ProjectPointsToolbar";
 
 export function PrimitiveGallery() {
   const [language, setLanguage] = useState<"en" | "fr">("en");
@@ -66,6 +68,45 @@ export function PrimitiveGallery() {
             <Button icon="eraser">Clear coordinates</Button>
           </ToolbarGroup>
         </div>
+      </PropertySection>
+
+      <PropertySection title="Project points toolbar slice">
+        <ProjectPointsToolbar state={{ activeLanguage: language, selectedCellCount: 3, selectedRowCount: 2 }} />
+      </PropertySection>
+
+      <PropertySection title="Properties panel shell slice">
+        <PropertiesPanelShell
+          contextKind="Document"
+          contextIcon="file-text"
+          guidance="Click the map, a label, legend, or callout to inspect object-specific controls."
+          subtitle="Map display and interaction"
+          title="Document"
+          sections={[
+            {
+              title: "Map style",
+              children: (
+                <Select
+                  label="Style"
+                  value="goc-green"
+                  onChange={() => undefined}
+                  options={[
+                    { label: "GoC green", value: "goc-green" },
+                    { label: "GoC blue", value: "goc-blue" }
+                  ]}
+                />
+              )
+            },
+            {
+              title: "Display",
+              children: (
+                <div className="properties-shell-demo-stack">
+                  <Switch checked={legendEnabled} label="Legend" onChange={setLegendEnabled} />
+                  <Switch checked label="No-coordinate callouts" onChange={() => undefined} />
+                </div>
+              )
+            }
+          ]}
+        />
       </PropertySection>
 
       <PropertySection title="Stateful controls">
