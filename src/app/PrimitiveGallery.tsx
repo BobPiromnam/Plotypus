@@ -14,6 +14,7 @@ import { createMemoryPlotypusStateAdapter } from "../core/plotypusStateAdapter";
 import { MapDetailsDialog } from "../features/map-details/MapDetailsDialog";
 import { PropertiesPanelShell } from "../features/properties/PropertiesPanelShell";
 import { ProjectPointsToolbar } from "../features/project-points/ProjectPointsToolbar";
+import { ProjectPointsToolbarInteractiveSandbox } from "../features/project-points/ProjectPointsToolbarInteractiveSandbox";
 
 export function PrimitiveGallery() {
   const plotypusState = useMemo(() => createMemoryPlotypusStateAdapter(), []);
@@ -78,6 +79,10 @@ export function PrimitiveGallery() {
           onLanguageChange={plotypusState.setLocale}
           state={snapshot.projectPoints.toolbar}
         />
+      </PropertySection>
+
+      <PropertySection title="Interactive Project points toolbar sandbox">
+        <ProjectPointsToolbarInteractiveSandbox />
       </PropertySection>
 
       <PropertySection title="Properties panel shell slice">
