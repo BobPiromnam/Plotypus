@@ -57,6 +57,9 @@ export function createVanillaPlotypusStateAdapter(windowRef: WindowLike): Plotyp
     getSnapshot() {
       return normalizeVanillaSnapshot(windowRef.PLOTYPUS_APP_STATE_READONLY?.getSnapshot());
     },
+    runProjectPointsCommand(command) {
+      return { label: `Read-only bridge ignored ${command.type}` };
+    },
     setLocale() {
       return undefined;
     },
@@ -94,6 +97,10 @@ export function normalizeVanillaSnapshot(source: VanillaSnapshotSource | undefin
     },
     mapLanguage,
     projectPoints: {
+      lastCommandLabel: stringOrFallback(
+        source?.projectPoints?.lastCommandLabel,
+        fallback.projectPoints.lastCommandLabel
+      ),
       previewRows: normalizePreviewRows(source?.projectPoints?.previewRows, fallback.projectPoints.previewRows),
       rowCount: normalizeCount(source?.projectPoints?.rowCount, fallback.projectPoints.rowCount),
       toolbar: {

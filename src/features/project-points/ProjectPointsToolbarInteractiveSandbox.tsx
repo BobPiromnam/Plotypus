@@ -1,4 +1,4 @@
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import { Button } from "../../components/primitives";
 import { createMemoryPlotypusStateAdapter, type PlotypusStateAdapter } from "../../core/plotypusStateAdapter";
 import { ProjectPointsToolbar } from "./ProjectPointsToolbar";
@@ -14,7 +14,6 @@ export function ProjectPointsToolbarInteractiveSandbox({ adapter }: ProjectPoint
     sandboxAdapter.getSnapshot,
     sandboxAdapter.getSnapshot
   );
-  const [lastAction, setLastAction] = useState("No action yet");
 
   const selection = snapshot.projectPoints.toolbar;
 
@@ -30,21 +29,13 @@ export function ProjectPointsToolbarInteractiveSandbox({ adapter }: ProjectPoint
       </div>
 
       <ProjectPointsToolbar
-        onAddFromSource={() => setLastAction("Add from source clicked")}
-        onAddRow={() => setLastAction("Add row clicked")}
-        onClearCoordinates={() => setLastAction("Clear coordinates clicked")}
-        onClearTable={() => {
-          sandboxAdapter.setProjectPointsSelection({ selectedCellCount: 0, selectedRowCount: 0 });
-          setLastAction("Clear table clicked");
-        }}
-        onDelete={() => {
-          sandboxAdapter.setProjectPointsSelection({ selectedCellCount: 0, selectedRowCount: 0 });
-          setLastAction("Delete clicked and sandbox selection cleared");
-        }}
+        onAddFromSource={() => sandboxAdapter.runProjectPointsCommand({ type: "add-from-source" })}
+        onAddRow={() => sandboxAdapter.runProjectPointsCommand({ type: "add-row" })}
+        onClearCoordinates={() => sandboxAdapter.runProjectPointsCommand({ type: "clear-coordinates" })}
+        onClearTable={() => sandboxAdapter.runProjectPointsCommand({ type: "clear-table" })}
+        onDelete={() => sandboxAdapter.runProjectPointsCommand({ type: "delete-selection" })}
         onLanguageChange={sandboxAdapter.setLocale}
-        onPriorityChange={(priority) => {
-          setLastAction(priority ? `Priority ${priority} selected` : "Priority menu opened");
-        }}
+        onPriorityChange={(priority) => sandboxAdapter.runProjectPointsCommand({ priority, type: "set-priority" })}
         state={selection}
       />
 
@@ -73,7 +64,7 @@ export function ProjectPointsToolbarInteractiveSandbox({ adapter }: ProjectPoint
       </dl>
 
       <p className="project-toolbar-action-log" aria-live="polite">
-        Last action: {lastAction}
+        Last action: {snapshot.projectPoints.lastCommandLabel}
       </p>
     </section>
   );

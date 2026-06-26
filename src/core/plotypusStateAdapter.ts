@@ -64,6 +64,7 @@ export type PlotypusSnapshot = {
   };
   mapLanguage: PlotypusLocale;
   projectPoints: {
+    lastCommandLabel: string;
     previewRows: ProjectPointPreviewRow[];
     rowCount: number;
     toolbar: ProjectPointsToolbarState;
@@ -74,8 +75,21 @@ export type PlotypusSnapshot = {
 
 export type PlotypusStateListener = () => void;
 
+export type ProjectPointsCommand =
+  | { type: "add-from-source" }
+  | { type: "add-row" }
+  | { type: "clear-coordinates" }
+  | { type: "clear-table" }
+  | { type: "delete-selection" }
+  | { priority: string; type: "set-priority" };
+
+export type ProjectPointsCommandResult = {
+  label: string;
+};
+
 export type PlotypusStateAdapter = {
   getSnapshot: () => PlotypusSnapshot;
+  runProjectPointsCommand: (command: ProjectPointsCommand) => ProjectPointsCommandResult;
   setLocale: (locale: PlotypusLocale) => void;
   setProjectPointsSelection: (selection: Pick<ProjectPointsToolbarState, "selectedCellCount" | "selectedRowCount">) => void;
   setPropertiesCollapsed: (collapsed: boolean) => void;
@@ -111,6 +125,7 @@ export function createDefaultPlotypusSnapshot(): PlotypusSnapshot {
     },
     mapLanguage: "en",
     projectPoints: {
+      lastCommandLabel: "No action yet",
       previewRows: [
         {
           hasLatitude: true,
@@ -183,6 +198,26 @@ export function createMemoryPlotypusStateAdapter(
 
   return {
     getSnapshot: () => snapshot,
+    runProjectPointsCommand(command) {
+      const commandLabel = getProjectPointsCommandLabel(command);
+      const shouldClearSelection = command.type === "clear-table" || command.type === "delete-selection";
+      const nextRowCount = command.type === "add-row" ? snapshot.projectPoints.rowCount + 1 : snapshot.projectPoints.rowCount;
+
+      update({
+        ...snapshot,
+        projectPoints: {
+          ...snapshot.projectPoints,
+          lastCommandLabel: commandLabel,
+          rowCount: nextRowCount,
+          toolbar: {
+            ...snapshot.projectPoints.toolbar,
+            ...(shouldClearSelection ? { selectedCellCount: 0, selectedRowCount: 0 } : {})
+          }
+        }
+      });
+
+      return { label: commandLabel };
+    },
     setLocale(locale) {
       update({
         ...snapshot,
@@ -239,6 +274,7 @@ function cloneSnapshot(snapshot: PlotypusSnapshot): PlotypusSnapshot {
     },
     mapLanguage: snapshot.mapLanguage,
     projectPoints: {
+      lastCommandLabel: snapshot.projectPoints.lastCommandLabel,
       previewRows: snapshot.projectPoints.previewRows.map((row) => ({ ...row })),
       rowCount: snapshot.projectPoints.rowCount,
       toolbar: { ...snapshot.projectPoints.toolbar }
@@ -256,4 +292,21 @@ function cloneSnapshot(snapshot: PlotypusSnapshot): PlotypusSnapshot {
       qualityLabel: snapshot.workspaceSummary.qualityLabel
     }
   };
+}
+
+function getProjectPointsCommandLabel(command: ProjectPointsCommand) {
+  switch (command.type) {
+    case "add-from-source":
+      return "Add from source requested";
+    case "add-row":
+      return "Add row requested";
+    case "clear-coordinates":
+      return "Clear coordinates requested";
+    case "clear-table":
+      return "Clear table requested";
+    case "delete-selection":
+      return "Delete selection requested";
+    case "set-priority":
+      return command.priority ? `Priority ${command.priority} requested` : "Priority menu opened";
+  }
 }

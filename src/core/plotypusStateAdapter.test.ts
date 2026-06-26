@@ -32,6 +32,26 @@ describe("plotypusStateAdapter", () => {
     expect(adapter.getSnapshot().properties.title).toBe("Document");
   });
 
+  it("runs project point toolbar commands through the adapter", () => {
+    const adapter = createMemoryPlotypusStateAdapter();
+
+    const result = adapter.runProjectPointsCommand({ priority: "2", type: "set-priority" });
+
+    expect(result.label).toBe("Priority 2 requested");
+    expect(adapter.getSnapshot().projectPoints.lastCommandLabel).toBe("Priority 2 requested");
+    expect(adapter.getSnapshot().projectPoints.toolbar.selectedCellCount).toBe(3);
+  });
+
+  it("clears sandbox selection for destructive project point commands", () => {
+    const adapter = createMemoryPlotypusStateAdapter();
+
+    adapter.runProjectPointsCommand({ type: "delete-selection" });
+
+    expect(adapter.getSnapshot().projectPoints.lastCommandLabel).toBe("Delete selection requested");
+    expect(adapter.getSnapshot().projectPoints.toolbar.selectedCellCount).toBe(0);
+    expect(adapter.getSnapshot().projectPoints.toolbar.selectedRowCount).toBe(0);
+  });
+
   it("publishes updates to subscribers until unsubscribed", () => {
     const adapter = createMemoryPlotypusStateAdapter();
     const listener = vi.fn();
