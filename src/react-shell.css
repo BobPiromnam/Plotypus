@@ -1,0 +1,167 @@
+#reactRoot {
+  min-height: 100vh;
+}
+
+.react-migration-shell {
+  min-height: 100vh;
+  display: grid;
+  gap: var(--space-10);
+  align-content: start;
+  justify-items: center;
+  padding: var(--space-12);
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-content);
+}
+
+.react-migration-panel {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-8);
+  align-items: start;
+  max-width: 680px;
+  width: min(100%, 880px);
+  padding: var(--space-12);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--panel);
+  box-shadow: var(--shadow-soft);
+}
+
+.react-migration-panel h1 {
+  margin: 0 0 var(--space-6);
+  font-size: var(--text-heading);
+  line-height: var(--line-tight);
+}
+
+.react-migration-panel p {
+  margin: 0;
+  font-size: var(--text-body);
+  line-height: var(--line-copy);
+}
+
+.react-migration-kicker {
+  margin-bottom: var(--space-3) !important;
+  color: var(--accent);
+  font-family: var(--font-data);
+  font-size: var(--text-ui) !important;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.react-gallery {
+  width: min(100%, 880px);
+  display: grid;
+  gap: var(--space-9);
+  padding: var(--space-12);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--panel);
+  box-shadow: var(--shadow-soft);
+}
+
+.react-gallery-heading {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.react-gallery-heading h2 {
+  margin: 0;
+  font-size: var(--text-heading);
+  line-height: var(--line-tight);
+}
+
+.react-gallery-heading p {
+  margin: 0;
+  font-size: var(--text-body);
+  line-height: var(--line-copy);
+}
+
+.react-gallery-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8);
+  align-items: end;
+}
+
+.react-dom-mount-sandbox {
+  width: min(calc(100% - var(--space-12) * 2), 880px);
+  margin: 0 auto var(--space-12);
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) 1fr;
+  gap: var(--space-10);
+  padding: var(--space-12);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-card);
+  background: var(--panel);
+  color: var(--ink);
+  font-family: var(--font-content);
+  box-shadow: var(--shadow-soft);
+}
+
+.react-dom-mount-summary {
+  display: grid;
+  gap: var(--space-6);
+  align-content: start;
+}
+
+.react-dom-mount-summary h2 {
+  margin: 0;
+  font-size: var(--text-heading);
+  line-height: var(--line-tight);
+}
+
+.react-dom-mount-summary p {
+  margin: 0;
+  font-size: var(--text-body);
+  line-height: var(--line-copy);
+}
+
+.react-dom-mount-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+}
+
+.react-dom-mount-actions button {
+  min-height: 38px;
+  padding: var(--space-4) var(--space-8);
+  border: 1px solid var(--button-border);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-control);
+  font-weight: 700;
+}
+
+.react-dom-mount-actions button:first-child {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--panel);
+}
+
+.react-dom-mount-actions button:disabled {
+  opacity: 0.55;
+}
+
+.react-dom-mount-status {
+  color: var(--muted);
+  font-family: var(--font-data) !important;
+}
+
+.react-dom-mount-target {
+  min-height: 360px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--bg);
+}
+
+@media (max-width: 760px) {
+  .react-dom-mount-sandbox {
+    grid-template-columns: 1fr;
+  }
+}

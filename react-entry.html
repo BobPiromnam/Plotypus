@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Plotypus React Shell</title>
+  <link rel="icon" href="/assets/plotypus-pin.png" type="image/png" />
+  <link rel="preload" href="/assets/fonts/lato/lato-2.woff2" as="font" type="font/woff2" />
+  <link rel="preload" href="/assets/fonts/lato/lato-4.woff2" as="font" type="font/woff2" />
+  <link rel="stylesheet" href="/assets/fonts/lato/lato.css?v=20260612-file-fonts" />
+  <link rel="stylesheet" href="/assets/fonts/ibm-plex-mono/ibm-plex-mono.css?v=20260622-offline-fonts" />
+</head>
+<body>
+  <div id="reactRoot"></div>
+  <section class="react-dom-mount-sandbox" aria-labelledby="mapDetailsMountSandboxTitle">
+    <div class="react-dom-mount-summary">
+      <p class="react-migration-kicker">Mount adapter sandbox</p>
+      <h2 id="mapDetailsMountSandboxTitle">Plain DOM mount target</h2>
+      <p>
+        Exercises Map details through the React mount adapter without replacing the production dialog.
+      </p>
+      <div class="react-dom-mount-actions">
+        <button id="mountMapDetailsSandboxBtn" type="button">Mount Map details</button>
+        <button id="unmountMapDetailsSandboxBtn" type="button">Unmount</button>
+      </div>
+      <p id="mapDetailsSandboxStatus" class="react-dom-mount-status" role="status">Not mounted.</p>
+    </div>
+    <div id="mapDetailsSandboxTarget" class="react-dom-mount-target"></div>
+  </section>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+</html>

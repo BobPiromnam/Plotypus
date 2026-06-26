@@ -1,6 +1,8 @@
 /.chrome-smoke-profile/
 /.edge-smoke-profile/
 /.claude/
+/dist/
+/node_modules/
 /tests/smoke-output/
 /tests/visual-output/
 /tests/smoke-labels-dom.err
