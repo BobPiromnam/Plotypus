@@ -260,6 +260,18 @@
           const readoutText = mapScaleReadout.textContent.trim();
           assert(checks, "Canvas toolbar uses rounded map scale readout", /^Map \d+%$/.test(readoutText), readoutText);
         }
+        const readonlyStateApi = frame.contentWindow.PLOTYPUS_APP_STATE_READONLY;
+        const readonlySnapshot = readonlyStateApi?.getSnapshot?.();
+        assert(checks, "Read-only app state bridge exposes workspace and project counts", Boolean(readonlySnapshot && readonlySnapshot.activeWorkspace === doc.body.dataset.workspaceView && Number(readonlySnapshot.projectPoints?.rowCount || 0) === doc.querySelectorAll("#projectTable tbody tr").length), JSON.stringify(readonlySnapshot || null));
+        let readonlySnapshotEvents = 0;
+        frame.contentWindow.addEventListener("plotypus:state-snapshot", () => {
+          readonlySnapshotEvents += 1;
+        }, { once: true });
+        doc.querySelector("[data-ui-language='fr']")?.click();
+        await waitFor(() => readonlySnapshotEvents > 0 && frame.contentWindow.PLOTYPUS_APP_STATE_READONLY?.getSnapshot?.().locale === "fr", 2000);
+        assert(checks, "Read-only app state bridge publishes updates", readonlySnapshotEvents === 1 && frame.contentWindow.PLOTYPUS_APP_STATE_READONLY.getSnapshot().locale === "fr");
+        doc.querySelector("[data-ui-language='en']")?.click();
+        await waitFor(() => doc.documentElement.lang === "en", 2000);
 
         if (requestedDialog) {
           const dialogMap = {

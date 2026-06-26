@@ -1496,6 +1496,53 @@
       .filter(row => row && (row.name.length > 0 || row.nameFr.length > 0 || row.lon !== "" || row.lat !== ""));
   }
 
+  function getProjectSelectionCounts() {
+    const selectedCellRowIds = new Set(Array.from(selectedProjectCells).map(key => parseProjectCellKey(key).rowId));
+    const selectedRowCount = getTableRows().filter(tr => tr.querySelector(".row-select")?.checked || selectedCellRowIds.has(String(tr.dataset.rowId))).length;
+    return {
+      selectedCellCount: selectedProjectCells.size,
+      selectedRowCount
+    };
+  }
+
+  function createReadonlyAppSnapshot() {
+    const rows = getRows();
+    const selectionCounts = getProjectSelectionCounts();
+    return {
+      activeWorkspace: activeDataTable,
+      locale: currentUiLanguage,
+      mapLanguage: currentMapLanguage,
+      projectPoints: {
+        rowCount: rows.length,
+        toolbar: {
+          activeLanguage: activeAuthoringLanguage,
+          selectedCellCount: selectionCounts.selectedCellCount,
+          selectedRowCount: selectionCounts.selectedRowCount
+        }
+      },
+      properties: {
+        collapsed: document.body.classList.contains("properties-collapsed"),
+        contextKind: activePropertiesSelection && activePropertiesSelection.kind || "document",
+        subtitle: els.propertiesSubtitle ? els.propertiesSubtitle.textContent || "" : "",
+        title: els.propertiesTitle ? els.propertiesTitle.textContent || "" : ""
+      }
+    };
+  }
+
+  function publishReadonlyAppSnapshot() {
+    if (!window.PLOTYPUS_APP_STATE_READONLY) return;
+    window.PLOTYPUS_APP_STATE_READONLY.notify();
+  }
+
+  window.PLOTYPUS_APP_STATE_READONLY = Object.freeze({
+    getSnapshot: createReadonlyAppSnapshot,
+    notify() {
+      if (typeof window.CustomEvent === "function") {
+        window.dispatchEvent(new window.CustomEvent("plotypus:state-snapshot"));
+      }
+    }
+  });
+
   function getProjectRowState(tr) {
     const row = readRowElement(tr);
     const hasName = Boolean(row && row.name);
@@ -2177,6 +2224,7 @@
     if (els.csvMapDialog && !els.csvMapDialog.hidden && pendingCsvMapping) {
       renderCsvMappingDialog();
     }
+    publishReadonlyAppSnapshot();
   }
 
   function setAuthoringLanguage(language) {
@@ -2201,6 +2249,7 @@
     syncAuthoringLanguageControls(nextLanguage);
     renderTranslationWorkbench();
     refreshProjectTableUx();
+    publishReadonlyAppSnapshot();
   }
 
   function handleWorkspaceSummaryClick(event) {
@@ -3311,6 +3360,7 @@
       const hasSavedLayout = Object.keys(manualLabelPositions).length > 0;
       requestPreviewRefresh(hasSavedLayout ? {} : languageFitRenderOptions());
     }
+    publishReadonlyAppSnapshot();
   }
 
   function getLabelText(row, language = currentMapLanguage) {
@@ -4578,6 +4628,7 @@
       els.propertiesDescription.hidden = !hint;
     }
     if (els.propertiesSelectionControls) els.propertiesSelectionControls.innerHTML = controlsHtml;
+    publishReadonlyAppSnapshot();
   }
 
   function setPreviewPropertySectionsVisible(isVisible) {
@@ -5539,6 +5590,7 @@
     document.body.classList.toggle("properties-collapsed", Boolean(collapsed));
     syncPropertiesCollapsedState();
     if (persist) savePropertiesPanelPreference({ collapsed: Boolean(collapsed) });
+    publishReadonlyAppSnapshot();
   }
 
   function togglePropertiesPanel() {
@@ -5634,6 +5686,7 @@
       }
     }
     if (pendingPreviewRefresh && shouldRenderPreviewNow()) requestPreviewRefresh();
+    publishReadonlyAppSnapshot();
   }
 
   function switchDataTable(tableName) {
@@ -6372,6 +6425,7 @@
   function updateDeleteButtonState() {
     const hasSelection = getProjectRowsSelectedForDelete().length > 0;
     els.deleteSelectedBtn.disabled = !hasSelection;
+    publishReadonlyAppSnapshot();
   }
 
   function getProjectRowsSelectedForDelete() {

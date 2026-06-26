@@ -10,8 +10,11 @@ export type PropertiesPanelSnapshot = {
 };
 
 export type PlotypusSnapshot = {
+  activeWorkspace: string;
   locale: PlotypusLocale;
+  mapLanguage: PlotypusLocale;
   projectPoints: {
+    rowCount: number;
     toolbar: ProjectPointsToolbarState;
   };
   properties: PropertiesPanelSnapshot;
@@ -29,8 +32,11 @@ export type PlotypusStateAdapter = {
 
 export function createDefaultPlotypusSnapshot(): PlotypusSnapshot {
   return {
+    activeWorkspace: "preview",
     locale: "en",
+    mapLanguage: "en",
     projectPoints: {
+      rowCount: 21,
       toolbar: {
         activeLanguage: "en",
         selectedCellCount: 3,
@@ -109,8 +115,11 @@ export function createMemoryPlotypusStateAdapter(
 
 function cloneSnapshot(snapshot: PlotypusSnapshot): PlotypusSnapshot {
   return {
+    activeWorkspace: snapshot.activeWorkspace,
     locale: snapshot.locale,
+    mapLanguage: snapshot.mapLanguage,
     projectPoints: {
+      rowCount: snapshot.projectPoints.rowCount,
       toolbar: { ...snapshot.projectPoints.toolbar }
     },
     properties: { ...snapshot.properties }
