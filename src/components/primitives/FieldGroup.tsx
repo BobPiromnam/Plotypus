@@ -12,8 +12,11 @@ type TextAreaFieldProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
 
 type BilingualFieldGroupProps = {
   english: string;
+  englishAutoFocus?: boolean;
+  englishId?: string;
   englishLabel?: string;
   french: string;
+  frenchId?: string;
   frenchLabel?: string;
   label: string;
   multiline?: boolean;
@@ -47,8 +50,11 @@ export function TextAreaField({ label, language, ...props }: TextAreaFieldProps)
 
 export function BilingualFieldGroup({
   english,
+  englishAutoFocus = false,
+  englishId,
   englishLabel = "English",
   french,
+  frenchId,
   frenchLabel = "Français",
   label,
   multiline = false,
@@ -64,14 +70,20 @@ export function BilingualFieldGroup({
         <Field
           language="EN"
           label={englishLabel}
+          id={englishId}
           value={english}
+          autoFocus={englishAutoFocus}
+          data-dialog-initial-focus={englishAutoFocus ? "true" : undefined}
           onChange={(event) => onEnglishChange(event.target.value)}
+          onInput={(event) => onEnglishChange(event.currentTarget.value)}
         />
         <Field
           language="FR"
           label={frenchLabel}
+          id={frenchId}
           value={french}
           onChange={(event) => onFrenchChange(event.target.value)}
+          onInput={(event) => onFrenchChange(event.currentTarget.value)}
         />
       </div>
     </fieldset>

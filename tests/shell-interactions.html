@@ -24,6 +24,7 @@
     const loadSample = params.get("sample") === "1";
     const measurePerformance = params.get("performance") === "1";
     const visualCapture = params.get("visual") === "1";
+    const reactMapDetails = params.get("reactMapDetails") === "1";
     if (visualCapture) document.documentElement.classList.add("is-visual-capture");
     try {
       localStorage.removeItem("plotypus.propertiesPanel");
@@ -31,7 +32,9 @@
     } catch (_error) {
       // Storage may be unavailable in a locked-down browser profile.
     }
-    frame.src = frame.dataset.src;
+    const appUrl = new URL(frame.dataset.src, window.location.href);
+    if (reactMapDetails) appUrl.searchParams.set("reactMapDetails", "1");
+    frame.src = appUrl.toString();
 
     function waitFor(predicate, timeout = 8000) {
       const started = performance.now();
@@ -53,6 +56,26 @@
     function dispatchKey(target, key) {
       const View = target.ownerDocument?.defaultView?.KeyboardEvent || KeyboardEvent;
       target.dispatchEvent(new View("keydown", { key, bubbles: true, cancelable: true }));
+    }
+
+    function setFieldValue(field, value) {
+      const View = field.ownerDocument?.defaultView || window;
+      const doc = field.ownerDocument;
+      field.focus();
+      if (typeof field.select === "function") field.select();
+      if (!(value && typeof doc.execCommand === "function" && doc.execCommand("insertText", false, value) && field.value === value)) {
+        const prototype = field.tagName === "TEXTAREA" ? View.HTMLTextAreaElement.prototype : View.HTMLInputElement.prototype;
+        const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
+        const previousValue = field.value;
+        if (descriptor?.set) descriptor.set.call(field, value);
+        else field.value = value;
+        if (field._valueTracker && typeof field._valueTracker.setValue === "function") {
+          field._valueTracker.setValue(previousValue);
+        }
+      }
+      const InputEventCtor = View.InputEvent || View.Event;
+      field.dispatchEvent(new InputEventCtor("input", { bubbles: true, cancelable: true, inputType: "insertText", data: value }));
+      field.dispatchEvent(new View.Event("change", { bubbles: true, cancelable: true }));
     }
 
     function assert(checks, name, pass, detail = "") {
@@ -295,25 +318,39 @@
             await waitFor(() => doc.querySelector(dialogSelector)?.hidden === false);
             const dialog = doc.querySelector(dialogSelector);
             assert(checks, "Map details dialog opens", !dialog.hidden);
+            if (reactMapDetails) {
+              assert(checks, "React Map details implementation is mounted", Boolean(dialog.querySelector("#reactMapDetailsDialogRoot:not([hidden])")) && Boolean(dialog.querySelector("#mapDetailsForm[hidden]")));
+            }
             assert(checks, "Map details exposes modal semantics", dialog.getAttribute("role") === "dialog" && dialog.getAttribute("aria-modal") === "true" && dialog.getAttribute("aria-labelledby") === "mapDetailsTitle");
             assert(checks, "Map details starts on the English title", doc.activeElement === doc.querySelector("#mapTitleEnInput"));
             assert(checks, "Map details does not block saving partial bilingual details", dialog.querySelectorAll("input[required], textarea[required]").length === 0);
             assert(checks, "Map details headings do not show publish-needed badges", dialog.querySelectorAll(".dialog-field-group .field-requirement").length === 0);
             assert(checks, "Accessibility publishing note remains visible", /not drawn in SVG or PNG exports/i.test(dialog.querySelector(".dialog-note")?.textContent || ""));
+            setFieldValue(dialog.querySelector("#mapTitleEnInput"), "Draft title survives language switch");
+            await waitFor(() => dialog.querySelector("#mapTitleEnInput")?.value === "Draft title survives language switch", 2000);
+            const draftTitleBeforeLanguageSwitch = dialog.querySelector("#mapTitleEnInput")?.value || "";
             doc.querySelector("[data-ui-language='fr']")?.click();
-            await waitFor(() => doc.documentElement.lang === "fr" && /Détails de la carte/.test(doc.querySelector("#mapDetailsTitle")?.textContent || ""), 2000);
+            await waitFor(() => doc.documentElement.lang === "fr" && /Détails de la carte/.test(doc.querySelector("#mapDetailsTitle")?.textContent || "") && dialog.querySelector("#mapTitleEnInput"), 2000);
+            await waitFor(() => dialog.querySelector("#mapTitleEnInput")?.value === "Draft title survives language switch", 2000);
             assert(checks, "Top language toggle switches Map details dialog copy to French", /Les deux langues sont requises/.test(dialog.querySelector(".dialog-note")?.textContent || "") && /Titre de la carte/.test(dialog.textContent || "") && /Enregistrer les détails de la carte/.test(dialog.textContent || ""), dialog.textContent || "");
+            assert(checks, "Map details draft survives language remount", dialog.querySelector("#mapTitleEnInput")?.value === "Draft title survives language switch", JSON.stringify({
+              after: dialog.querySelector("#mapTitleEnInput")?.value || "",
+              before: draftTitleBeforeLanguageSwitch
+            }));
             assertNoRawUiKeys(checks, "Map details dialog does not show raw translation keys in French", dialog);
             assertNoKnownEnglishUi(checks, "Map details dialog does not show known English UI phrases in French", [dialog]);
             assertNoRawUiKeysInAttributes(checks, "Map details dialog attributes do not show raw translation keys in French", [dialog]);
             assertNoKnownEnglishUiInAttributes(checks, "Map details dialog attributes do not show known English UI phrases in French", [dialog]);
-            doc.querySelector("[data-ui-language='en']")?.click();
-            await waitFor(() => doc.documentElement.lang === "en" && /Map details/.test(doc.querySelector("#mapDetailsTitle")?.textContent || ""), 2000);
-            dialog.querySelector("#mapTitleEnInput").value = "";
-            dialog.querySelector("#mapTitleFrInput").value = "Titre provisoire";
-            dialog.querySelector("#mapTextEnInput").value = "";
-            dialog.querySelector("#mapTextFrInput").value = "";
-            dialog.querySelector("#mapDetailsForm").dispatchEvent(new frame.contentWindow.Event("submit", { bubbles: true, cancelable: true }));
+            setFieldValue(dialog.querySelector("#mapTitleEnInput"), "");
+            setFieldValue(dialog.querySelector("#mapTitleFrInput"), "Titre provisoire");
+            setFieldValue(dialog.querySelector("#mapTextEnInput"), "");
+            setFieldValue(dialog.querySelector("#mapTextFrInput"), "");
+            const mapDetailsForm = dialog.querySelector("#mapDetailsForm");
+            if (mapDetailsForm && !mapDetailsForm.hidden) {
+              mapDetailsForm.dispatchEvent(new frame.contentWindow.Event("submit", { bubbles: true, cancelable: true }));
+            } else {
+              Array.from(dialog.querySelectorAll("button")).find(button => /Save map details|Enregistrer les détails de la carte/.test(button.textContent || ""))?.click();
+            }
             await waitFor(() => dialog.hidden === true);
             assert(checks, "Map details can save while fields are still missing", dialog.hidden && doc.querySelector("#mapDetailsBtn")?.classList.contains("has-warning"));
             trigger.click();

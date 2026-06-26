@@ -438,6 +438,10 @@
     textEn: "",
     textFr: ""
   };
+  let reactMapDetailsHandle = null;
+  let reactMapDetailsLoadPromise = null;
+  let reactMapDetailsDraft = null;
+  let reactMapDetailsTarget = null;
   let pendingPreviewRefresh = false;
   let pendingPreviewRefreshOptions = null;
   let pendingRenderFrame = null;
@@ -2340,6 +2344,9 @@
 
   function applyUiLanguage(language, options = {}) {
     const nextLanguage = normalizeUiLanguage(language);
+    const openReactMapDetailsDraft = reactMapDetailsHandle && els.mapDetailsDialog && !els.mapDetailsDialog.hidden
+      ? readMapDetailsDialogDraftValue()
+      : null;
     currentUiLanguage = nextLanguage;
     document.documentElement.lang = nextLanguage;
     if (i18n && typeof i18n.applyStaticTranslations === "function") {
@@ -2361,6 +2368,9 @@
     }
     if (els.csvMapDialog && !els.csvMapDialog.hidden && pendingCsvMapping) {
       renderCsvMappingDialog();
+    }
+    if (openReactMapDetailsDraft) {
+      openReactMapDetailsDialog(openReactMapDetailsDraft);
     }
     publishReadonlyAppSnapshot();
   }
@@ -7922,7 +7932,165 @@
     if (dialog._returnFocus && typeof dialog._returnFocus.focus === "function") dialog._returnFocus.focus();
   }
 
-  function openMapDetailsDialog() {
+  function isReactMapDetailsEnabled() {
+    try {
+      return new URLSearchParams(window.location.search).get("reactMapDetails") === "1";
+    } catch {
+      return false;
+    }
+  }
+
+  async function loadReactMapDetailsAdapters() {
+    if (window.PLOTYPUS_REACT_ADAPTERS && typeof window.PLOTYPUS_REACT_ADAPTERS.mountMapDetailsDialog === "function") {
+      return window.PLOTYPUS_REACT_ADAPTERS;
+    }
+    if (!reactMapDetailsLoadPromise) {
+      reactMapDetailsLoadPromise = import("./dist/react/plotypus-react-adapters.js")
+        .then(() => window.PLOTYPUS_REACT_ADAPTERS || null)
+        .catch(() => null);
+    }
+    return reactMapDetailsLoadPromise;
+  }
+
+  function setLegacyMapDetailsFormAvailable(isAvailable) {
+    if (!els.mapDetailsForm) return;
+    els.mapDetailsForm.hidden = !isAvailable;
+    [els.mapTitleEnInput, els.mapTitleFrInput, els.mapTextEnInput, els.mapTextFrInput].forEach(input => {
+      if (!input) return;
+      if (isAvailable) {
+        if (input.dataset.reactDisabledId) {
+          input.id = input.dataset.reactDisabledId;
+          delete input.dataset.reactDisabledId;
+        }
+      } else if (input.id) {
+        input.dataset.reactDisabledId = input.id;
+        input.removeAttribute("id");
+      }
+    });
+  }
+
+  function unmountReactMapDetailsDialog({ preserveDraft = false, restoreForm = true } = {}) {
+    if (reactMapDetailsHandle && typeof reactMapDetailsHandle.unmount === "function") reactMapDetailsHandle.unmount();
+    reactMapDetailsHandle = null;
+    if (!preserveDraft) reactMapDetailsDraft = null;
+    if (reactMapDetailsTarget) {
+      reactMapDetailsTarget.replaceChildren();
+      reactMapDetailsTarget.hidden = true;
+    }
+    if (restoreForm) setLegacyMapDetailsFormAvailable(true);
+  }
+
+  function getReactMapDetailsTarget() {
+    if (!els.mapDetailsDialog) return null;
+    if (!reactMapDetailsTarget) {
+      reactMapDetailsTarget = document.createElement("div");
+      reactMapDetailsTarget.id = "reactMapDetailsDialogRoot";
+      reactMapDetailsTarget.className = "react-map-details-dialog-root";
+      reactMapDetailsTarget.hidden = true;
+      reactMapDetailsTarget.addEventListener("input", updateReactMapDetailsDraftFromEvent);
+      reactMapDetailsTarget.addEventListener("change", updateReactMapDetailsDraftFromEvent);
+      els.mapDetailsDialog.appendChild(reactMapDetailsTarget);
+    }
+    return reactMapDetailsTarget;
+  }
+
+  function readMapDetailsDialogDraftValue() {
+    const titleEnInput = els.mapDetailsDialog && els.mapDetailsDialog.querySelector("#mapTitleEnInput");
+    const titleFrInput = els.mapDetailsDialog && els.mapDetailsDialog.querySelector("#mapTitleFrInput");
+    const textEnInput = els.mapDetailsDialog && els.mapDetailsDialog.querySelector("#mapTextEnInput");
+    const textFrInput = els.mapDetailsDialog && els.mapDetailsDialog.querySelector("#mapTextFrInput");
+    if (titleEnInput || titleFrInput || textEnInput || textFrInput) {
+      return {
+        titleEn: titleEnInput ? titleEnInput.value : mapDetails.titleEn,
+        titleFr: titleFrInput ? titleFrInput.value : mapDetails.titleFr,
+        textEn: textEnInput ? textEnInput.value : mapDetails.textEn,
+        textFr: textFrInput ? textFrInput.value : mapDetails.textFr
+      };
+    }
+    if (reactMapDetailsDraft) return { ...reactMapDetailsDraft };
+    return { ...mapDetails };
+  }
+
+  function updateReactMapDetailsDraftFromEvent(event) {
+    if (!reactMapDetailsHandle) return;
+    const target = event && event.target;
+    if (!target || !["mapTitleEnInput", "mapTitleFrInput", "mapTextEnInput", "mapTextFrInput"].includes(target.id)) return;
+    const currentDraft = readMapDetailsDialogDraftValue();
+    reactMapDetailsDraft = {
+      ...currentDraft,
+      titleEn: target.id === "mapTitleEnInput" ? target.value : currentDraft.titleEn,
+      titleFr: target.id === "mapTitleFrInput" ? target.value : currentDraft.titleFr,
+      textEn: target.id === "mapTextEnInput" ? target.value : currentDraft.textEn,
+      textFr: target.id === "mapTextFrInput" ? target.value : currentDraft.textFr
+    };
+  }
+
+  function applyMapDetailsValue(value) {
+    mapDetails.titleEn = String(value && value.titleEn || "").trim();
+    mapDetails.titleFr = String(value && value.titleFr || "").trim();
+    mapDetails.textEn = String(value && value.textEn || "").trim();
+    mapDetails.textFr = String(value && value.textFr || "").trim();
+  }
+
+  function saveMapDetailsValue(value) {
+    applyMapDetailsValue(value);
+    document.title = mapDetails[currentMapLanguage === "fr" ? "titleFr" : "titleEn"] || "Plotypus";
+    updateMapDetailsState();
+    setStatusMessage(t("status.saved.mapDetails"), "ok");
+  }
+
+  async function openReactMapDetailsDialog(preservedDraft = null) {
+    const adapters = await loadReactMapDetailsAdapters();
+    if (!adapters || typeof adapters.mountMapDetailsDialog !== "function") return false;
+    const target = getReactMapDetailsTarget();
+    if (!target) return false;
+    const isRemount = Boolean(reactMapDetailsHandle);
+    const initialDraft = preservedDraft || (isRemount ? readMapDetailsDialogDraftValue() : { ...mapDetails });
+
+    unmountReactMapDetailsDialog({ preserveDraft: true, restoreForm: false });
+    reactMapDetailsDraft = initialDraft;
+    setLegacyMapDetailsFormAvailable(false);
+    target.hidden = false;
+    els.mapDetailsDialog._undoSnapshot = createAppUndoSnapshot("map details edit");
+    openDialog(els.mapDetailsDialog, els.mapDetailsBtn);
+    reactMapDetailsHandle = adapters.mountMapDetailsDialog({
+      locale: currentUiLanguage === "fr" ? "fr" : "en",
+      onCancel: () => {
+        unmountReactMapDetailsDialog();
+        reactMapDetailsDraft = null;
+        closeDialog(els.mapDetailsDialog);
+        updateMapDetailsState();
+      },
+      onDraftChange: value => {
+        reactMapDetailsDraft = { ...value };
+      },
+      onSave: value => {
+        pushAppUndoSnapshot(els.mapDetailsDialog._undoSnapshot || createAppUndoSnapshot("map details edit"));
+        els.mapDetailsDialog._undoSnapshot = null;
+        saveMapDetailsValue(value);
+        unmountReactMapDetailsDialog();
+        reactMapDetailsDraft = null;
+        closeDialog(els.mapDetailsDialog);
+      },
+      read: () => initialDraft,
+      target,
+      write: value => applyMapDetailsValue(value)
+    });
+
+    if (!reactMapDetailsHandle) {
+      unmountReactMapDetailsDialog();
+      closeDialog(els.mapDetailsDialog);
+      return false;
+    }
+    const focusTarget = target.querySelector("[data-dialog-initial-focus], input, textarea, select, button");
+    if (focusTarget) focusTarget.focus();
+    return true;
+  }
+
+  async function openMapDetailsDialog() {
+    if (isReactMapDetailsEnabled() && await openReactMapDetailsDialog()) return;
+    unmountReactMapDetailsDialog();
+    reactMapDetailsDraft = null;
     els.mapTitleEnInput.value = mapDetails.titleEn;
     els.mapTitleFrInput.value = mapDetails.titleFr;
     els.mapTextEnInput.value = mapDetails.textEn;
@@ -7942,14 +8110,13 @@
     event.preventDefault();
     pushAppUndoSnapshot(els.mapDetailsDialog._undoSnapshot || createAppUndoSnapshot("map details edit"));
     els.mapDetailsDialog._undoSnapshot = null;
-    mapDetails.titleEn = els.mapTitleEnInput.value.trim();
-    mapDetails.titleFr = els.mapTitleFrInput.value.trim();
-    mapDetails.textEn = els.mapTextEnInput.value.trim();
-    mapDetails.textFr = els.mapTextFrInput.value.trim();
-    document.title = mapDetails[currentMapLanguage === "fr" ? "titleFr" : "titleEn"] || "Plotypus";
+    saveMapDetailsValue({
+      titleEn: els.mapTitleEnInput.value,
+      titleFr: els.mapTitleFrInput.value,
+      textEn: els.mapTextEnInput.value,
+      textFr: els.mapTextFrInput.value
+    });
     closeDialog(els.mapDetailsDialog);
-    updateMapDetailsState();
-    setStatusMessage(t("status.saved.mapDetails"), "ok");
   }
 
   const capitalCityRows = [
@@ -8373,7 +8540,10 @@
       on(control, "click", () => {
         const key = control.dataset.dialogClose;
         closeDialog(key === "map-details" ? els.mapDetailsDialog : key === "point-catalog" ? els.pointCatalogDialog : els.csvMapDialog);
-        if (key === "map-details") updateMapDetailsState();
+        if (key === "map-details") {
+          unmountReactMapDetailsDialog();
+          updateMapDetailsState();
+        }
       });
     });
     on(els.pointCatalogDialog, "click", event => {
@@ -8453,6 +8623,10 @@
       if (event.key === "Escape") {
         event.preventDefault();
         closeDialog(openDialogElement);
+        if (openDialogElement === els.mapDetailsDialog) {
+          unmountReactMapDetailsDialog();
+          updateMapDetailsState();
+        }
         return;
       }
       if (event.key === "Tab") {

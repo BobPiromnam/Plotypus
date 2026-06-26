@@ -16,6 +16,7 @@ export type MountMapDetailsDialogOptions = {
   enabled: boolean;
   locale?: MapDetailsLocale;
   onCancel?: () => void;
+  onDraftChange?: (value: MapDetailsValue) => void;
   onSave?: (value: MapDetailsValue) => void;
   target: Element | null;
 };
@@ -26,6 +27,7 @@ export function mountMapDetailsDialog({
   enabled,
   locale = "en",
   onCancel,
+  onDraftChange,
   onSave,
   target
 }: MountMapDetailsDialogOptions): MapDetailsMountHandle | null {
@@ -36,17 +38,26 @@ export function mountMapDetailsDialog({
 
   root.render(
     <MapDetailsDialog
+      embedded={Boolean(target.closest?.(".app-dialog"))}
+      fieldIds={{
+        textEn: "mapTextEnInput",
+        textFr: "mapTextFrInput",
+        titleEn: "mapTitleEnInput",
+        titleFr: "mapTitleFrInput"
+      }}
       initialValue={adapter.getValue()}
       locale={locale}
       onCancel={() => {
         onCancel?.();
         unmount();
       }}
+      onDraftChange={onDraftChange}
       onSave={(value) => {
         const saved = adapter.saveValue(value);
         onSave?.(saved);
         unmount();
       }}
+      titleId={target.closest?.(".app-dialog") ? "reactMapDetailsTitle" : undefined}
     />
   );
 
@@ -54,18 +65,27 @@ export function mountMapDetailsDialog({
 }
 
 export function renderMapDetailsDialogForMount(options: MountMapDetailsDialogOptions): ReactNode | null {
-  const { adapter, enabled, locale = "en", onCancel, onSave, target } = options;
+  const { adapter, enabled, locale = "en", onCancel, onDraftChange, onSave, target } = options;
   if (!enabled || !target) return null;
 
   return (
     <MapDetailsDialog
+      embedded={Boolean(target.closest?.(".app-dialog"))}
+      fieldIds={{
+        textEn: "mapTextEnInput",
+        textFr: "mapTextFrInput",
+        titleEn: "mapTitleEnInput",
+        titleFr: "mapTitleFrInput"
+      }}
       initialValue={adapter.getValue()}
       locale={locale}
       onCancel={onCancel}
+      onDraftChange={onDraftChange}
       onSave={(value) => {
         const saved = adapter.saveValue(value);
         onSave?.(saved);
       }}
+      titleId={target.closest?.(".app-dialog") ? "reactMapDetailsTitle" : undefined}
     />
   );
 }

@@ -6,18 +6,26 @@ import { IconButton } from "./IconButton";
 type DialogProps = {
   actions?: ReactNode;
   children: ReactNode;
+  closeLabel?: string;
   icon?: IconName;
+  modal?: boolean;
   onClose?: () => void;
   open?: boolean;
   subtitle?: string;
   title: string;
+  titleId?: string;
 };
 
-export function Dialog({ actions, children, icon, onClose, open = true, subtitle, title }: DialogProps) {
+export function Dialog({ actions, children, closeLabel = "Close", icon, modal = true, onClose, open = true, subtitle, title, titleId = "ptDialogTitle" }: DialogProps) {
   if (!open) return null;
 
   return (
-    <section className="pt-dialog" role="dialog" aria-modal="true" aria-label={title}>
+    <section
+      className="pt-dialog"
+      role={modal ? "dialog" : undefined}
+      aria-modal={modal ? "true" : undefined}
+      aria-labelledby={modal ? titleId : undefined}
+    >
       <header className="pt-dialog-header">
         {icon ? (
           <span className="pt-dialog-icon" aria-hidden="true">
@@ -25,10 +33,10 @@ export function Dialog({ actions, children, icon, onClose, open = true, subtitle
           </span>
         ) : null}
         <div>
-          <h2 id="ptDialogTitle">{title}</h2>
+          <h2 id={titleId}>{title}</h2>
           {subtitle ? <p>{subtitle}</p> : null}
         </div>
-        {onClose ? <IconButton className="pt-dialog-close" icon="x" label="Close" onClick={onClose} /> : null}
+        {onClose ? <IconButton className="pt-dialog-close" icon="x" label={closeLabel} onClick={onClose} /> : null}
       </header>
       <div className="pt-dialog-body">{children}</div>
       {actions ? <footer className="pt-dialog-footer">{actions}</footer> : null}

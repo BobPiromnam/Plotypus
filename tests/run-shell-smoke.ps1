@@ -13,6 +13,7 @@ param(
   [switch]$MeasurePerformance,
   [switch]$SkipScreenshot,
   [switch]$VisualCapture,
+  [string[]]$ExtraQuery = @(),
   [string]$ScreenshotCopyPath = ""
 )
 
@@ -55,6 +56,9 @@ try {
   if ($LoadSample) { $query += "sample=1" }
   if ($MeasurePerformance) { $query += "performance=1" }
   if ($VisualCapture) { $query += "visual=1" }
+  foreach ($item in $ExtraQuery) {
+    if ($item) { $query += $item }
+  }
   $queryString = if ($query.Count) { "?" + ($query -join "&") } else { "" }
   $smokeUrl = "http://127.0.0.1:$port/tests/shell-interactions.html$queryString"
   $ready = $false

@@ -11,8 +11,11 @@ export type MapDetailsValue = {
 
 export type MapDetailsLocale = "en" | "fr";
 
+export type MapDetailsFieldIds = Partial<Record<keyof MapDetailsValue, string>>;
+
 type MapDetailsCopy = {
   cancel: string;
+  close: string;
   english: string;
   french: string;
   noteBody: string;
@@ -27,6 +30,7 @@ type MapDetailsCopy = {
 const copyByLocale: Record<MapDetailsLocale, MapDetailsCopy> = {
   en: {
     cancel: "Cancel",
+    close: "Close map details",
     english: "English",
     french: "Français",
     noteBody:
@@ -40,6 +44,7 @@ const copyByLocale: Record<MapDetailsLocale, MapDetailsCopy> = {
   },
   fr: {
     cancel: "Annuler",
+    close: "Fermer les détails de la carte",
     english: "Anglais",
     french: "Français",
     noteBody:
@@ -61,22 +66,32 @@ const emptyDetails: MapDetailsValue = {
 };
 
 export function MapDetailsDialog({
+  embedded = false,
+  fieldIds = {},
   initialValue = emptyDetails,
   locale = "en",
   onCancel,
-  onSave
+  onDraftChange,
+  onSave,
+  titleId
 }: {
+  embedded?: boolean;
+  fieldIds?: MapDetailsFieldIds;
   initialValue?: MapDetailsValue;
   locale?: MapDetailsLocale;
   onCancel?: () => void;
+  onDraftChange?: (value: MapDetailsValue) => void;
   onSave?: (value: MapDetailsValue) => void;
+  titleId?: string;
 }) {
   const [draft, setDraft] = useState<MapDetailsValue>(initialValue);
   const copy = copyByLocale[locale];
   const missingFields = getMissingMapDetailsFields(draft);
 
   const updateDraft = (key: keyof MapDetailsValue, value: string) => {
-    setDraft((current) => ({ ...current, [key]: value }));
+    const next = { ...draft, [key]: value };
+    onDraftChange?.(next);
+    setDraft(next);
   };
 
   return (
@@ -89,8 +104,12 @@ export function MapDetailsDialog({
           saveLabel={copy.save}
         />
       }
+      closeLabel={copy.close}
       icon="file-text"
+      modal={!embedded}
+      onClose={onCancel}
       title={copy.title}
+      titleId={titleId}
       subtitle={copy.subtitle}
     >
       <div className="map-details-note" data-missing-count={missingFields.length}>
@@ -99,8 +118,11 @@ export function MapDetailsDialog({
       </div>
       <BilingualFieldGroup
         english={draft.titleEn}
+        englishAutoFocus
+        englishId={fieldIds.titleEn}
         englishLabel={copy.english}
         french={draft.titleFr}
+        frenchId={fieldIds.titleFr}
         frenchLabel={copy.french}
         label={copy.mapTitle}
         onEnglishChange={(value) => updateDraft("titleEn", value)}
@@ -108,8 +130,10 @@ export function MapDetailsDialog({
       />
       <BilingualFieldGroup
         english={draft.textEn}
+        englishId={fieldIds.textEn}
         englishLabel={copy.english}
         french={draft.textFr}
+        frenchId={fieldIds.textFr}
         frenchLabel={copy.french}
         label={copy.textVersion}
         multiline

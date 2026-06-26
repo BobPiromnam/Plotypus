@@ -9,8 +9,14 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       input: {
+        "plotypus-react-adapters": "src/production-adapters.ts",
         "react-entry": "react-entry.html",
         "react-vanilla-bridge": "react-vanilla-bridge.html"
+      },
+      output: {
+        entryFileNames: (chunkInfo) => (
+          chunkInfo.name === "plotypus-react-adapters" ? "[name].js" : "assets/[name]-[hash].js"
+        )
       }
     }
   },
