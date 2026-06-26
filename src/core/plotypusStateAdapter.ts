@@ -87,8 +87,17 @@ export type ProjectPointsCommandResult = {
   label: string;
 };
 
+export type PropertiesCommand =
+  | { collapsed: boolean; type: "set-collapsed" }
+  | { type: "toggle-collapsed" };
+
+export type PropertiesCommandResult = {
+  label: string;
+};
+
 export type PlotypusStateAdapter = {
   getSnapshot: () => PlotypusSnapshot;
+  runPropertiesCommand: (command: PropertiesCommand) => PropertiesCommandResult;
   runProjectPointsCommand: (command: ProjectPointsCommand) => ProjectPointsCommandResult;
   setLocale: (locale: PlotypusLocale) => void;
   setProjectPointsSelection: (selection: Pick<ProjectPointsToolbarState, "selectedCellCount" | "selectedRowCount">) => void;
@@ -198,6 +207,20 @@ export function createMemoryPlotypusStateAdapter(
 
   return {
     getSnapshot: () => snapshot,
+    runPropertiesCommand(command) {
+      const collapsed = command.type === "toggle-collapsed" ? !snapshot.properties.collapsed : command.collapsed;
+      const commandLabel = collapsed ? "Collapse properties requested" : "Expand properties requested";
+
+      update({
+        ...snapshot,
+        properties: {
+          ...snapshot.properties,
+          collapsed
+        }
+      });
+
+      return { label: commandLabel };
+    },
     runProjectPointsCommand(command) {
       const commandLabel = getProjectPointsCommandLabel(command);
       const shouldClearSelection = command.type === "clear-table" || command.type === "delete-selection";

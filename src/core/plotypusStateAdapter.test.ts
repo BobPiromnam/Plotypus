@@ -52,6 +52,17 @@ describe("plotypusStateAdapter", () => {
     expect(adapter.getSnapshot().projectPoints.toolbar.selectedRowCount).toBe(0);
   });
 
+  it("runs properties collapse commands through the adapter", () => {
+    const adapter = createMemoryPlotypusStateAdapter();
+
+    const collapseResult = adapter.runPropertiesCommand({ type: "toggle-collapsed" });
+    const expandResult = adapter.runPropertiesCommand({ collapsed: false, type: "set-collapsed" });
+
+    expect(collapseResult.label).toBe("Collapse properties requested");
+    expect(expandResult.label).toBe("Expand properties requested");
+    expect(adapter.getSnapshot().properties.collapsed).toBe(false);
+  });
+
   it("publishes updates to subscribers until unsubscribed", () => {
     const adapter = createMemoryPlotypusStateAdapter();
     const listener = vi.fn();

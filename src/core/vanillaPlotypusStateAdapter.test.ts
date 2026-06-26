@@ -231,6 +231,18 @@ describe("vanillaPlotypusStateAdapter", () => {
     expect(adapter.getSnapshot().projectPoints.rowCount).toBe(12);
   });
 
+  it("keeps command methods read-only for the vanilla bridge", () => {
+    const adapter = createVanillaPlotypusStateAdapter({
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    });
+
+    expect(adapter.runPropertiesCommand({ type: "toggle-collapsed" }).label).toBe(
+      "Read-only bridge ignored toggle-collapsed"
+    );
+    expect(adapter.runProjectPointsCommand({ type: "add-row" }).label).toBe("Read-only bridge ignored add-row");
+  });
+
   it("subscribes to vanilla snapshot events", () => {
     const addEventListener = vi.fn();
     const removeEventListener = vi.fn();

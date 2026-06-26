@@ -57,6 +57,9 @@ export function createVanillaPlotypusStateAdapter(windowRef: WindowLike): Plotyp
     getSnapshot() {
       return normalizeVanillaSnapshot(windowRef.PLOTYPUS_APP_STATE_READONLY?.getSnapshot());
     },
+    runPropertiesCommand(command) {
+      return { label: `Read-only bridge ignored ${command.type}` };
+    },
     runProjectPointsCommand(command) {
       return { label: `Read-only bridge ignored ${command.type}` };
     },

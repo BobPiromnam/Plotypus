@@ -91,7 +91,7 @@ export function PrimitiveGallery() {
           contextKind={snapshot.properties.contextKind}
           contextIcon="file-text"
           guidance="Click the map, a label, legend, or callout to inspect object-specific controls."
-          onCollapse={() => plotypusState.setPropertiesCollapsed(!snapshot.properties.collapsed)}
+          onCollapse={() => plotypusState.runPropertiesCommand({ type: "toggle-collapsed" })}
           subtitle={snapshot.properties.subtitle}
           title={snapshot.properties.title}
           sections={[
