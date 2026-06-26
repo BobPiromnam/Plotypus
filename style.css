@@ -658,6 +658,33 @@ button.is-danger:not(:disabled):hover {
   line-height: var(--line-ui);
 }
 
+.properties-field-label,
+.metric-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.field-origin-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  color: #bcb4a3;
+  vertical-align: middle;
+}
+
+.field-origin-icon-auto {
+  color: var(--accent);
+}
+
+.field-origin-icon svg,
+.field-origin-svg {
+  width: 1em;
+  height: 1em;
+}
+
 .properties-form input[type="text"],
 .properties-form input[type="number"],
 .properties-form textarea,
@@ -683,6 +710,8 @@ button.is-danger:not(:disabled):hover {
 
 .properties-record-status {
   display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
   justify-self: start;
   padding: 3px var(--space-4);
   border: 1px solid var(--border);
@@ -5234,6 +5263,7 @@ body[data-workspace-view="projects"] #projectTable .status-cell {
   color: #bcb4a3;
 }
 
+/* Field-origin rule: pencil = user-editable, wand = computed/generated/read-only. */
 .col-edit-hint svg,
 .col-auto-chip svg {
   width: 1em;
@@ -5244,12 +5274,14 @@ body[data-workspace-view="projects"] #projectTable .status-cell {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  margin-left: var(--space-3);
-  padding: 1px var(--space-2);
-  border: 1px solid var(--field-computed-border);
-  border-radius: var(--radius-pill);
-  background: var(--field-computed-tint);
-  color: var(--muted);
+  width: 12px;
+  height: 12px;
+  margin-left: var(--space-2);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--accent);
   vertical-align: middle;
 }
 

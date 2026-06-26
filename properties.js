@@ -11,13 +11,30 @@
     };
   }
 
+  function propertyOriginIcon(options, origin = "edit") {
+    const { escapeHtml } = options || {};
+    const t = translator(options);
+    const iconName = origin === "auto" ? "wand" : "pencil";
+    const labelKey = origin === "auto" ? "fieldOrigin.automatic" : "fieldOrigin.editable";
+    const label = escapeHtml(t(labelKey));
+    const iconSvg = options && typeof options.iconSvg === "function"
+      ? options.iconSvg(iconName, "field-origin-svg")
+      : "";
+    return `<span class="field-origin-icon field-origin-icon-${escapeHtml(origin)}" title="${label}" aria-label="${label}">${iconSvg}</span>`;
+  }
+
+  function propertyFieldLabel(options, label, origin = "edit") {
+    const { escapeHtml } = options || {};
+    return `<span class="properties-field-label">${escapeHtml(label)} ${propertyOriginIcon(options, origin)}</span>`;
+  }
+
   function qualityMetricItem(label, value, options) {
     const { state = "neutral", description = "", escapeHtml } = options || {};
     const metricState = state === "ok" ? "ok" : (state === "warning" || state === "review") ? "review" : "info";
     return `
       <div class="properties-metric" data-state="${escapeHtml(metricState)}">
         <span>
-          <span class="metric-label">${escapeHtml(label)}</span>
+          <span class="metric-label">${escapeHtml(label)} ${propertyOriginIcon(options, "auto")}</span>
           ${description ? `<small>${escapeHtml(description)}</small>` : ""}
         </span>
         <strong>${escapeHtml(value)}</strong>
@@ -52,7 +69,7 @@
       <div class="properties-form" data-property-kind="furniture" data-box-key="${escapeHtml(key)}">
         <label class="toolbar-check">
           <input type="checkbox" data-property-field="boxVisible"${visible ? " checked" : ""}>
-          <span>${escapeHtml(t("properties.furniture.showBox", { label }))}</span>
+          <span>${propertyFieldLabel(options, t("properties.furniture.showBox", { label }))}</span>
         </label>
         <div class="properties-actions">
           <button type="button" data-property-action="reset-box" data-box-key="${escapeHtml(key)}">${escapeHtml(t("properties.button.resetPositionSize"))}</button>
@@ -86,19 +103,19 @@
         <section class="document-property-section">
           <h3>${escapeHtml(t("properties.section.mapSize"))}</h3>
           <label class="properties-field-group">
-            ${escapeHtml(t("properties.field.pagePreset"))}
+            ${propertyFieldLabel(options, t("properties.field.pagePreset"))}
             <select data-layout-proxy="bookSizeInput">
               ${selectOptions.bookSize || ""}
             </select>
           </label>
           <label class="properties-field-group">
-            ${escapeHtml(t("properties.field.canvasSize"))}
+            ${propertyFieldLabel(options, t("properties.field.canvasSize"))}
             <select data-layout-proxy="imageSizeInput">
               ${selectOptions.imageSize || ""}
             </select>
           </label>
           <label class="properties-field-group">
-            ${escapeHtml(t("properties.field.defaultCharactersPerLine"))}
+            ${propertyFieldLabel(options, t("properties.field.defaultCharactersPerLine"))}
             <input type="number" min="12" max="42" step="1" data-layout-proxy="labelCharsInput" value="${escapeHtml(values.labelChars || "")}">
           </label>
         </section>
@@ -106,11 +123,11 @@
           <h3>${escapeHtml(t("properties.section.mapDetails"))}</h3>
           <div class="map-details-status-card" data-state="${missingDetails ? "review" : "ok"}">
             <div class="map-details-status-row">
-              <span>${escapeHtml(t("properties.status.titleRequired"))}</span>
+              <span>${escapeHtml(t("properties.status.titleRequired"))} ${propertyOriginIcon(options, "auto")}</span>
               <strong>${escapeHtml(titleMissing ? t("properties.status.missing") : t("properties.status.complete"))}</strong>
             </div>
             <div class="map-details-status-row">
-              <span>${escapeHtml(t("properties.status.textRequired"))}</span>
+              <span>${escapeHtml(t("properties.status.textRequired"))} ${propertyOriginIcon(options, "auto")}</span>
               <strong>${escapeHtml(textMissing ? t("properties.status.missing") : t("properties.status.complete"))}</strong>
             </div>
             <button type="button" data-property-action="open-map-details">${iconSvg("file-text")} ${escapeHtml(t("properties.button.openMapDetails"))}</button>
@@ -162,52 +179,52 @@
     const numericStyle = "font-family: &quot;IBM Plex Mono&quot;, ui-monospace, monospace; text-align: right; font-variant-numeric: tabular-nums;";
     return `
       <div class="properties-form" data-property-kind="${escapeHtml(kind)}" data-row-id="${rowId}" data-label-key="${safeLabelKey}">
-        <div class="properties-record-status">${escapeHtml(status)}</div>
+        <div class="properties-record-status">${escapeHtml(status)} ${propertyOriginIcon(options, "auto")}</div>
         <label>
-          ${escapeHtml(t("properties.field.projectName"))}
+          ${propertyFieldLabel(options, t("properties.field.projectName"))}
           <input type="text" data-property-field="name" value="${escapeHtml(row.name || "")}">
         </label>
         <label>
-          ${escapeHtml(t("properties.field.projectNameFr"))}
+          ${propertyFieldLabel(options, t("properties.field.projectNameFr"))}
           <textarea data-property-field="nameFr" rows="2" placeholder="${escapeHtml(t("properties.field.projectNameFr"))}">${escapeHtml(row.nameFr || "")}</textarea>
         </label>
         <label>
-          ${escapeHtml(t("properties.field.priority"))}
+          ${propertyFieldLabel(options, t("properties.field.priority"))}
           <input type="number" min="0" max="5" step="1" data-property-field="priority" style="${numericStyle}" value="${priority}">
         </label>
         <label>
-          ${escapeHtml(t("properties.field.type"))}
+          ${propertyFieldLabel(options, t("properties.field.type"))}
           <select data-property-field="type">
             ${typeOptions}
           </select>
         </label>
         <div class="properties-inline-grid">
           <label>
-            ${escapeHtml(t("properties.field.longitude"))}
+            ${propertyFieldLabel(options, t("properties.field.longitude"))}
             <input type="text" inputmode="decimal" data-property-field="lon" style="${numericStyle}" value="${escapeHtml(row.lon === "" ? "" : String(row.lon))}">
           </label>
           <label>
-            ${escapeHtml(t("properties.field.latitude"))}
+            ${propertyFieldLabel(options, t("properties.field.latitude"))}
             <input type="text" inputmode="decimal" data-property-field="lat" style="${numericStyle}" value="${escapeHtml(row.lat === "" ? "" : String(row.lat))}">
           </label>
         </div>
         <label class="toolbar-check">
           <input type="checkbox" data-property-field="hideLine"${row.hideLine ? " checked" : ""}>
-          <span>${escapeHtml(t("properties.field.hideLeaderLine"))}</span>
+          <span>${propertyFieldLabel(options, t("properties.field.hideLeaderLine"))}</span>
         </label>
         <label class="toolbar-check">
           <input type="checkbox" data-property-field="elbowLeader"${row.elbowLeader ? " checked" : ""}>
-          <span>${escapeHtml(t("properties.field.useElbowLeader"))}</span>
+          <span>${propertyFieldLabel(options, t("properties.field.useElbowLeader"))}</span>
         </label>
         <details${advancedOpen ? " open" : ""}>
           <summary>${escapeHtml(t("properties.field.advanced"))}</summary>
           <div class="properties-form">
             <label>
-              ${escapeHtml(t("properties.field.footnote"))}
+              ${propertyFieldLabel(options, t("properties.field.footnote"))}
               <input type="text" maxlength="2" pattern="[A-Za-z0-9]*|[*]" data-property-field="footnote" value="${escapeHtml(row.footnote || "")}">
             </label>
             <label>
-              ${escapeHtml(t("properties.field.charactersPerLine"))}
+              ${propertyFieldLabel(options, t("properties.field.charactersPerLine"))}
               <input type="number" min="12" max="42" step="1" data-property-field="labelMaxChars" value="${escapeHtml(String(effectiveLabelMaxChars))}" placeholder="${escapeHtml(t("properties.field.defaultValue", { value: globalLabelMaxChars }))}">
             </label>
             <div class="properties-actions">
@@ -226,31 +243,31 @@
     return `
       <div class="properties-form" data-property-kind="map">
         <label>
-          ${escapeHtml(t("properties.field.mapBoundary"))}
+          ${propertyFieldLabel(options, t("properties.field.mapBoundary"))}
           <select data-map-proxy="boundaryInput">
             ${selectOptions.boundary || ""}
           </select>
         </label>
         <label>
-          ${escapeHtml(t("properties.field.regionPreset"))}
+          ${propertyFieldLabel(options, t("properties.field.regionPreset"))}
           <select data-map-proxy="regionPresetInput">
             ${selectOptions.regionPreset || ""}
           </select>
         </label>
         <label>
-          ${escapeHtml(t("properties.field.pagePreset"))}
+          ${propertyFieldLabel(options, t("properties.field.pagePreset"))}
           <select data-layout-proxy="bookSizeInput">
             ${selectOptions.bookSize || ""}
           </select>
         </label>
         <label>
-          ${escapeHtml(t("properties.field.canvasSize"))}
+          ${propertyFieldLabel(options, t("properties.field.canvasSize"))}
           <select data-layout-proxy="imageSizeInput">
             ${selectOptions.imageSize || ""}
           </select>
         </label>
         <label>
-          ${escapeHtml(t("properties.field.defaultCharactersPerLine"))}
+          ${propertyFieldLabel(options, t("properties.field.defaultCharactersPerLine"))}
           <input type="number" min="12" max="42" step="1" data-layout-proxy="labelCharsInput" value="${escapeHtml(selectOptions.labelMaxChars || "")}">
         </label>
       </div>
@@ -276,7 +293,7 @@
     return `
       <div class="properties-form" data-property-kind="quality">
         <h3>${escapeHtml(t("quality.property.threshold"))}</h3>
-        <label>${escapeHtml(t("quality.property.warnAbove"))}<input type="text" value="${escapeHtml(t("quality.property.overlapLimit"))}" readonly></label>
+        <label>${propertyFieldLabel(options, t("quality.property.warnAbove"), "auto")}<input type="text" value="${escapeHtml(t("quality.property.overlapLimit"))}" readonly></label>
         <p class="properties-muted">${escapeHtml(t("quality.property.help"))}</p>
         <p class="quality-properties-verdict" data-state="${escapeHtml(verdictState)}">${escapeHtml(overlapCount ? t("quality.property.overlapsFound", { count: overlapCount }) : t("quality.property.noOverlapsFound"))}</p>
         <div class="properties-actions">
@@ -318,8 +335,8 @@
     return `
       <div class="properties-form" data-property-kind="translation-entry" data-entry-id="${escapeHtml(entry.id)}">
         <h3>${escapeHtml(t("properties.translation.selected"))}</h3>
-        <label>${escapeHtml(t("properties.category.english"))}<input data-translation-property="en" type="text" value="${escapeHtml(entry.ref)}"></label>
-        <label>${escapeHtml(t("properties.category.french"))}<input data-translation-property="fr" type="text" value="${escapeHtml(entry.fr || "")}" placeholder="-"></label>
+        <label>${propertyFieldLabel(options, t("properties.category.english"))}<input data-translation-property="en" type="text" value="${escapeHtml(entry.ref)}"></label>
+        <label>${propertyFieldLabel(options, t("properties.category.french"))}<input data-translation-property="fr" type="text" value="${escapeHtml(entry.fr || "")}" placeholder="-"></label>
         <p class="properties-muted">${escapeHtml(t("properties.translation.outputNote"))}</p>
       </div>
     `;
@@ -342,12 +359,12 @@
     return `
       <div class="properties-form" data-property-kind="category" data-category-id="${escapeHtml(category.id)}">
         <h3>${escapeHtml(t("properties.category.legendLabel"))}</h3>
-        <label>${escapeHtml(t("properties.category.english"))}<input data-category-field="label" type="text" value="${escapeHtml(category.label)}"></label>
-        <label>${escapeHtml(t("properties.category.french"))}<input data-category-field="labelFr" type="text" value="${escapeHtml(category.labelFr || "")}"></label>
+        <label>${propertyFieldLabel(options, t("properties.category.english"))}<input data-category-field="label" type="text" value="${escapeHtml(category.label)}"></label>
+        <label>${propertyFieldLabel(options, t("properties.category.french"))}<input data-category-field="labelFr" type="text" value="${escapeHtml(category.labelFr || "")}"></label>
         <p class="properties-muted properties-dot-note">${escapeHtml(t("properties.category.languageNote"))}</p>
         <h3>${escapeHtml(t("properties.category.markerShape"))}</h3>
         <div class="category-shape-grid">${shapeOptions}</div>
-        <label>${escapeHtml(t("properties.category.markerColour"))}<input data-category-field="colour" type="color" value="${escapeHtml(category.colour)}"></label>
+        <label>${propertyFieldLabel(options, t("properties.category.markerColour"))}<input data-category-field="colour" type="color" value="${escapeHtml(category.colour)}"></label>
         <div class="custom-icon-dropzone${customIcon ? " is-active" : ""}">
           <input data-category-icon-upload type="file" accept="image/png,image/webp" hidden>
           <div class="custom-icon-summary">
@@ -367,8 +384,8 @@
         </div>
         <h3>${escapeHtml(t("properties.category.size"))}</h3>
         <div class="properties-inline-grid">
-          <label>${escapeHtml(t("properties.category.marker"))}<input data-category-field="markerSize" type="number" min="4" max="30" step="1" value="${escapeHtml(category.markerSize)}"></label>
-          <label>${escapeHtml(t("properties.category.legend"))}<input data-category-field="lineWidth" type="number" min="1" max="10" step="0.5" value="${escapeHtml(category.lineWidth)}"></label>
+          <label>${propertyFieldLabel(options, t("properties.category.marker"))}<input data-category-field="markerSize" type="number" min="4" max="30" step="1" value="${escapeHtml(category.markerSize)}"></label>
+          <label>${propertyFieldLabel(options, t("properties.category.legend"))}<input data-category-field="lineWidth" type="number" min="1" max="10" step="0.5" value="${escapeHtml(category.lineWidth)}"></label>
         </div>
         <p class="properties-muted">${escapeHtml(t("properties.category.sizeNote"))}</p>
       </div>`;
@@ -386,15 +403,16 @@
           <span>
             <strong>${escapeHtml(t("properties.region.includeInMap"))}</strong>
             <small>${escapeHtml(t("properties.region.pointsFallHere", { count: region.count, points: pointLabel }))}</small>
+            ${propertyOriginIcon(options, "edit")}
           </span>
           <input type="checkbox" data-region-property="included"${region.included ? " checked" : ""}>
         </label>
         <h3>${escapeHtml(t("properties.region.colour"))}</h3>
         <div class="properties-inline-grid">
-          <label>${escapeHtml(t("properties.region.order"))}<input type="number" step="any" data-region-property="value" value="${escapeHtml(region.value === "" ? "" : String(region.value))}"></label>
-          <label>${escapeHtml(t("properties.region.preset"))}<input type="text" value="${escapeHtml(presetLabel)}" readonly></label>
+          <label>${propertyFieldLabel(options, t("properties.region.order"))}<input type="number" step="any" data-region-property="value" value="${escapeHtml(region.value === "" ? "" : String(region.value))}"></label>
+          <label>${propertyFieldLabel(options, t("properties.region.preset"), "auto")}<input type="text" value="${escapeHtml(presetLabel)}" readonly></label>
         </div>
-        <label>${escapeHtml(t("properties.region.fillColour"))}<input data-region-property="colour" type="color" value="${escapeHtml(region.colour)}"></label>
+        <label>${propertyFieldLabel(options, t("properties.region.fillColour"))}<input data-region-property="colour" type="color" value="${escapeHtml(region.colour)}"></label>
         <p class="properties-muted">${escapeHtml(t("properties.region.valueColour", { valueSource: region.valueSourceLabel, colourSource: region.colourSourceLabel }))}</p>
       </div>
     `;

@@ -412,6 +412,7 @@
   const selectedProjectCells = new Set();
   let projectCellSelectionAnchor = null;
   let lastProjectCellPointerSelectionAt = 0;
+  let projectTableUxRefreshFrame = 0;
   let activeDataTable = "preview";
   let activeAuthoringLanguage = "en";
   let currentUiLanguage = "en";
@@ -1404,7 +1405,7 @@
       captureInputUndo(input, "project row edit");
       updateRowTitles(tr);
       syncCoordinateClearButtons(tr);
-      if (isProjectStatusInput(input)) refreshProjectTableUx();
+      if (isProjectStatusInput(input)) scheduleProjectTableUxRefresh();
       requestPreviewRefresh();
       refreshActiveRowProperties();
     };
@@ -1626,6 +1627,10 @@
   }
 
   function refreshProjectTableUx() {
+    if (projectTableUxRefreshFrame) {
+      cancelAnimationFrame(projectTableUxRefreshFrame);
+      projectTableUxRefreshFrame = 0;
+    }
     const rows = getTableRows();
     let dataRows = 0;
     let mappedRows = 0;
@@ -1771,6 +1776,14 @@
     refreshProjectCellSelectionUi();
   }
 
+  function scheduleProjectTableUxRefresh() {
+    if (projectTableUxRefreshFrame) return;
+    projectTableUxRefreshFrame = requestAnimationFrame(() => {
+      projectTableUxRefreshFrame = 0;
+      refreshProjectTableUx();
+    });
+  }
+
   function getRowElementById(rowId) {
     return getTableRows().find(tr => tr.dataset.rowId === String(rowId));
   }
@@ -1813,7 +1826,7 @@
     if (field === "labelMaxChars") tr.dataset.labelMaxChars = normalizeLabelMaxCharsOverride(value);
     updateRowTitles(tr);
     if (field === "lon" || field === "lat") syncCoordinateClearButtons(tr);
-    if (["lon", "lat"].includes(field) || (field === "name" && activeDataTable !== "translate")) refreshProjectTableUx();
+    if (["lon", "lat"].includes(field) || (field === "name" && activeDataTable !== "translate")) scheduleProjectTableUxRefresh();
     return readRowElement(tr);
   }
 
@@ -2918,7 +2931,7 @@
     return colours[colourIndex];
   }
 
-  function applyRegionColoursByValue(shouldRender = true) {
+  function applyRegionColoursByValue(shouldRender = true, options = {}) {
     if (!canadaGeo || !Array.isArray(canadaGeo.features)) return;
     const regions = getRegionTableRows();
     const includedValues = regions
@@ -2930,7 +2943,12 @@
         regionFills[region.id] = getColourForRegionValue(region.value, comparisonValues);
       }
     });
-    renderRegionControls();
+    if (options.refreshRowsOnly) {
+      updateRegionSummaryText();
+      refreshRegionValueTableRows();
+    } else {
+      renderRegionControls();
+    }
     if (shouldRender) scheduleRender();
   }
 
@@ -2969,6 +2987,55 @@
     setStatusMessage(t("status.regionValuesReset"), "ok");
   }
 
+  function regionColourSetOptionsHtml(region, approvedColours) {
+    return `
+      <option value=""${region.colourSource === "auto-by-value" ? " selected" : ""}>${escapeHtml(t("region.colour.autoByValue"))}</option>
+      ${approvedColours.map((colour, index) => `<option value="${escapeHtml(colour)}"${region.colourSource !== "auto-by-value" && String(region.colour).toLowerCase() === colour.toLowerCase() ? " selected" : ""}>${escapeHtml(getRegionColourPresetLabel(index, approvedColours.length))}</option>`).join("")}
+    `;
+  }
+
+  function refreshRegionValueTableRow(region, approvedColours = getCurrentRegionColourSet()) {
+    if (!region || !els.regionTableBody) return;
+    const row = els.regionTableBody.querySelector(`tr[data-region-id="${CSS.escape(region.id)}"]`);
+    if (!row) return;
+    row.setAttribute("aria-label", t("properties.region.editAria", { name: region.name }));
+    const name = row.querySelector(".region-table-name");
+    if (name) {
+      name.textContent = region.name;
+      name.title = region.name;
+    }
+    const includedInput = row.querySelector(".region-table-included-input");
+    if (includedInput) {
+      includedInput.checked = Boolean(region.included);
+      includedInput.setAttribute("aria-label", t("properties.region.includeAria", { name: region.name }));
+    }
+    const countCell = row.querySelector(".region-count-cell");
+    if (countCell) countCell.textContent = String(region.count);
+    const valueInput = row.querySelector(".region-value-input");
+    if (valueInput && document.activeElement !== valueInput) {
+      valueInput.value = region.value === "" ? "" : String(region.value);
+    }
+    if (valueInput) valueInput.setAttribute("aria-label", t("properties.region.colourOrderAria", { name: region.name }));
+    const presetInput = row.querySelector(".region-colour-set-input");
+    if (presetInput) {
+      presetInput.innerHTML = regionColourSetOptionsHtml(region, approvedColours);
+      presetInput.setAttribute("aria-label", t("region.colour.approvedFillAria", { name: region.name }));
+    }
+    const colourInput = row.querySelector(".region-colour-input");
+    if (colourInput) {
+      colourInput.value = region.colour;
+      colourInput.setAttribute("aria-label", t("region.colour.fillAria", { name: region.name }));
+    }
+    const colourText = row.querySelector(".region-fill-picker span");
+    if (colourText) colourText.textContent = region.colour;
+  }
+
+  function refreshRegionValueTableRows() {
+    if (!els.regionTableBody || !canadaGeo || !Array.isArray(canadaGeo.features)) return;
+    const approvedColours = getCurrentRegionColourSet();
+    getRegionTableRows().forEach(region => refreshRegionValueTableRow(region, approvedColours));
+  }
+
   function renderRegionValueTable() {
     if (!els.regionTableBody) return;
     if (!canadaGeo || !Array.isArray(canadaGeo.features)) {
@@ -2990,8 +3057,7 @@
         </td>
         <td>
           <select class="region-colour-set-input" data-region-id="${escapeHtml(region.id)}" aria-label="${escapeHtml(t("region.colour.approvedFillAria", { name: region.name }))}">
-            <option value=""${region.colourSource === "auto-by-value" ? " selected" : ""}>${escapeHtml(t("region.colour.autoByValue"))}</option>
-            ${approvedColours.map((colour, index) => `<option value="${escapeHtml(colour)}"${region.colourSource !== "auto-by-value" && String(region.colour).toLowerCase() === colour.toLowerCase() ? " selected" : ""}>${escapeHtml(getRegionColourPresetLabel(index, approvedColours.length))}</option>`).join("")}
+            ${regionColourSetOptionsHtml(region, approvedColours)}
           </select>
         </td>
         <td class="region-fill-cell region-vcell">
@@ -3112,7 +3178,6 @@
       regionFills[getRegionId(feature, index)] = colours[index % colours.length];
     });
     renderRegionControls();
-    renderRegionValueTable();
     if (shouldRender) scheduleRender();
   }
 
@@ -4533,7 +4598,7 @@
   }
 
   function qualityMetricItem(label, value, state = "neutral", description = "") {
-    return properties.qualityMetricItem(label, value, { state, description, escapeHtml });
+    return properties.qualityMetricItem(label, value, { state, description, escapeHtml, iconSvg, t });
   }
 
   function qualityCard(label, value, state, description, detail = "", action = null) {
@@ -4636,7 +4701,7 @@
   function renderProjectDataPropertyControls() {
     const rows = getRows();
     const summary = summarizeProjectRows(rows);
-    return properties.renderProjectDataPropertyControls({ summary, qualityMetricItem, escapeHtml, t });
+    return properties.renderProjectDataPropertyControls({ summary, qualityMetricItem, escapeHtml, iconSvg, t });
   }
 
   function setProjectDataPropertiesContext(selection = activePropertiesSelection) {
@@ -4666,6 +4731,7 @@
       status,
       globalLabelMaxChars: normalizeLabelMaxChars(els.labelCharsInput.value),
       escapeHtml,
+      iconSvg,
       t
     });
   }
@@ -4685,7 +4751,7 @@
 
   function renderFurniturePropertyControls(key, label, visibilityInput) {
     const visible = visibilityInput ? visibilityInput.checked : true;
-    return properties.renderFurniturePropertyControls({ key, label, visible, escapeHtml, t });
+    return properties.renderFurniturePropertyControls({ key, label, visible, escapeHtml, iconSvg, t });
   }
 
   function renderMapPropertyControls() {
@@ -4701,6 +4767,7 @@
       },
       mapScale: els.mapScaleInput ? els.mapScaleInput.value : "",
       escapeHtml,
+      iconSvg,
       t
     });
   }
@@ -4733,13 +4800,14 @@
       verdictState: reviewCount ? "review" : qualitySummary.state === "ok" ? "ok" : "info",
       qualityMetricItem,
       escapeHtml,
+      iconSvg,
       t
     });
   }
 
   function renderTranslationPropertyControls() {
     const summary = getTranslationSummary();
-    return properties.renderTranslationPropertyControls({ summary, escapeHtml, qualityMetricItem, t });
+    return properties.renderTranslationPropertyControls({ summary, escapeHtml, iconSvg, qualityMetricItem, t });
   }
 
   function renderCategoryPropertyControls() {
@@ -4748,6 +4816,7 @@
       category,
       markerShapes: markerShapes.map(shape => ({ ...shape, label: getMarkerShapeLabel(shape) })),
       escapeHtml,
+      iconSvg,
       t,
       markerShapeIcon: shape => getCategorySwatchSvg({ ...category, shape, customIcon: null })
     });
@@ -4756,7 +4825,7 @@
   function renderRegionPropertyControls(regionId) {
     const region = getRegionTableRows().find(item => item.id === regionId);
     if (!region) return renderMapPropertyControls();
-    return properties.renderRegionPropertyControls({ region, pluralize, escapeHtml, t });
+    return properties.renderRegionPropertyControls({ region, pluralize, escapeHtml, iconSvg, t });
   }
 
   function setCategoryPropertiesContext() {
@@ -4837,7 +4906,7 @@
         title: t("properties.title.translate"),
         subtitle: t(activeAuthoringLanguage === "fr" ? "translate.direction.frEn" : "translate.direction.enFr"),
         hint: selectedEntry ? t("properties.hint.translateEntry") : t("properties.hint.translate"),
-        controls: selectedEntry ? properties.renderTranslationEntryPropertyControls({ entry: selectedEntry, escapeHtml, t }) : renderTranslationPropertyControls(),
+        controls: selectedEntry ? properties.renderTranslationEntryPropertyControls({ entry: selectedEntry, escapeHtml, iconSvg, t }) : renderTranslationPropertyControls(),
         selection: selectedEntry ? { kind: "translation-entry", id: selectedEntry.id } : { kind: "translation" }
       };
     } else if (activeDataTable === "quality") {
@@ -5053,17 +5122,17 @@
       if (regionProperty === "included") {
         clearActiveRegionPreset();
         regionVisibility[regionId] = event.target.checked;
-        renderRegionControls();
+        applyRegionColoursByValue(false, { refreshRowsOnly: true });
         scheduleRender();
       } else if (regionProperty === "value") {
         const value = normalizeRegionValue(event.target.value);
         if (value === "") delete regionValues[regionId];
         else regionValues[regionId] = value;
-        applyRegionColoursByValue();
+        applyRegionColoursByValue(true, { refreshRowsOnly: true });
       } else if (regionProperty === "colour") {
         regionColourOverrides[regionId] = true;
         regionFills[regionId] = event.target.value;
-        renderRegionValueTable();
+        refreshRegionValueTableRow(getRegionTableRows().find(region => region.id === regionId));
         scheduleRender();
       }
       renderPropertiesForActiveState({ kind: "region", id: regionId });
@@ -8266,7 +8335,7 @@
         pushAppUndoHistory("region edit");
         clearActiveRegionPreset();
         regionVisibility[event.target.dataset.regionId] = event.target.checked;
-        updateRegionSummaryText();
+        applyRegionColoursByValue(false, { refreshRowsOnly: true });
         scheduleRender();
         return;
       }
@@ -8279,7 +8348,7 @@
         } else {
           regionValues[event.target.dataset.regionId] = value;
         }
-        applyRegionColoursByValue();
+        applyRegionColoursByValue(true, { refreshRowsOnly: true });
         return;
       }
 
@@ -8287,7 +8356,7 @@
         captureInputUndo(event.target, "region edit");
         regionColourOverrides[event.target.dataset.regionId] = true;
         regionFills[event.target.dataset.regionId] = event.target.value;
-        renderRegionValueTable();
+        refreshRegionValueTableRow(getRegionTableRows().find(region => region.id === event.target.dataset.regionId));
         scheduleRender();
         return;
       }
@@ -8297,12 +8366,12 @@
         if (event.target.value) {
           regionColourOverrides[event.target.dataset.regionId] = true;
           regionFills[event.target.dataset.regionId] = event.target.value;
-          renderRegionValueTable();
+          refreshRegionValueTableRow(getRegionTableRows().find(region => region.id === event.target.dataset.regionId));
           scheduleRender();
           return;
         }
         delete regionColourOverrides[event.target.dataset.regionId];
-        applyRegionColoursByValue();
+        applyRegionColoursByValue(true, { refreshRowsOnly: true });
         return;
       }
     });

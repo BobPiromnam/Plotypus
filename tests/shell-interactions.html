@@ -833,6 +833,7 @@
             firstNameInput?.click();
             await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='row']"));
             assert(checks, "Selecting a project row opens row Properties", doc.querySelector("#propertiesTitle")?.textContent.trim() === "Project data" && doc.querySelector("#propertiesSubtitle")?.textContent.trim() === firstNameInput?.value.trim());
+            assert(checks, "Project row Properties mark editable fields and automatic status", doc.querySelectorAll("#propertiesSelectionControls [data-property-kind='row'] .field-origin-icon-edit").length >= 8 && Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='row'] .properties-record-status .field-origin-icon-auto")));
             assert(checks, "Project row Properties expose an elbow leader override", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-field='elbowLeader']")));
             assert(checks, "Row selection does not re-plot the map", (doc.querySelector("#mapSvg")?.innerHTML || "") === mapBeforeNavigation);
             const labelMaxCharsInput = doc.querySelector("#propertiesSelectionControls [data-property-field='labelMaxChars']");
@@ -1004,6 +1005,7 @@
             assert(checks, "Map Properties expose page and canvas size presets", Boolean(doc.querySelector("#propertiesSelectionControls [data-layout-proxy='bookSizeInput']") && doc.querySelector("#propertiesSelectionControls [data-layout-proxy='imageSizeInput']")));
             assert(checks, "Map Properties expose default label line length", Boolean(doc.querySelector("#propertiesSelectionControls [data-layout-proxy='labelCharsInput']")));
             assert(checks, "Map Properties do not duplicate map scale", !doc.querySelector("#propertiesSelectionControls [data-layout-proxy='mapScaleInput']"));
+            assert(checks, "Map Properties mark map controls as editable", doc.querySelectorAll("#propertiesSelectionControls [data-property-kind='map'] .field-origin-icon-edit").length >= 5);
             assert(checks, "Map baselayer Properties omit duplicate region table actions", !doc.querySelector("#propertiesSelectionControls [data-property-action='select-all-regions']") && !doc.querySelector("#propertiesSelectionControls [data-property-action='clear-regions']") && !doc.querySelector("#propertiesSelectionControls [data-property-action='use-project-regions']"));
             const regionIncludedWidth = doc.querySelector("#regionTable .region-included-col")?.getBoundingClientRect().width || 0;
             const regionCountWidth = doc.querySelector("#regionTable .region-count-col")?.getBoundingClientRect().width || 0;
@@ -1054,7 +1056,16 @@
                 const colourOrderElapsed = frame.contentWindow.performance.now() - colourOrderStart;
                 const updatedColourOrderInput = doc.querySelector(`#regionTable tbody tr[data-region-id="${regionId}"] .region-value-input`);
                 assert(checks, "Region colour order updates without waiting for map render", colourOrderElapsed < 120);
+                assert(checks, "Region colour order does not rebuild the whole table", colourOrderInput.closest("tr")?.isConnected === true);
                 assert(checks, "Region colour order value stays visible immediately", updatedColourOrderInput?.value === "99");
+              }
+              const colourInput = doc.querySelector("#regionTable tbody tr[data-region-id] .region-colour-input");
+              if (colourInput) {
+                const colourRow = colourInput.closest("tr");
+                colourInput.value = "#123456";
+                colourInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+                assert(checks, "Region colour fill does not rebuild the whole table", colourRow?.isConnected === true);
+                assert(checks, "Region colour fill hex updates immediately", colourRow?.querySelector(".region-fill-picker span")?.textContent.trim().toLowerCase() === "#123456");
               }
             }
             const regionRows = doc.querySelectorAll("#regionTable tbody tr[data-region-id]");
@@ -1081,6 +1092,7 @@
             assert(checks, "Translation filters and paste action remain available", doc.querySelectorAll("[data-translation-filter]").length === 2 && Boolean(doc.querySelector("#pasteTranslationColumnBtn")));
             assert(checks, "Translate Properties are contextual", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='translation'], #propertiesSelectionControls [data-property-kind='translation-entry']")));
             assert(checks, "Translate column labels show editable and automatic hints", doc.querySelectorAll(".translation-column-labels [data-icon='pencil']").length === 2 && Boolean(doc.querySelector(".translation-column-labels .col-auto-chip [data-icon='wand']")));
+            assert(checks, "Translate entry Properties mark editable language fields", doc.querySelectorAll("#propertiesSelectionControls [data-property-kind='translation-entry'] .field-origin-icon-edit").length >= 2);
             const firstTranslationRow = doc.querySelector(".translation-row[data-entry-id^='project:']");
             const englishTranslationInput = firstTranslationRow?.querySelector(".translation-en-input");
             const frenchTranslationInput = firstTranslationRow?.querySelector(".translation-fr-input");
