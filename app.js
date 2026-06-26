@@ -1513,6 +1513,24 @@
       locale: currentUiLanguage,
       mapLanguage: currentMapLanguage,
       projectPoints: {
+        previewRows: rows.slice(0, 6).map(row => {
+          const hasLongitude = row.lon !== "";
+          const hasLatitude = row.lat !== "";
+          const isBlank = !row.name && !row.nameFr && !hasLongitude && !hasLatitude;
+          const isMapped = !isBlank && hasLongitude && hasLatitude;
+          const isCallout = !isBlank && (row.name || row.nameFr) && !hasLongitude && !hasLatitude;
+          const isMissingCoordinate = !isBlank && (hasLongitude || hasLatitude) && !(hasLongitude && hasLatitude);
+          const status = isMapped ? "mapped" : isCallout ? "callout" : isMissingCoordinate ? "missing" : "blank";
+          return {
+            rowId: String(row.rowId || ""),
+            name: getLabelText(row, activeAuthoringLanguage),
+            type: getCategoryLabel(row.type, activeAuthoringLanguage),
+            priority: row.priority,
+            hasLongitude,
+            hasLatitude,
+            status
+          };
+        }),
         rowCount: rows.length,
         toolbar: {
           activeLanguage: activeAuthoringLanguage,

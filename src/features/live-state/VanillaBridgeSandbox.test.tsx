@@ -12,6 +12,7 @@ describe("VanillaStateSnapshotPreview", () => {
     expect(html).toContain("Workspace:");
     expect(html).toContain("Rows:");
     expect(html).toContain("Project points controls");
+    expect(html).toContain("Project points preview");
     expect(html).toContain("Bridge data");
   });
 

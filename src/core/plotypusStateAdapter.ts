@@ -9,11 +9,22 @@ export type PropertiesPanelSnapshot = {
   title: string;
 };
 
+export type ProjectPointPreviewRow = {
+  hasLatitude: boolean;
+  hasLongitude: boolean;
+  name: string;
+  priority: number;
+  rowId: string;
+  status: "blank" | "callout" | "mapped" | "missing";
+  type: string;
+};
+
 export type PlotypusSnapshot = {
   activeWorkspace: string;
   locale: PlotypusLocale;
   mapLanguage: PlotypusLocale;
   projectPoints: {
+    previewRows: ProjectPointPreviewRow[];
     rowCount: number;
     toolbar: ProjectPointsToolbarState;
   };
@@ -36,6 +47,26 @@ export function createDefaultPlotypusSnapshot(): PlotypusSnapshot {
     locale: "en",
     mapLanguage: "en",
     projectPoints: {
+      previewRows: [
+        {
+          hasLatitude: true,
+          hasLongitude: true,
+          name: "Grays Bay Road and Port",
+          priority: 0,
+          rowId: "1",
+          status: "mapped",
+          type: "Referred Project"
+        },
+        {
+          hasLatitude: false,
+          hasLongitude: false,
+          name: "Critical Minerals Strategy",
+          priority: 0,
+          rowId: "2",
+          status: "callout",
+          type: "Transformative Strategy"
+        }
+      ],
       rowCount: 21,
       toolbar: {
         activeLanguage: "en",
@@ -119,6 +150,7 @@ function cloneSnapshot(snapshot: PlotypusSnapshot): PlotypusSnapshot {
     locale: snapshot.locale,
     mapLanguage: snapshot.mapLanguage,
     projectPoints: {
+      previewRows: snapshot.projectPoints.previewRows.map((row) => ({ ...row })),
       rowCount: snapshot.projectPoints.rowCount,
       toolbar: { ...snapshot.projectPoints.toolbar }
     },

@@ -3,6 +3,7 @@ import { Button } from "../../components/primitives";
 import type { PlotypusSnapshot, PlotypusStateAdapter } from "../../core/plotypusStateAdapter";
 import { createDefaultPlotypusSnapshot } from "../../core/plotypusStateAdapter";
 import { createVanillaPlotypusStateAdapter } from "../../core/vanillaPlotypusStateAdapter";
+import { ProjectPointsPreviewTable } from "../project-points/ProjectPointsPreviewTable";
 import { ProjectPointsToolbar } from "../project-points/ProjectPointsToolbar";
 import { PropertiesPanelShell } from "../properties/PropertiesPanelShell";
 
@@ -78,6 +79,7 @@ export function VanillaStateSnapshotPreview({ snapshot }: { snapshot: PlotypusSn
       </div>
 
       <ProjectPointsToolbar state={snapshot.projectPoints.toolbar} />
+      <ProjectPointsPreviewTable rows={snapshot.projectPoints.previewRows} />
 
       <PropertiesPanelShell
         collapsed={snapshot.properties.collapsed}

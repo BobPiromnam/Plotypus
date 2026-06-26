@@ -1,12 +1,23 @@
 import {
   createDefaultPlotypusSnapshot,
+  type ProjectPointPreviewRow,
   type PlotypusSnapshot,
   type PlotypusStateAdapter,
   type PlotypusStateListener
 } from "./plotypusStateAdapter";
 
 type VanillaReadonlyBridge = {
-  getSnapshot: () => Partial<PlotypusSnapshot>;
+  getSnapshot: () => VanillaSnapshotSource;
+};
+
+type VanillaPreviewRowSource = Partial<Omit<ProjectPointPreviewRow, "status">> & {
+  status?: unknown;
+};
+
+type VanillaSnapshotSource = Partial<Omit<PlotypusSnapshot, "projectPoints">> & {
+  projectPoints?: Partial<Omit<PlotypusSnapshot["projectPoints"], "previewRows">> & {
+    previewRows?: VanillaPreviewRowSource[];
+  };
 };
 
 type WindowLike = {
@@ -40,7 +51,7 @@ export function createVanillaPlotypusStateAdapter(windowRef: WindowLike): Plotyp
   };
 }
 
-export function normalizeVanillaSnapshot(source: Partial<PlotypusSnapshot> | undefined): PlotypusSnapshot {
+export function normalizeVanillaSnapshot(source: VanillaSnapshotSource | undefined): PlotypusSnapshot {
   const fallback = createDefaultPlotypusSnapshot();
   const locale = source?.locale === "fr" ? "fr" : "en";
   const mapLanguage = source?.mapLanguage === "fr" ? "fr" : "en";
@@ -51,6 +62,7 @@ export function normalizeVanillaSnapshot(source: Partial<PlotypusSnapshot> | und
     locale,
     mapLanguage,
     projectPoints: {
+      previewRows: normalizePreviewRows(source?.projectPoints?.previewRows, fallback.projectPoints.previewRows),
       rowCount: normalizeCount(source?.projectPoints?.rowCount, fallback.projectPoints.rowCount),
       toolbar: {
         activeLanguage,
@@ -76,6 +88,26 @@ export function normalizeVanillaSnapshot(source: Partial<PlotypusSnapshot> | und
 function normalizeCount(value: unknown, fallback: number) {
   const count = Number(value);
   return Number.isFinite(count) && count >= 0 ? Math.round(count) : fallback;
+}
+
+function normalizePreviewRows(value: unknown, fallback: ProjectPointPreviewRow[]) {
+  if (!Array.isArray(value)) return fallback.map((row) => ({ ...row }));
+  return value.slice(0, 12).map((row, index) => {
+    const source = row && typeof row === "object" ? row as Partial<ProjectPointPreviewRow> : {};
+    return {
+      hasLatitude: Boolean(source.hasLatitude),
+      hasLongitude: Boolean(source.hasLongitude),
+      name: stringOrFallback(source.name, `Project ${index + 1}`),
+      priority: normalizeCount(source.priority, 0),
+      rowId: stringOrFallback(source.rowId, String(index + 1)),
+      status: normalizeStatus(source.status),
+      type: stringOrFallback(source.type, "")
+    };
+  });
+}
+
+function normalizeStatus(value: unknown): ProjectPointPreviewRow["status"] {
+  return value === "callout" || value === "mapped" || value === "missing" ? value : "blank";
 }
 
 function stringOrFallback(value: unknown, fallback: string) {

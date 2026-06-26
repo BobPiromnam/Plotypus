@@ -8,6 +8,17 @@ describe("vanillaPlotypusStateAdapter", () => {
       locale: "fr",
       mapLanguage: "fr",
       projectPoints: {
+        previewRows: [
+          {
+            hasLatitude: true,
+            hasLongitude: true,
+            name: "Route et port",
+            priority: 2,
+            rowId: "abc",
+            status: "mapped",
+            type: "Projets soumis"
+          }
+        ],
         rowCount: 4,
         toolbar: {
           activeLanguage: "fr",
@@ -26,7 +37,43 @@ describe("vanillaPlotypusStateAdapter", () => {
     expect(snapshot.activeWorkspace).toBe("projects");
     expect(snapshot.locale).toBe("fr");
     expect(snapshot.projectPoints.toolbar.selectedCellCount).toBe(2);
+    expect(snapshot.projectPoints.previewRows[0].name).toBe("Route et port");
+    expect(snapshot.projectPoints.previewRows[0].status).toBe("mapped");
     expect(snapshot.properties.collapsed).toBe(true);
+  });
+
+  it("sanitizes invalid preview rows from the vanilla bridge", () => {
+    const snapshot = normalizeVanillaSnapshot({
+      projectPoints: {
+        previewRows: [
+          {
+            hasLatitude: true,
+            hasLongitude: false,
+            name: "",
+            priority: -1,
+            rowId: "",
+            status: "unknown",
+            type: ""
+          }
+        ],
+        rowCount: 1,
+        toolbar: {
+          activeLanguage: "en",
+          selectedCellCount: 0,
+          selectedRowCount: 0
+        }
+      }
+    });
+
+    expect(snapshot.projectPoints.previewRows[0]).toEqual({
+      hasLatitude: true,
+      hasLongitude: false,
+      name: "Project 1",
+      priority: 0,
+      rowId: "1",
+      status: "blank",
+      type: ""
+    });
   });
 
   it("falls back when the vanilla bridge is unavailable", () => {
@@ -43,6 +90,7 @@ describe("vanillaPlotypusStateAdapter", () => {
         getSnapshot: () => ({
           activeWorkspace: "regions",
           projectPoints: {
+            previewRows: [],
             rowCount: 12,
             toolbar: {
               activeLanguage: "en",
