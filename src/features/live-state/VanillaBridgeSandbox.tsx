@@ -109,6 +109,11 @@ export function VanillaStateSnapshotPreview({
         regionCount={snapshot.mapBaselayer.regionCount}
         rows={snapshot.mapBaselayer.previewRows}
       />
+      <VanillaBridgeCommandTestSurface
+        adapter={adapter}
+        commandsEnabled={commandsEnabled}
+        propertiesCollapsed={snapshot.properties.collapsed}
+      />
 
       <PropertiesPanelShell
         collapsed={snapshot.properties.collapsed}
@@ -128,6 +133,47 @@ export function VanillaStateSnapshotPreview({
           }
         ]}
       />
+    </section>
+  );
+}
+
+export function VanillaBridgeCommandTestSurface({
+  adapter,
+  commandsEnabled,
+  propertiesCollapsed
+}: {
+  adapter?: PlotypusStateAdapter;
+  commandsEnabled: boolean;
+  propertiesCollapsed: boolean;
+}) {
+  return (
+    <section className="vanilla-bridge-command-test" aria-labelledby="vanillaBridgeCommandTestTitle">
+      <div>
+        <p className="react-migration-kicker">Command bridge test</p>
+        <h3 id="vanillaBridgeCommandTestTitle">Properties command preview</h3>
+        <p>
+          {commandsEnabled
+            ? "Command mode is enabled for this bridge session."
+            : "Open a command-enabled bridge session to test the Properties command path."}
+        </p>
+      </div>
+      <div className="vanilla-bridge-command-actions">
+        <span className={commandsEnabled ? "vanilla-bridge-command-state is-enabled" : "vanilla-bridge-command-state"}>
+          {commandsEnabled ? "Commands enabled" : "Read-only mode"}
+        </span>
+        <span className="vanilla-bridge-command-state">
+          Properties {propertiesCollapsed ? "collapsed" : "expanded"}
+        </span>
+        {commandsEnabled && adapter ? (
+          <Button icon="sliders" onClick={() => adapter.runPropertiesCommand({ type: "toggle-collapsed" })}>
+            Toggle Properties from React
+          </Button>
+        ) : (
+          <a className="pt-button pt-button-primary" href={getCommandModeUrl()}>
+            Open command test
+          </a>
+        )}
+      </div>
     </section>
   );
 }
@@ -188,6 +234,12 @@ function getVanillaAppUrl(commandsEnabled: boolean) {
 
 function areVanillaCommandsEnabled() {
   return new URLSearchParams(window.location.search).get("reactCommands") === "1";
+}
+
+export function getCommandModeUrl(currentHref = typeof window === "undefined" ? "http://localhost/react-vanilla-bridge.html" : window.location.href) {
+  const url = new URL(currentHref);
+  url.searchParams.set("reactCommands", "1");
+  return url.toString();
 }
 
 function iframeReload() {

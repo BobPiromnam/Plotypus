@@ -500,6 +500,56 @@
   gap: var(--space-4);
 }
 
+.vanilla-bridge-command-test {
+  display: grid;
+  gap: var(--space-7);
+  padding: var(--space-7);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-card);
+  background: var(--bg);
+}
+
+.vanilla-bridge-command-test h3,
+.vanilla-bridge-command-test p {
+  margin: 0;
+}
+
+.vanilla-bridge-command-test h3 {
+  font-size: var(--text-title);
+  line-height: var(--line-tight);
+}
+
+.vanilla-bridge-command-test p:not(.react-migration-kicker) {
+  color: var(--muted);
+  font-size: var(--text-body);
+  line-height: var(--line-copy);
+}
+
+.vanilla-bridge-command-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  align-items: center;
+}
+
+.vanilla-bridge-command-state {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-h-md);
+  padding: 0 var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  color: var(--muted);
+  font: 800 var(--text-ui) / var(--line-ui) var(--font-data);
+  text-transform: uppercase;
+}
+
+.vanilla-bridge-command-state.is-enabled {
+  border-color: var(--accent-soft-border);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 .vanilla-bridge-facts {
   display: grid;
   gap: var(--space-5);
