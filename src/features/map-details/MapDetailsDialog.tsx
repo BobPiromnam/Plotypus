@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BilingualFieldGroup, Dialog, DialogActions } from "../../components/primitives";
 import { getMissingMapDetailsFields, trimMapDetailsValue } from "./mapDetailsAdapter";
 
@@ -87,6 +87,10 @@ export function MapDetailsDialog({
   const [draft, setDraft] = useState<MapDetailsValue>(initialValue);
   const copy = copyByLocale[locale];
   const missingFields = getMissingMapDetailsFields(draft);
+
+  useEffect(() => {
+    setDraft(initialValue);
+  }, [initialValue.textEn, initialValue.textFr, initialValue.titleEn, initialValue.titleFr]);
 
   const updateDraft = (key: keyof MapDetailsValue, value: string) => {
     const next = { ...draft, [key]: value };

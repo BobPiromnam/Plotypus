@@ -97,6 +97,7 @@ export function CommandBar({
       <div className="react-command-group react-command-appearance" aria-label="Map appearance actions">
         <Button
           className={state.mapDetailsNeedsFrench ? "has-warning" : ""}
+          data-command="open-map-details"
           icon="file-text"
           onClick={() => onCommand?.({ type: "open-map-details" })}
         >

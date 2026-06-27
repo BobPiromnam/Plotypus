@@ -1732,7 +1732,7 @@
         publishReadonlyAppSnapshot();
         return { label: "Export SVG requested" };
       case "open-map-details":
-        els.mapDetailsBtn?.click();
+        openMapDetailsDialog(getDialogReturnFocusTarget(els.mapDetailsBtn));
         return { label: "Open map details requested" };
       case "set-export-menu-open":
         setExportMenuOpen(Boolean(command.open));
@@ -2439,7 +2439,7 @@
   function applyUiLanguage(language, options = {}) {
     const nextLanguage = normalizeUiLanguage(language);
     const openReactMapDetailsDraft = reactMapDetailsHandle && els.mapDetailsDialog && !els.mapDetailsDialog.hidden
-      ? readMapDetailsDialogDraftValue()
+      ? (reactMapDetailsDraft ? { ...reactMapDetailsDraft } : readMapDetailsDialogDraftValue())
       : null;
     currentUiLanguage = nextLanguage;
     document.documentElement.lang = nextLanguage;
@@ -8028,14 +8028,48 @@
     if (!dialog) return;
     dialog._returnFocus = returnFocus || document.activeElement;
     dialog.hidden = false;
-    const focusTarget = dialog.querySelector("[data-dialog-initial-focus], input, textarea, select, button");
+    const focusTarget = findDialogInitialFocusTarget(dialog);
     if (focusTarget) focusTarget.focus();
+  }
+
+  function findDialogInitialFocusTarget(root) {
+    if (!root) return null;
+    const selectors = [
+      "[data-dialog-initial-focus]",
+      "input",
+      "textarea",
+      "select",
+      "button"
+    ];
+    for (const selector of selectors) {
+      const target = root.querySelector(selector);
+      if (target) return target;
+    }
+    return null;
   }
 
   function closeDialog(dialog) {
     if (!dialog || dialog.hidden) return;
     dialog.hidden = true;
-    if (dialog._returnFocus && typeof dialog._returnFocus.focus === "function") dialog._returnFocus.focus();
+    const returnFocus = getResolvedDialogReturnFocus(dialog);
+    if (returnFocus && typeof returnFocus.focus === "function") returnFocus.focus();
+  }
+
+  function getResolvedDialogReturnFocus(dialog) {
+    if (!dialog) return null;
+    if (dialog._returnFocus && dialog._returnFocus.isConnected && typeof dialog._returnFocus.focus === "function") {
+      return dialog._returnFocus;
+    }
+    if (dialog === els.mapDetailsDialog) {
+      return document.querySelector("#reactCommandBarRoot [data-command='open-map-details']") || els.mapDetailsBtn || null;
+    }
+    return dialog._returnFocus || null;
+  }
+
+  function getDialogReturnFocusTarget(fallback) {
+    const active = document.activeElement;
+    if (active && active !== document.body && typeof active.focus === "function") return active;
+    return fallback;
   }
 
   function isReactMapDetailsEnabled() {
@@ -8597,18 +8631,21 @@
       reactMapDetailsTarget.id = "reactMapDetailsDialogRoot";
       reactMapDetailsTarget.className = "react-map-details-dialog-root";
       reactMapDetailsTarget.hidden = true;
-      reactMapDetailsTarget.addEventListener("input", updateReactMapDetailsDraftFromEvent);
-      reactMapDetailsTarget.addEventListener("change", updateReactMapDetailsDraftFromEvent);
+      reactMapDetailsTarget.addEventListener("input", updateReactMapDetailsDraftFromEvent, true);
+      reactMapDetailsTarget.addEventListener("change", updateReactMapDetailsDraftFromEvent, true);
       els.mapDetailsDialog.appendChild(reactMapDetailsTarget);
     }
     return reactMapDetailsTarget;
   }
 
   function readMapDetailsDialogDraftValue() {
-    const titleEnInput = els.mapDetailsDialog && els.mapDetailsDialog.querySelector("#mapTitleEnInput");
-    const titleFrInput = els.mapDetailsDialog && els.mapDetailsDialog.querySelector("#mapTitleFrInput");
-    const textEnInput = els.mapDetailsDialog && els.mapDetailsDialog.querySelector("#mapTextEnInput");
-    const textFrInput = els.mapDetailsDialog && els.mapDetailsDialog.querySelector("#mapTextFrInput");
+    const fieldRoot = reactMapDetailsHandle && reactMapDetailsTarget && !reactMapDetailsTarget.hidden
+      ? reactMapDetailsTarget
+      : els.mapDetailsDialog;
+    const titleEnInput = fieldRoot && fieldRoot.querySelector("#mapTitleEnInput");
+    const titleFrInput = fieldRoot && fieldRoot.querySelector("#mapTitleFrInput");
+    const textEnInput = fieldRoot && fieldRoot.querySelector("#mapTextEnInput");
+    const textFrInput = fieldRoot && fieldRoot.querySelector("#mapTextFrInput");
     if (titleEnInput || titleFrInput || textEnInput || textFrInput) {
       return {
         titleEn: titleEnInput ? titleEnInput.value : mapDetails.titleEn,
@@ -8649,7 +8686,7 @@
     setStatusMessage(t("status.saved.mapDetails"), "ok");
   }
 
-  async function openReactMapDetailsDialog(preservedDraft = null) {
+  async function openReactMapDetailsDialog(preservedDraft = null, returnFocus = els.mapDetailsBtn) {
     const adapters = await loadReactMapDetailsAdapters();
     if (!adapters || typeof adapters.mountMapDetailsDialog !== "function") return false;
     const target = getReactMapDetailsTarget();
@@ -8662,7 +8699,6 @@
     setLegacyMapDetailsFormAvailable(false);
     target.hidden = false;
     els.mapDetailsDialog._undoSnapshot = createAppUndoSnapshot("map details edit");
-    openDialog(els.mapDetailsDialog, els.mapDetailsBtn);
     reactMapDetailsHandle = adapters.mountMapDetailsDialog({
       locale: currentUiLanguage === "fr" ? "fr" : "en",
       onCancel: () => {
@@ -8692,13 +8728,24 @@
       closeDialog(els.mapDetailsDialog);
       return false;
     }
-    const focusTarget = target.querySelector("[data-dialog-initial-focus], input, textarea, select, button");
-    if (focusTarget) focusTarget.focus();
+    openDialog(els.mapDetailsDialog, returnFocus);
+    const findInitialFocusTarget = () => target.querySelector("#mapTitleEnInput") || findDialogInitialFocusTarget(target);
+    const focusTarget = findInitialFocusTarget();
+    const focusAfterRender = () => {
+      const nextFocusTarget = findInitialFocusTarget();
+      if (nextFocusTarget) nextFocusTarget.focus({ preventScroll: true });
+    };
+    if (typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(focusAfterRender);
+    }
+    window.setTimeout(focusAfterRender, 0);
+    window.setTimeout(focusAfterRender, 50);
+    if (focusTarget) focusTarget.focus({ preventScroll: true });
     return true;
   }
 
-  async function openMapDetailsDialog() {
-    if (isReactMapDetailsEnabled() && await openReactMapDetailsDialog()) return;
+  async function openMapDetailsDialog(returnFocus = els.mapDetailsBtn) {
+    if (isReactMapDetailsEnabled() && await openReactMapDetailsDialog(null, returnFocus)) return;
     unmountReactMapDetailsDialog();
     reactMapDetailsDraft = null;
     els.mapTitleEnInput.value = mapDetails.titleEn;
@@ -8706,7 +8753,7 @@
     els.mapTextEnInput.value = mapDetails.textEn;
     els.mapTextFrInput.value = mapDetails.textFr;
     els.mapDetailsDialog._undoSnapshot = createAppUndoSnapshot("map details edit");
-    openDialog(els.mapDetailsDialog, els.mapDetailsBtn);
+    openDialog(els.mapDetailsDialog, returnFocus);
     els.mapTitleEnInput.focus();
   }
 

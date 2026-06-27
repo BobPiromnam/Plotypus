@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { MapDetailsDialog, type MapDetailsLocale, type MapDetailsValue } from "./MapDetailsDialog";
 import type { MapDetailsAdapter } from "./mapDetailsAdapter";
@@ -36,30 +37,32 @@ export function mountMapDetailsDialog({
   const root = createRootImpl(target);
   const unmount = () => root.unmount();
 
-  root.render(
-    <MapDetailsDialog
-      embedded={Boolean(target.closest?.(".app-dialog"))}
-      fieldIds={{
-        textEn: "mapTextEnInput",
-        textFr: "mapTextFrInput",
-        titleEn: "mapTitleEnInput",
-        titleFr: "mapTitleFrInput"
-      }}
-      initialValue={adapter.getValue()}
-      locale={locale}
-      onCancel={() => {
-        onCancel?.();
-        unmount();
-      }}
-      onDraftChange={onDraftChange}
-      onSave={(value) => {
-        const saved = adapter.saveValue(value);
-        onSave?.(saved);
-        unmount();
-      }}
-      titleId={target.closest?.(".app-dialog") ? "reactMapDetailsTitle" : undefined}
-    />
-  );
+  flushSync(() => {
+    root.render(
+      <MapDetailsDialog
+        embedded={Boolean(target.closest?.(".app-dialog"))}
+        fieldIds={{
+          textEn: "mapTextEnInput",
+          textFr: "mapTextFrInput",
+          titleEn: "mapTitleEnInput",
+          titleFr: "mapTitleFrInput"
+        }}
+        initialValue={adapter.getValue()}
+        locale={locale}
+        onCancel={() => {
+          onCancel?.();
+          unmount();
+        }}
+        onDraftChange={onDraftChange}
+        onSave={(value) => {
+          const saved = adapter.saveValue(value);
+          onSave?.(saved);
+          unmount();
+        }}
+        titleId={target.closest?.(".app-dialog") ? "reactMapDetailsTitle" : undefined}
+      />
+    );
+  });
 
   return { unmount };
 }
