@@ -24,6 +24,7 @@
     const loadSample = params.get("sample") === "1";
     const measurePerformance = params.get("performance") === "1";
     const visualCapture = params.get("visual") === "1";
+    const reactCommandBar = params.get("reactCommandBar") === "1";
     const reactMapDetails = params.get("reactMapDetails") === "1";
     const reactProjectToolbar = params.get("reactProjectToolbar") === "1";
     const reactPropertiesPanel = params.get("reactPropertiesPanel") === "1";
@@ -36,6 +37,7 @@
       // Storage may be unavailable in a locked-down browser profile.
     }
     const appUrl = new URL(frame.dataset.src, window.location.href);
+    if (reactCommandBar) appUrl.searchParams.set("reactCommandBar", "1");
     if (reactMapDetails) appUrl.searchParams.set("reactMapDetails", "1");
     if (reactProjectToolbar) appUrl.searchParams.set("reactProjectToolbar", "1");
     if (reactPropertiesPanel) appUrl.searchParams.set("reactPropertiesPanel", "1");
@@ -312,6 +314,16 @@
           assert(checks, "Feature-flagged command bar bridge reaches vanilla app state", readonlyStateApi.getSnapshot().commandBar.exportMenuOpen === true && doc.querySelector("#exportMenu")?.hidden === false);
           readonlyStateApi.runCommandBarCommand?.({ open: false, type: "set-export-menu-open" });
           await waitFor(() => readonlyStateApi.getSnapshot().commandBar.exportMenuOpen === false && doc.querySelector("#exportMenu")?.hidden === true, 2000);
+        }
+        if (reactCommandBar) {
+          const reactCommandBarRoot = await waitFor(() => {
+            const root = doc.querySelector("#reactCommandBarRoot");
+            return root && !root.hidden && root.querySelector(".react-command-bar") ? root : null;
+          }, 3000);
+          const legacyCommandBar = doc.querySelector(".app-ribbon.command-bar");
+          assert(checks, "React command bar is mounted behind the feature flag", Boolean(reactCommandBarRoot && !reactCommandBarRoot.hidden && reactCommandBarRoot.querySelector(".react-command-bar")));
+          assert(checks, "React command bar hides the vanilla command bar", Boolean(legacyCommandBar?.hidden));
+          assert(checks, "React command bar renders production shell controls", /Plotypus/.test(visibleText(reactCommandBarRoot)) && /Open|Ouvrir/.test(visibleText(reactCommandBarRoot)) && /Export|Exporter/.test(visibleText(reactCommandBarRoot)), visibleText(reactCommandBarRoot));
         }
 
         if (requestedDialog) {

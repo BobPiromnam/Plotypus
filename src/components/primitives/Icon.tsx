@@ -3,12 +3,16 @@ type IconName =
   | "eraser"
   | "file-text"
   | "folder-open"
+  | "image"
   | "pencil"
   | "plus"
   | "save"
   | "sliders"
+  | "svg-file"
   | "table"
   | "trash"
+  | "undo"
+  | "upload"
   | "wand"
   | "x";
 
@@ -32,6 +36,11 @@ const iconPaths: Record<IconName, string[]> = {
   "folder-open": [
     "M3 7.5V6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1.5",
     "M3.6 18.5 5.2 10h16l-1.6 8.5a2 2 0 0 1-2 1.5h-12a2 2 0 0 1-2-1.5Z"
+  ],
+  image: [
+    "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z",
+    "m21 15-5-5L5 21",
+    "M8.5 8.5h.01"
   ],
   pencil: [
     "M12 20h9",
@@ -57,6 +66,13 @@ const iconPaths: Record<IconName, string[]> = {
     "M10 8h4",
     "M18 16h4"
   ],
+  "svg-file": [
+    "M6 3h8l4 4v14H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z",
+    "M14 3v5h5",
+    "M7 15h2",
+    "M11 15h2",
+    "M15 15h2"
+  ],
   table: [
     "M3 4h18v16H3z",
     "M3 10h18",
@@ -69,6 +85,15 @@ const iconPaths: Record<IconName, string[]> = {
     "M14 11v6",
     "M6 7l1 14h10l1-14",
     "M9 7V4h6v3"
+  ],
+  undo: [
+    "M9 14 4 9l5-5",
+    "M4 9h10a6 6 0 1 1-4.2 10.2"
+  ],
+  upload: [
+    "M12 20V8",
+    "m7 13 5-5 5 5",
+    "M4 20h16"
   ],
   wand: [
     "m14 4 6 6",

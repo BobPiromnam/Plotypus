@@ -440,6 +440,8 @@
   };
   let reactMapDetailsHandle = null;
   let reactAdaptersLoadPromise = null;
+  let reactCommandBarHandle = null;
+  let reactCommandBarTarget = null;
   let reactMapDetailsDraft = null;
   let reactMapDetailsTarget = null;
   let reactProjectToolbarHandle = null;
@@ -1666,6 +1668,7 @@
   }
 
   function publishReadonlyAppSnapshot() {
+    updateReactCommandBar();
     updateReactPropertiesPanel();
     if (!window.PLOTYPUS_APP_STATE_READONLY) return;
     window.PLOTYPUS_APP_STATE_READONLY.notify();
@@ -1712,12 +1715,18 @@
         return { label: "Import CSV requested" };
       case "export-csv":
         els.ribbonExportCsvBtn?.click();
+        setExportMenuOpen(false);
+        publishReadonlyAppSnapshot();
         return { label: "Export CSV requested" };
       case "export-png":
+        setExportMenuOpen(false);
         els.ribbonExportPngBtn?.click();
+        publishReadonlyAppSnapshot();
         return { label: "Export PNG requested" };
       case "export-svg":
+        setExportMenuOpen(false);
         els.ribbonExportSvgBtn?.click();
+        publishReadonlyAppSnapshot();
         return { label: "Export SVG requested" };
       case "open-map-details":
         els.mapDetailsBtn?.click();
@@ -2443,6 +2452,9 @@
     }
     if (openReactMapDetailsDraft) {
       openReactMapDetailsDialog(openReactMapDetailsDraft);
+    }
+    if (reactCommandBarHandle) {
+      mountReactCommandBar();
     }
     if (reactProjectToolbarHandle) {
       mountReactProjectToolbar();
@@ -8023,7 +8035,7 @@
       return window.PLOTYPUS_REACT_ADAPTERS;
     }
     if (!reactAdaptersLoadPromise) {
-      reactAdaptersLoadPromise = import("./dist/react/plotypus-react-adapters.js?v=20260626-properties-panel")
+      reactAdaptersLoadPromise = import("./dist/react/plotypus-react-adapters.js?v=20260626-command-bar")
         .then(() => window.PLOTYPUS_REACT_ADAPTERS || null)
         .catch(() => null);
     }
@@ -8033,6 +8045,123 @@
   async function loadReactMapDetailsAdapters() {
     const adapters = await loadReactAdapters();
     return adapters && typeof adapters.mountMapDetailsDialog === "function" ? adapters : null;
+  }
+
+  function isReactCommandBarEnabled() {
+    try {
+      return new URLSearchParams(window.location.search).get("reactCommandBar") === "1";
+    } catch {
+      return false;
+    }
+  }
+
+  async function loadReactCommandBarAdapters() {
+    const adapters = await loadReactAdapters();
+    return adapters && typeof adapters.mountCommandBar === "function" ? adapters : null;
+  }
+
+  function getReactCommandBarTarget() {
+    const ribbon = document.querySelector(".app-ribbon.command-bar");
+    if (!ribbon || !ribbon.parentElement) return null;
+    if (!reactCommandBarTarget) {
+      reactCommandBarTarget = document.createElement("div");
+      reactCommandBarTarget.id = "reactCommandBarRoot";
+      reactCommandBarTarget.className = "react-command-bar-root";
+      reactCommandBarTarget.hidden = true;
+      ribbon.parentElement.insertBefore(reactCommandBarTarget, ribbon);
+    }
+    return reactCommandBarTarget;
+  }
+
+  function setLegacyCommandBarAvailable(isAvailable) {
+    const ribbon = document.querySelector(".app-ribbon.command-bar");
+    if (ribbon) ribbon.hidden = !isAvailable;
+  }
+
+  function restoreLegacyCommandBar(reason, error = null) {
+    if (reactCommandBarHandle && typeof reactCommandBarHandle.unmount === "function") {
+      try {
+        reactCommandBarHandle.unmount();
+      } catch (unmountError) {
+        if (window.console && typeof window.console.warn === "function") {
+          console.warn("[Plotypus React] Could not unmount Command bar.", unmountError);
+        }
+      }
+    }
+    reactCommandBarHandle = null;
+    if (reactCommandBarTarget) {
+      reactCommandBarTarget.hidden = true;
+      reactCommandBarTarget.replaceChildren();
+    }
+    setLegacyCommandBarAvailable(true);
+    if (reason && window.console && typeof window.console.warn === "function") {
+      console.warn(`[Plotypus React] Command bar restored to vanilla UI: ${reason}`, error || "");
+    }
+  }
+
+  function getReactCommandBarCopy() {
+    return {
+      appSubtitle: currentUiLanguage === "fr" ? "CSV → carte statique" : "CSV → static map",
+      export: t("action.export"),
+      exportCsv: t("action.exportCsv"),
+      exportPngDescription: t("export.png.description"),
+      exportPngTitle: t("export.png.title"),
+      exportSvgDescription: t("export.svg.description"),
+      exportSvgTitle: t("export.svg.title"),
+      importCsv: t("action.importCsv"),
+      language: t("language.label"),
+      mapDetails: t("action.mapDetails"),
+      open: t("action.open"),
+      properties: t("action.properties"),
+      sample: t("action.sample"),
+      save: t("action.save"),
+      undo: t("action.undo")
+    };
+  }
+
+  function updateReactCommandBar() {
+    if (!reactCommandBarHandle || typeof reactCommandBarHandle.render !== "function") return;
+    try {
+      reactCommandBarHandle.render(createReadonlyAppSnapshot());
+    } catch (error) {
+      restoreLegacyCommandBar("render failed", error);
+    }
+  }
+
+  async function mountReactCommandBar() {
+    if (!isReactCommandBarEnabled()) return false;
+    const adapters = await loadReactCommandBarAdapters();
+    if (!adapters) {
+      restoreLegacyCommandBar("adapter unavailable");
+      return false;
+    }
+    const target = getReactCommandBarTarget();
+    if (!target) {
+      restoreLegacyCommandBar("target unavailable");
+      return false;
+    }
+    if (reactCommandBarHandle && typeof reactCommandBarHandle.unmount === "function") {
+      reactCommandBarHandle.unmount();
+    }
+    target.hidden = false;
+    setLegacyCommandBarAvailable(false);
+    try {
+      reactCommandBarHandle = adapters.mountCommandBar({
+        copy: getReactCommandBarCopy(),
+        onCommand: runReadonlyCommandBarCommand,
+        onPropertiesCommand: runReadonlyPropertiesCommand,
+        snapshot: createReadonlyAppSnapshot(),
+        target
+      });
+      if (!reactCommandBarHandle) {
+        restoreLegacyCommandBar("mount returned no handle");
+        return false;
+      }
+      return true;
+    } catch (error) {
+      restoreLegacyCommandBar("mount failed", error);
+      return false;
+    }
   }
 
   function isReactProjectToolbarEnabled() {
@@ -9230,6 +9359,7 @@
     renderCategoryEditors();
     setRows([], [], { render: false, resetProperties: false });
     applyUiLanguage(getSavedUiLanguagePreference(), { persist: false, renderMap: false });
+    await mountReactCommandBar();
     await mountReactProjectToolbar();
     await mountReactPropertiesPanel();
     updateUndoButtonState();

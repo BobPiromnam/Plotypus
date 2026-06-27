@@ -2,6 +2,11 @@ import { createMapDetailsAdapter } from "./features/map-details/mapDetailsAdapte
 import { mountMapDetailsDialog } from "./features/map-details/mountMapDetailsDialog";
 import type { MapDetailsLocale, MapDetailsValue } from "./features/map-details/MapDetailsDialog";
 import {
+  mountCommandBar,
+  type CommandBarMountHandle
+} from "./features/command-bar/mountCommandBar";
+import type { CommandBarCopy } from "./features/command-bar/CommandBar";
+import {
   mountProjectPointsToolbar,
   type ProjectPointsToolbarMountHandle
 } from "./features/project-points/mountProjectPointsToolbar";
@@ -13,7 +18,7 @@ import type {
   ProjectPointsToolbarCopy,
   ProjectPointsToolbarState
 } from "./features/project-points/ProjectPointsToolbar";
-import type { PlotypusSnapshot, PropertiesCommand } from "./core/plotypusStateAdapter";
+import type { CommandBarCommand, PlotypusSnapshot, PropertiesCommand } from "./core/plotypusStateAdapter";
 import "./components/primitives/primitives.css";
 import "./react-shell.css";
 
@@ -25,6 +30,14 @@ type MapDetailsMountOptions = {
   read: () => Partial<MapDetailsValue>;
   target: Element | null;
   write: (value: MapDetailsValue) => void;
+};
+
+type CommandBarMountOptions = {
+  copy?: Partial<CommandBarCopy>;
+  onCommand?: (command: CommandBarCommand) => void;
+  onPropertiesCommand?: (command: PropertiesCommand) => void;
+  snapshot: PlotypusSnapshot;
+  target: Element | null;
 };
 
 type ProjectPointsToolbarMountOptions = {
@@ -49,6 +62,7 @@ type PropertiesPanelMountOptions = {
 };
 
 type PlotypusReactAdapters = {
+  mountCommandBar: (options: CommandBarMountOptions) => CommandBarMountHandle | null;
   mountMapDetailsDialog: (options: MapDetailsMountOptions) => { unmount: () => void } | null;
   mountPropertiesPanel: (options: PropertiesPanelMountOptions) => PropertiesPanelMountHandle | null;
   mountProjectPointsToolbar: (options: ProjectPointsToolbarMountOptions) => ProjectPointsToolbarMountHandle | null;
@@ -61,6 +75,12 @@ declare global {
 }
 
 window.PLOTYPUS_REACT_ADAPTERS = {
+  mountCommandBar(options) {
+    return mountCommandBar({
+      ...options,
+      enabled: true
+    });
+  },
   mountMapDetailsDialog({ locale = "en", onCancel, onDraftChange, onSave, read, target, write }) {
     return mountMapDetailsDialog({
       adapter: createMapDetailsAdapter({ read, write }),
