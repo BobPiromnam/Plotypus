@@ -439,9 +439,13 @@
     textFr: ""
   };
   let reactMapDetailsHandle = null;
-  let reactMapDetailsLoadPromise = null;
+  let reactAdaptersLoadPromise = null;
   let reactMapDetailsDraft = null;
   let reactMapDetailsTarget = null;
+  let reactProjectToolbarHandle = null;
+  let reactProjectToolbarTarget = null;
+  let reactPropertiesPanelHandle = null;
+  let reactPropertiesPanelTarget = null;
   let pendingPreviewRefresh = false;
   let pendingPreviewRefreshOptions = null;
   let pendingRenderFrame = null;
@@ -1502,9 +1506,12 @@
 
   function getProjectSelectionCounts() {
     const selectedCellRowIds = new Set(Array.from(selectedProjectCells).map(key => parseProjectCellKey(key).rowId));
+    const selectedFields = Array.from(selectedProjectCells).map(key => parseProjectCellKey(key).field);
     const selectedRowCount = getTableRows().filter(tr => tr.querySelector(".row-select")?.checked || selectedCellRowIds.has(String(tr.dataset.rowId))).length;
     return {
       selectedCellCount: selectedProjectCells.size,
+      selectedCoordinateCellCount: selectedFields.filter(field => field === "lon" || field === "lat").length,
+      selectedPriorityCellCount: selectedFields.filter(field => field === "priority").length,
       selectedRowCount
     };
   }
@@ -1617,8 +1624,12 @@
         }),
         rowCount: rows.length,
         toolbar: {
+          activeFilter: workspace.normalizeProjectFilter(activeProjectFilter),
           activeLanguage: activeAuthoringLanguage,
+          filterOptions: getReactProjectFilterOptions(),
           selectedCellCount: selectionCounts.selectedCellCount,
+          selectedCoordinateCellCount: selectionCounts.selectedCoordinateCellCount,
+          selectedPriorityCellCount: selectionCounts.selectedPriorityCellCount,
           selectedRowCount: selectionCounts.selectedRowCount
         }
       },
@@ -1627,6 +1638,7 @@
           ? !document.body.classList.contains("properties-open")
           : document.body.classList.contains("properties-collapsed"),
         contextKind: activePropertiesSelection && activePropertiesSelection.kind || "document",
+        guidance: els.propertiesDescription ? els.propertiesDescription.textContent || "" : "",
         sections: createReadonlyPropertySections(),
         subtitle: els.propertiesSubtitle ? els.propertiesSubtitle.textContent || "" : "",
         title: els.propertiesTitle ? els.propertiesTitle.textContent || "" : ""
@@ -1645,6 +1657,7 @@
   }
 
   function publishReadonlyAppSnapshot() {
+    updateReactPropertiesPanel();
     if (!window.PLOTYPUS_APP_STATE_READONLY) return;
     window.PLOTYPUS_APP_STATE_READONLY.notify();
   }
@@ -2372,6 +2385,9 @@
     if (openReactMapDetailsDraft) {
       openReactMapDetailsDialog(openReactMapDetailsDraft);
     }
+    if (reactProjectToolbarHandle) {
+      mountReactProjectToolbar();
+    }
     publishReadonlyAppSnapshot();
   }
 
@@ -2381,6 +2397,7 @@
       syncAuthoringLanguageControls(nextLanguage);
       updateTypeOptions();
       updateProjectCoordinateDisplay();
+      updateReactProjectToolbar();
       return;
     }
     getTableRows().forEach(tr => {
@@ -2397,6 +2414,7 @@
     syncAuthoringLanguageControls(nextLanguage);
     renderTranslationWorkbench();
     refreshProjectTableUx();
+    updateReactProjectToolbar();
     publishReadonlyAppSnapshot();
   }
 
@@ -6573,6 +6591,7 @@
   function updateDeleteButtonState() {
     const hasSelection = getProjectRowsSelectedForDelete().length > 0;
     els.deleteSelectedBtn.disabled = !hasSelection;
+    updateReactProjectToolbar();
     publishReadonlyAppSnapshot();
   }
 
@@ -7940,16 +7959,278 @@
     }
   }
 
-  async function loadReactMapDetailsAdapters() {
-    if (window.PLOTYPUS_REACT_ADAPTERS && typeof window.PLOTYPUS_REACT_ADAPTERS.mountMapDetailsDialog === "function") {
+  async function loadReactAdapters() {
+    if (window.PLOTYPUS_REACT_ADAPTERS) {
       return window.PLOTYPUS_REACT_ADAPTERS;
     }
-    if (!reactMapDetailsLoadPromise) {
-      reactMapDetailsLoadPromise = import("./dist/react/plotypus-react-adapters.js")
+    if (!reactAdaptersLoadPromise) {
+      reactAdaptersLoadPromise = import("./dist/react/plotypus-react-adapters.js?v=20260626-properties-panel")
         .then(() => window.PLOTYPUS_REACT_ADAPTERS || null)
         .catch(() => null);
     }
-    return reactMapDetailsLoadPromise;
+    return reactAdaptersLoadPromise;
+  }
+
+  async function loadReactMapDetailsAdapters() {
+    const adapters = await loadReactAdapters();
+    return adapters && typeof adapters.mountMapDetailsDialog === "function" ? adapters : null;
+  }
+
+  function isReactProjectToolbarEnabled() {
+    try {
+      return new URLSearchParams(window.location.search).get("reactProjectToolbar") === "1";
+    } catch {
+      return false;
+    }
+  }
+
+  async function loadReactProjectToolbarAdapters() {
+    const adapters = await loadReactAdapters();
+    return adapters && typeof adapters.mountProjectPointsToolbar === "function" ? adapters : null;
+  }
+
+  function isReactPropertiesPanelEnabled() {
+    try {
+      return new URLSearchParams(window.location.search).get("reactPropertiesPanel") === "1";
+    } catch {
+      return false;
+    }
+  }
+
+  async function loadReactPropertiesPanelAdapters() {
+    const adapters = await loadReactAdapters();
+    return adapters && typeof adapters.mountPropertiesPanel === "function" ? adapters : null;
+  }
+
+  function getReactPropertiesPanelTarget() {
+    if (!els.propertiesPanel) return null;
+    if (!reactPropertiesPanelTarget) {
+      reactPropertiesPanelTarget = document.createElement("div");
+      reactPropertiesPanelTarget.id = "reactPropertiesPanelRoot";
+      reactPropertiesPanelTarget.className = "react-properties-panel-root";
+      reactPropertiesPanelTarget.hidden = true;
+      const resizeHandle = els.propertiesResizeHandle;
+      if (resizeHandle && resizeHandle.nextSibling) {
+        els.propertiesPanel.insertBefore(reactPropertiesPanelTarget, resizeHandle.nextSibling);
+      } else {
+        els.propertiesPanel.appendChild(reactPropertiesPanelTarget);
+      }
+    }
+    return reactPropertiesPanelTarget;
+  }
+
+  function setLegacyPropertiesPanelAvailable(isAvailable) {
+    const card = els.propertiesPanel ? els.propertiesPanel.querySelector(".properties-card") : null;
+    if (card) card.hidden = !isAvailable;
+  }
+
+  function restoreLegacyPropertiesPanel(reason, error = null) {
+    if (reactPropertiesPanelHandle && typeof reactPropertiesPanelHandle.unmount === "function") {
+      try {
+        reactPropertiesPanelHandle.unmount();
+      } catch (unmountError) {
+        if (window.console && typeof window.console.warn === "function") {
+          console.warn("[Plotypus React] Could not unmount Properties panel.", unmountError);
+        }
+      }
+    }
+    reactPropertiesPanelHandle = null;
+    if (reactPropertiesPanelTarget) {
+      reactPropertiesPanelTarget.hidden = true;
+      reactPropertiesPanelTarget.replaceChildren();
+    }
+    setLegacyPropertiesPanelAvailable(true);
+    if (reason && window.console && typeof window.console.warn === "function") {
+      console.warn(`[Plotypus React] Properties panel restored to vanilla UI: ${reason}`, error || "");
+    }
+  }
+
+  function updateReactPropertiesPanel() {
+    if (!reactPropertiesPanelHandle || typeof reactPropertiesPanelHandle.render !== "function") return;
+    try {
+      reactPropertiesPanelHandle.render(createReadonlyAppSnapshot());
+    } catch (error) {
+      restoreLegacyPropertiesPanel("render failed", error);
+    }
+  }
+
+  async function mountReactPropertiesPanel() {
+    if (!isReactPropertiesPanelEnabled()) return false;
+    const adapters = await loadReactPropertiesPanelAdapters();
+    if (!adapters) {
+      restoreLegacyPropertiesPanel("adapter unavailable");
+      return false;
+    }
+    const target = getReactPropertiesPanelTarget();
+    if (!target) {
+      restoreLegacyPropertiesPanel("target unavailable");
+      return false;
+    }
+    if (reactPropertiesPanelHandle && typeof reactPropertiesPanelHandle.unmount === "function") {
+      reactPropertiesPanelHandle.unmount();
+    }
+    target.hidden = false;
+    setLegacyPropertiesPanelAvailable(false);
+    try {
+      reactPropertiesPanelHandle = adapters.mountPropertiesPanel({
+        onCollapseChange: runReadonlyPropertiesCommand,
+        snapshot: createReadonlyAppSnapshot(),
+        target
+      });
+      if (!reactPropertiesPanelHandle) {
+        restoreLegacyPropertiesPanel("mount returned no handle");
+        return false;
+      }
+      return true;
+    } catch (error) {
+      restoreLegacyPropertiesPanel("mount failed", error);
+      return false;
+    }
+  }
+
+  function getReactProjectToolbarTarget() {
+    const host = document.querySelector('[data-table-actions="projects"]');
+    if (!host) return null;
+    if (!reactProjectToolbarTarget) {
+      reactProjectToolbarTarget = document.createElement("div");
+      reactProjectToolbarTarget.id = "reactProjectPointsToolbarRoot";
+      reactProjectToolbarTarget.className = "react-project-points-toolbar-root";
+      reactProjectToolbarTarget.hidden = true;
+      const filters = host.querySelector(".project-table-filters");
+      if (filters && filters.nextSibling) host.insertBefore(reactProjectToolbarTarget, filters.nextSibling);
+      else host.appendChild(reactProjectToolbarTarget);
+    }
+    return reactProjectToolbarTarget;
+  }
+
+  function setLegacyProjectToolbarAvailable(isAvailable) {
+    [
+      document.querySelector(".project-table-filters"),
+      document.querySelector(".authoring-language"),
+      document.querySelector(".add-actions"),
+      document.querySelector(".selection-actions"),
+      els.projectImportCsvBtn,
+      els.clearRowsBtn
+    ].forEach(element => {
+      if (element) element.hidden = !isAvailable;
+    });
+  }
+
+  function restoreLegacyProjectToolbar(reason, error = null) {
+    if (reactProjectToolbarHandle && typeof reactProjectToolbarHandle.unmount === "function") {
+      try {
+        reactProjectToolbarHandle.unmount();
+      } catch (unmountError) {
+        if (window.console && typeof window.console.warn === "function") {
+          console.warn("[Plotypus React] Could not unmount Project points toolbar.", unmountError);
+        }
+      }
+    }
+    reactProjectToolbarHandle = null;
+    if (reactProjectToolbarTarget) {
+      reactProjectToolbarTarget.hidden = true;
+      reactProjectToolbarTarget.replaceChildren();
+    }
+    setLegacyProjectToolbarAvailable(true);
+    if (reason && window.console && typeof window.console.warn === "function") {
+      console.warn(`[Plotypus React] Project points toolbar restored to vanilla UI: ${reason}`, error || "");
+    }
+  }
+
+  function getReactProjectToolbarCopy() {
+    return {
+      addFromSource: t("toolbar.add.fromSource"),
+      addGroup: t("toolbar.add.label"),
+      addRow: t("toolbar.add.row"),
+      clearCoordinates: t("toolbar.selection.clearCoordinates"),
+      clearTable: t("toolbar.project.clearTable"),
+      delete: t("toolbar.selection.delete"),
+      filters: t("toolbar.filters.projects"),
+      importCsv: t("toolbar.project.importCsv"),
+      language: t("toolbar.authoring.label"),
+      multiSelectGroup: t("toolbar.selection.label"),
+      priority: t("toolbar.selection.priority"),
+      tableGroup: t("toolbar.project.table")
+    };
+  }
+
+  function getReactProjectFilterOptions() {
+    const summary = summarizeProjectRows(getRows());
+    return [
+      { label: t("toolbar.filters.allCount", { count: summary.total }), value: "all" },
+      { label: t("toolbar.filters.missingCoordinatesCount", { count: summary.coordinateIssues }), value: "missing" },
+      { label: t("toolbar.filters.noCoordinateCalloutsCount", { count: summary.callouts }), value: "callouts" }
+    ];
+  }
+
+  function getReactProjectToolbarState() {
+    const counts = getProjectSelectionCounts();
+    return {
+      activeFilter: workspace.normalizeProjectFilter(activeProjectFilter),
+      activeLanguage: activeAuthoringLanguage === "fr" ? "fr" : "en",
+      filterOptions: getReactProjectFilterOptions(),
+      selectedCellCount: counts.selectedCellCount,
+      selectedCoordinateCellCount: counts.selectedCoordinateCellCount,
+      selectedPriorityCellCount: counts.selectedPriorityCellCount,
+      selectedRowCount: counts.selectedRowCount
+    };
+  }
+
+  function updateReactProjectToolbar() {
+    if (!reactProjectToolbarHandle || typeof reactProjectToolbarHandle.render !== "function") return;
+    try {
+      reactProjectToolbarHandle.render(getReactProjectToolbarState());
+    } catch (error) {
+      restoreLegacyProjectToolbar("render failed", error);
+    }
+  }
+
+  function runReactProjectToolbarPriorityChange(priority) {
+    if (priority === "") return;
+    applyBulkPriority(priority);
+  }
+
+  async function mountReactProjectToolbar() {
+    if (!isReactProjectToolbarEnabled()) return false;
+    const adapters = await loadReactProjectToolbarAdapters();
+    if (!adapters) {
+      restoreLegacyProjectToolbar("adapter unavailable");
+      return false;
+    }
+    const target = getReactProjectToolbarTarget();
+    if (!target) {
+      restoreLegacyProjectToolbar("target unavailable");
+      return false;
+    }
+    if (reactProjectToolbarHandle && typeof reactProjectToolbarHandle.unmount === "function") {
+      reactProjectToolbarHandle.unmount();
+    }
+    target.hidden = false;
+    setLegacyProjectToolbarAvailable(false);
+    try {
+      reactProjectToolbarHandle = adapters.mountProjectPointsToolbar({
+        copy: getReactProjectToolbarCopy(),
+        onAddFromSource: () => els.addPointsBtn.click(),
+        onAddRow: () => els.addRowBtn.click(),
+        onClearCoordinates: clearSelectedCoordinateCells,
+        onClearTable: confirmClearProjectRows,
+        onDelete: () => els.deleteSelectedBtn.click(),
+        onFilterChange: setProjectFilter,
+        onImportCsv: () => els.csvInput.click(),
+        onLanguageChange: setAuthoringLanguage,
+        onPriorityChange: runReactProjectToolbarPriorityChange,
+        state: getReactProjectToolbarState(),
+        target
+      });
+      if (!reactProjectToolbarHandle) {
+        restoreLegacyProjectToolbar("mount returned no handle");
+        return false;
+      }
+      return true;
+    } catch (error) {
+      restoreLegacyProjectToolbar("mount failed", error);
+      return false;
+    }
   }
 
   function setLegacyMapDetailsFormAvailable(isAvailable) {
@@ -8890,6 +9171,8 @@
     renderCategoryEditors();
     setRows([], [], { render: false, resetProperties: false });
     applyUiLanguage(getSavedUiLanguagePreference(), { persist: false, renderMap: false });
+    await mountReactProjectToolbar();
+    await mountReactPropertiesPanel();
     updateUndoButtonState();
     await loadGeo();
     render();

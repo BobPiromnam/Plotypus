@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Button, Icon, type IconName } from "../../components/primitives";
+import { Icon, type IconName } from "../../components/primitives";
 
 export type PropertiesPanelSection = {
   actions?: ReactNode;
@@ -11,6 +11,7 @@ export type PropertiesPanelShellProps = {
   collapsed?: boolean;
   contextIcon?: IconName;
   contextKind: string;
+  copy?: Partial<PropertiesPanelShellCopy>;
   guidance: string;
   onCollapse?: () => void;
   sections: PropertiesPanelSection[];
@@ -18,21 +19,38 @@ export type PropertiesPanelShellProps = {
   title: string;
 };
 
+export type PropertiesPanelShellCopy = {
+  ariaLabel: string;
+  collapse: string;
+  expand: string;
+  eyebrow: string;
+};
+
+const defaultCopy: PropertiesPanelShellCopy = {
+  ariaLabel: "Properties panel",
+  collapse: "Collapse properties",
+  expand: "Expand properties",
+  eyebrow: "Properties"
+};
+
 export function PropertiesPanelShell({
   collapsed = false,
   contextIcon = "sliders",
   contextKind,
+  copy: copyOverrides,
   guidance,
   onCollapse,
   sections,
   subtitle,
   title
 }: PropertiesPanelShellProps) {
+  const copy = { ...defaultCopy, ...copyOverrides };
+
   if (collapsed) {
     return (
-      <aside className="properties-shell properties-shell-collapsed" aria-label="Properties panel">
-        <button type="button" className="properties-shell-rail-button" onClick={onCollapse} aria-label="Expand properties">
-          <span>Properties</span>
+      <aside className="properties-shell properties-shell-collapsed" aria-label={copy.ariaLabel}>
+        <button type="button" className="properties-shell-rail-button" onClick={onCollapse} aria-label={copy.expand}>
+          <span>{copy.eyebrow}</span>
           <span aria-hidden="true">&gt;</span>
         </button>
       </aside>
@@ -40,10 +58,10 @@ export function PropertiesPanelShell({
   }
 
   return (
-    <aside className="properties-shell" aria-label="Properties panel">
+    <aside className="properties-shell" aria-label={copy.ariaLabel}>
       <header className="properties-shell-header">
-        <span>Properties</span>
-        <button type="button" aria-label="Collapse properties" onClick={onCollapse}>
+        <span>{copy.eyebrow}</span>
+        <button type="button" aria-label={copy.collapse} onClick={onCollapse}>
           &gt;
         </button>
       </header>
@@ -74,12 +92,6 @@ export function PropertiesPanelShell({
         </section>
         );
       })}
-
-      <div className="properties-shell-footer">
-        <Button icon="sliders" variant="ghost">
-          Reset section
-        </Button>
-      </div>
     </aside>
   );
 }

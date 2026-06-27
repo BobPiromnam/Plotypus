@@ -34,6 +34,8 @@ export function ProjectPointsToolbarInteractiveSandbox({ adapter }: ProjectPoint
         onClearCoordinates={() => sandboxAdapter.runProjectPointsCommand({ type: "clear-coordinates" })}
         onClearTable={() => sandboxAdapter.runProjectPointsCommand({ type: "clear-table" })}
         onDelete={() => sandboxAdapter.runProjectPointsCommand({ type: "delete-selection" })}
+        onFilterChange={(filter) => sandboxAdapter.runProjectPointsCommand({ filter, type: "set-filter" })}
+        onImportCsv={() => sandboxAdapter.runProjectPointsCommand({ type: "import-csv" })}
         onLanguageChange={sandboxAdapter.setLocale}
         onPriorityChange={(priority) => sandboxAdapter.runProjectPointsCommand({ priority, type: "set-priority" })}
         state={selection}
@@ -49,6 +51,10 @@ export function ProjectPointsToolbarInteractiveSandbox({ adapter }: ProjectPoint
       </div>
 
       <dl className="project-toolbar-state-readout">
+        <div>
+          <dt>Filter</dt>
+          <dd>{selection.activeFilter ?? "all"}</dd>
+        </div>
         <div>
           <dt>Language</dt>
           <dd>{selection.activeLanguage.toUpperCase()}</dd>

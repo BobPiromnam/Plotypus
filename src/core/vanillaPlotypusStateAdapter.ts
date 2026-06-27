@@ -49,6 +49,8 @@ type VanillaSnapshotSource = Partial<Omit<PlotypusSnapshot, "mapBaselayer" | "pr
   };
 };
 
+type ProjectToolbarFilterOption = NonNullable<PlotypusSnapshot["projectPoints"]["toolbar"]["filterOptions"]>[number];
+
 type WindowLike = {
   PLOTYPUS_APP_STATE_READONLY?: VanillaReadonlyBridge;
   addEventListener: (type: string, listener: EventListener) => void;
@@ -113,6 +115,10 @@ export function normalizeVanillaSnapshot(source: VanillaSnapshotSource | undefin
   const locale = source?.locale === "fr" ? "fr" : "en";
   const mapLanguage = source?.mapLanguage === "fr" ? "fr" : "en";
   const activeLanguage = source?.projectPoints?.toolbar?.activeLanguage === "fr" ? "fr" : "en";
+  const activeFilter = normalizeProjectFilter(
+    source?.projectPoints?.toolbar?.activeFilter,
+    fallback.projectPoints.toolbar.activeFilter
+  ) ?? "all";
 
   return {
     activeWorkspace: typeof source?.activeWorkspace === "string" ? source.activeWorkspace : fallback.activeWorkspace,
@@ -132,10 +138,23 @@ export function normalizeVanillaSnapshot(source: VanillaSnapshotSource | undefin
       previewRows: normalizePreviewRows(source?.projectPoints?.previewRows, fallback.projectPoints.previewRows),
       rowCount: normalizeCount(source?.projectPoints?.rowCount, fallback.projectPoints.rowCount),
       toolbar: {
+        activeFilter,
         activeLanguage,
+        filterOptions: normalizeProjectFilterOptions(
+          source?.projectPoints?.toolbar?.filterOptions,
+          fallback.projectPoints.toolbar.filterOptions
+        ),
+        selectedCoordinateCellCount: normalizeCount(
+          source?.projectPoints?.toolbar?.selectedCoordinateCellCount,
+          fallback.projectPoints.toolbar.selectedCoordinateCellCount ?? 0
+        ),
         selectedCellCount: normalizeCount(
           source?.projectPoints?.toolbar?.selectedCellCount,
           fallback.projectPoints.toolbar.selectedCellCount
+        ),
+        selectedPriorityCellCount: normalizeCount(
+          source?.projectPoints?.toolbar?.selectedPriorityCellCount,
+          fallback.projectPoints.toolbar.selectedPriorityCellCount ?? 0
         ),
         selectedRowCount: normalizeCount(
           source?.projectPoints?.toolbar?.selectedRowCount,
@@ -146,6 +165,7 @@ export function normalizeVanillaSnapshot(source: VanillaSnapshotSource | undefin
     properties: {
       collapsed: Boolean(source?.properties?.collapsed),
       contextKind: stringOrFallback(source?.properties?.contextKind, fallback.properties.contextKind),
+      guidance: stringOrFallback(source?.properties?.guidance, fallback.properties.guidance),
       sections: normalizePropertySections(source?.properties?.sections, fallback.properties.sections),
       subtitle: stringOrFallback(source?.properties?.subtitle, fallback.properties.subtitle),
       title: stringOrFallback(source?.properties?.title, fallback.properties.title)
@@ -196,6 +216,28 @@ function normalizePreviewRows(value: unknown, fallback: ProjectPointPreviewRow[]
 
 function normalizeStatus(value: unknown): ProjectPointPreviewRow["status"] {
   return value === "callout" || value === "mapped" || value === "missing" ? value : "blank";
+}
+
+function normalizeProjectFilter(
+  value: unknown,
+  fallback: PlotypusSnapshot["projectPoints"]["toolbar"]["activeFilter"] | null
+) {
+  return value === "missing" || value === "callouts" || value === "all" ? value : fallback;
+}
+
+function normalizeProjectFilterOptions(value: unknown, fallback: ProjectToolbarFilterOption[] | undefined) {
+  if (!Array.isArray(value)) return fallback?.map((option) => ({ ...option })) ?? [];
+  return value
+    .map((option): ProjectToolbarFilterOption | null => {
+      const source = option && typeof option === "object" ? option as Partial<ProjectToolbarFilterOption> : {};
+      const filter = normalizeProjectFilter(source.value, null);
+      if (!filter) return null;
+      return {
+        label: stringOrFallback(source.label, filter),
+        value: filter
+      };
+    })
+    .filter((option): option is ProjectToolbarFilterOption => Boolean(option));
 }
 
 function normalizePropertySections(value: unknown, fallback: PlotypusSnapshot["properties"]["sections"]) {

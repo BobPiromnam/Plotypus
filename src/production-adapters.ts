@@ -1,6 +1,19 @@
 import { createMapDetailsAdapter } from "./features/map-details/mapDetailsAdapter";
 import { mountMapDetailsDialog } from "./features/map-details/mountMapDetailsDialog";
 import type { MapDetailsLocale, MapDetailsValue } from "./features/map-details/MapDetailsDialog";
+import {
+  mountProjectPointsToolbar,
+  type ProjectPointsToolbarMountHandle
+} from "./features/project-points/mountProjectPointsToolbar";
+import {
+  mountPropertiesPanel,
+  type PropertiesPanelMountHandle
+} from "./features/properties/mountPropertiesPanel";
+import type {
+  ProjectPointsToolbarCopy,
+  ProjectPointsToolbarState
+} from "./features/project-points/ProjectPointsToolbar";
+import type { PlotypusSnapshot, PropertiesCommand } from "./core/plotypusStateAdapter";
 import "./components/primitives/primitives.css";
 import "./react-shell.css";
 
@@ -14,8 +27,31 @@ type MapDetailsMountOptions = {
   write: (value: MapDetailsValue) => void;
 };
 
+type ProjectPointsToolbarMountOptions = {
+  copy?: Partial<ProjectPointsToolbarCopy>;
+  onAddFromSource?: () => void;
+  onAddRow?: () => void;
+  onClearCoordinates?: () => void;
+  onClearTable?: () => void;
+  onDelete?: () => void;
+  onFilterChange?: (filter: NonNullable<ProjectPointsToolbarState["activeFilter"]>) => void;
+  onImportCsv?: () => void;
+  onLanguageChange?: (language: ProjectPointsToolbarState["activeLanguage"]) => void;
+  onPriorityChange?: (priority: string) => void;
+  state: ProjectPointsToolbarState;
+  target: Element | null;
+};
+
+type PropertiesPanelMountOptions = {
+  onCollapseChange?: (command: PropertiesCommand) => void;
+  snapshot: PlotypusSnapshot;
+  target: Element | null;
+};
+
 type PlotypusReactAdapters = {
   mountMapDetailsDialog: (options: MapDetailsMountOptions) => { unmount: () => void } | null;
+  mountPropertiesPanel: (options: PropertiesPanelMountOptions) => PropertiesPanelMountHandle | null;
+  mountProjectPointsToolbar: (options: ProjectPointsToolbarMountOptions) => ProjectPointsToolbarMountHandle | null;
 };
 
 declare global {
@@ -34,6 +70,18 @@ window.PLOTYPUS_REACT_ADAPTERS = {
       onDraftChange,
       onSave,
       target
+    });
+  },
+  mountProjectPointsToolbar(options) {
+    return mountProjectPointsToolbar({
+      ...options,
+      enabled: true
+    });
+  },
+  mountPropertiesPanel(options) {
+    return mountPropertiesPanel({
+      ...options,
+      enabled: true
     });
   }
 };

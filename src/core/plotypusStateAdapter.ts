@@ -6,6 +6,7 @@ export type PlotypusLocale = "en" | "fr";
 export type PropertiesPanelSnapshot = {
   collapsed: boolean;
   contextKind: string;
+  guidance: string;
   sections: PropertiesPreviewSection[];
   subtitle: string;
   title: string;
@@ -82,6 +83,8 @@ export type ProjectPointsCommand =
   | { type: "clear-coordinates" }
   | { type: "clear-table" }
   | { type: "delete-selection" }
+  | { type: "import-csv" }
+  | { filter: NonNullable<ProjectPointsToolbarState["activeFilter"]>; type: "set-filter" }
   | { priority: string; type: "set-priority" };
 
 export type PropertiesCommand =
@@ -150,7 +153,13 @@ export function createDefaultPlotypusSnapshot(): PlotypusSnapshot {
       ],
       rowCount: 21,
       toolbar: {
+        activeFilter: "all",
         activeLanguage: "en",
+        filterOptions: [
+          { label: "All 21", value: "all" },
+          { label: "Missing coordinates 0", value: "missing" },
+          { label: "Callouts 1", value: "callouts" }
+        ],
         selectedCellCount: 3,
         selectedRowCount: 2
       }
@@ -158,6 +167,7 @@ export function createDefaultPlotypusSnapshot(): PlotypusSnapshot {
     properties: {
       collapsed: false,
       contextKind: "Document",
+      guidance: "Click the map, a label, legend, or callout for object-specific controls.",
       sections: [
         {
           title: "Map style",
@@ -218,6 +228,7 @@ export function createMemoryPlotypusStateAdapter(
       const commandLabel = getProjectPointsCommandLabel(command);
       const shouldClearSelection = command.type === "clear-table" || command.type === "delete-selection";
       const nextRowCount = command.type === "add-row" ? snapshot.projectPoints.rowCount + 1 : snapshot.projectPoints.rowCount;
+      const nextActiveFilter = command.type === "set-filter" ? command.filter : snapshot.projectPoints.toolbar.activeFilter;
 
       update({
         ...snapshot,
@@ -227,6 +238,7 @@ export function createMemoryPlotypusStateAdapter(
           rowCount: nextRowCount,
           toolbar: {
             ...snapshot.projectPoints.toolbar,
+            activeFilter: nextActiveFilter,
             ...(shouldClearSelection ? { selectedCellCount: 0, selectedRowCount: 0 } : {})
           }
         }
@@ -297,6 +309,7 @@ function cloneSnapshot(snapshot: PlotypusSnapshot): PlotypusSnapshot {
     },
     properties: {
       ...snapshot.properties,
+      guidance: snapshot.properties.guidance,
       sections: snapshot.properties.sections.map((section) => ({
         title: section.title,
         rows: section.rows.map((row) => ({ ...row }))
@@ -322,6 +335,10 @@ function getProjectPointsCommandLabel(command: ProjectPointsCommand) {
       return "Clear table requested";
     case "delete-selection":
       return "Delete selection requested";
+    case "import-csv":
+      return "Import CSV requested";
+    case "set-filter":
+      return `Filter ${command.filter} requested`;
     case "set-priority":
       return command.priority ? `Priority ${command.priority} requested` : "Priority menu opened";
   }

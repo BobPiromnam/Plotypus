@@ -25,6 +25,8 @@
     const measurePerformance = params.get("performance") === "1";
     const visualCapture = params.get("visual") === "1";
     const reactMapDetails = params.get("reactMapDetails") === "1";
+    const reactProjectToolbar = params.get("reactProjectToolbar") === "1";
+    const reactPropertiesPanel = params.get("reactPropertiesPanel") === "1";
     if (visualCapture) document.documentElement.classList.add("is-visual-capture");
     try {
       localStorage.removeItem("plotypus.propertiesPanel");
@@ -34,6 +36,8 @@
     }
     const appUrl = new URL(frame.dataset.src, window.location.href);
     if (reactMapDetails) appUrl.searchParams.set("reactMapDetails", "1");
+    if (reactProjectToolbar) appUrl.searchParams.set("reactProjectToolbar", "1");
+    if (reactPropertiesPanel) appUrl.searchParams.set("reactPropertiesPanel", "1");
     frame.src = appUrl.toString();
 
     function waitFor(predicate, timeout = 8000) {
@@ -538,6 +542,14 @@
           assert(checks, "Properties panel has a contextual heading", Boolean(doc.querySelector("#propertiesTitle")?.textContent.trim()));
           assert(checks, "Properties guidance appears in the top heading", Boolean(doc.querySelector("#propertiesDescription")?.textContent.trim()));
           assert(checks, "Properties panel has no duplicate bottom selection copy", !doc.querySelector("[data-props-context='selection']"));
+          if (reactPropertiesPanel) {
+            await waitFor(() => doc.querySelector("#reactPropertiesPanelRoot:not([hidden]) .properties-shell"), 4000);
+            const reactPropertiesRoot = doc.querySelector("#reactPropertiesPanelRoot");
+            const reactPropertiesText = reactPropertiesRoot?.textContent || "";
+            assert(checks, "React Properties panel is mounted behind the feature flag", Boolean(reactPropertiesRoot && !reactPropertiesRoot.hidden));
+            assert(checks, "React Properties panel hides the vanilla Properties card", Boolean(doc.querySelector(".properties-card")?.hidden));
+            assert(checks, "React Properties panel renders live snapshot content", /Document|Map baselayer|Project data|No selection/.test(reactPropertiesText) && /Display|Map style|Map size/.test(reactPropertiesText), reactPropertiesText);
+          }
           const propertiesPanel = doc.querySelector(".properties-panel");
           const propertiesStyle = frame.contentWindow.getComputedStyle(propertiesPanel);
           const propertiesToggle = doc.querySelector("#propertiesToggleBtn");
@@ -850,16 +862,42 @@
             englishAuthoringButton?.click();
             assert(checks, "Project type switches back to English with the authoring language", /Referred Project|Transformative Strategy/.test(firstTypeInput?.selectedOptions[0]?.textContent || ""));
             assert(checks, "Project coordinates use dot decimals in English", /\./.test(firstLonForLanguage?.value || ""));
-            const addActions = doc.querySelector(".add-actions");
-            assert(checks, "Project add actions are grouped", addActions?.querySelector(".toolbar-group-label")?.textContent.trim() === "Add" && doc.querySelector("#addRowBtn")?.textContent.trim() === "Row" && doc.querySelector("#addPointsBtn")?.textContent.trim() === "From source");
-            const selectionActions = doc.querySelector(".selection-actions");
-            assert(checks, "Project selection actions are grouped", selectionActions && selectionActions.contains(doc.querySelector("#bulkPriorityInput")) && selectionActions.contains(doc.querySelector("#bulkClearCoordinatesBtn")) && selectionActions.contains(doc.querySelector("#deleteSelectedBtn")));
-            assert(checks, "Project selection action group is labelled", selectionActions?.querySelector(".toolbar-group-label")?.textContent.trim() === "Multi select" && doc.querySelector("#deleteSelectedBtn")?.textContent.trim() === "Delete");
+            if (reactProjectToolbar) {
+              await waitFor(() => doc.querySelector("#reactProjectPointsToolbarRoot:not([hidden]) .project-points-toolbar-sandbox"), 4000);
+              const reactToolbarRoot = doc.querySelector("#reactProjectPointsToolbarRoot");
+              const reactToolbarText = reactToolbarRoot?.textContent || "";
+              const findReactToolbarButton = pattern => Array.from(reactToolbarRoot?.querySelectorAll("button") || [])
+                .find(button => pattern.test(button.textContent.trim()));
+              const reactPrioritySelect = () => Array.from(reactToolbarRoot?.querySelectorAll("select") || [])
+                .find(select => Array.from(select.options).some(option => option.value === "5"));
+              assert(checks, "React Project points toolbar is mounted behind the feature flag", Boolean(reactToolbarRoot && !reactToolbarRoot.hidden && doc.querySelector(".add-actions")?.hidden && doc.querySelector(".selection-actions")?.hidden));
+              assert(checks, "React Project points toolbar shows production controls", /All|Tous/.test(reactToolbarText) && /Lang|Langue/.test(reactToolbarText) && /Row|Ligne/.test(reactToolbarText) && /From source|Source/.test(reactToolbarText) && /Import CSV|Importer CSV/.test(reactToolbarText) && /Clear table|Vider le tableau/.test(reactToolbarText), reactToolbarText);
+              findReactToolbarButton(/callouts|Repères/i)?.click();
+              await waitFor(() => Array.from(doc.querySelectorAll("#projectTable tbody tr")).filter(row => !row.hidden).length === 1, 2000);
+              assert(checks, "React Project points toolbar filter command reaches vanilla app state", Array.from(doc.querySelectorAll("#projectTable tbody tr")).filter(row => !row.hidden).length === 1);
+              findReactToolbarButton(/^FR$/)?.click();
+              await waitFor(() => doc.querySelector("#projectTable .type-input")?.selectedOptions[0]?.textContent.match(/Projets soumis|Stratégies de transformation/), 2000);
+              assert(checks, "React Project points toolbar language command reaches vanilla app state", /Projets soumis|Stratégies de transformation/.test(doc.querySelector("#projectTable .type-input")?.selectedOptions[0]?.textContent || ""));
+              findReactToolbarButton(/^EN$/)?.click();
+              await waitFor(() => /Referred Project|Transformative Strategy/.test(doc.querySelector("#projectTable .type-input")?.selectedOptions[0]?.textContent || ""), 2000);
+              const rowsBeforeReactAdd = doc.querySelectorAll("#projectTable tbody tr").length;
+              findReactToolbarButton(/^(Row|Ligne)$/)?.click();
+              await waitFor(() => doc.querySelectorAll("#projectTable tbody tr").length === rowsBeforeReactAdd + 1, 2000);
+              assert(checks, "React Project points toolbar Add row command reaches vanilla app state", doc.querySelectorAll("#projectTable tbody tr").length === rowsBeforeReactAdd + 1);
+            } else {
+              const addActions = doc.querySelector(".add-actions");
+              assert(checks, "Project add actions are grouped", addActions?.querySelector(".toolbar-group-label")?.textContent.trim() === "Add" && doc.querySelector("#addRowBtn")?.textContent.trim() === "Row" && doc.querySelector("#addPointsBtn")?.textContent.trim() === "From source");
+              const selectionActions = doc.querySelector(".selection-actions");
+              assert(checks, "Project selection actions are grouped", selectionActions && selectionActions.contains(doc.querySelector("#bulkPriorityInput")) && selectionActions.contains(doc.querySelector("#bulkClearCoordinatesBtn")) && selectionActions.contains(doc.querySelector("#deleteSelectedBtn")));
+              assert(checks, "Project selection action group is labelled", selectionActions?.querySelector(".toolbar-group-label")?.textContent.trim() === "Multi select" && doc.querySelector("#deleteSelectedBtn")?.textContent.trim() === "Delete");
+            }
             assert(checks, "Project field guide is removed from the toolbar", !doc.querySelector(".project-field-legend"));
             const projectToolbarControls = Array.from(doc.querySelectorAll("[data-table-actions='projects'] > button, [data-table-actions='projects'] > select, .add-actions > button, .selection-actions > button, .selection-actions > select"))
               .filter(control => frame.contentWindow.getComputedStyle(control).display !== "none");
             const projectToolbarHeights = projectToolbarControls.map(control => Math.round(control.getBoundingClientRect().height));
-            assert(checks, "Project toolbar controls share one standard height", new Set(projectToolbarHeights).size === 1, projectToolbarHeights.join(", "));
+            if (!reactProjectToolbar) {
+              assert(checks, "Project toolbar controls share one standard height", new Set(projectToolbarHeights).size === 1, projectToolbarHeights.join(", "));
+            }
             const centeredHeaderClasses = [".priority-col", ".lon-col", ".lat-col", ".status-col"];
             assert(checks, "Project numeric/status headers are centered", centeredHeaderClasses.every(selector => frame.contentWindow.getComputedStyle(doc.querySelector(`#projectTable ${selector}`)).textAlign === "center"));
             assert(checks, "Project Priority header explains label placement order", /label placement order/i.test(doc.querySelector("#projectTable .priority-col")?.title || ""));
@@ -928,41 +966,68 @@
             assert(checks, "Ctrl-click removes a Priority cell from the selection", firstPriorityCell?.classList.contains("is-cell-selected") && !secondPriorityCell?.classList.contains("is-cell-selected"));
             priorityInputs[0]?.click();
             priorityInputs[1]?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true, shiftKey: true }));
-            const bulkPriorityInput = doc.querySelector("#bulkPriorityInput");
+            const bulkPriorityInput = reactProjectToolbar
+              ? Array.from(doc.querySelectorAll("#reactProjectPointsToolbarRoot select")).find(select => Array.from(select.options).some(option => option.value === "5"))
+              : doc.querySelector("#bulkPriorityInput");
             if (bulkPriorityInput) {
               bulkPriorityInput.value = "4";
               bulkPriorityInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
             }
-            assert(checks, "Selected priority cells can be bulk changed", priorityInputs[0]?.value === "4" && priorityInputs[1]?.value === "4");
+            assert(checks, reactProjectToolbar ? "React Project points toolbar Priority command reaches vanilla app state" : "Selected priority cells can be bulk changed", priorityInputs[0]?.value === "4" && priorityInputs[1]?.value === "4");
             const firstLonInput = doc.querySelector("#projectTable .lon-input");
             const firstLatInput = doc.querySelector("#projectTable .lat-input");
             firstLonInput?.click();
             firstLatInput?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true, shiftKey: true }));
-            doc.querySelector("#bulkClearCoordinatesBtn")?.click();
-            assert(checks, "Selected coordinate cells can be bulk cleared", firstLonInput?.value === "" && firstLatInput?.value === "");
+            if (reactProjectToolbar) {
+              const reactClearCoordinatesButton = await waitFor(() => {
+                const button = Array.from(doc.querySelectorAll("#reactProjectPointsToolbarRoot button"))
+                  .find(candidate => /Clear coordinates|Effacer les coordonnées/.test(candidate.textContent.trim()));
+                return button && !button.disabled ? button : null;
+              }, 2000);
+              reactClearCoordinatesButton.click();
+            } else {
+              doc.querySelector("#bulkClearCoordinatesBtn")?.click();
+            }
+            assert(checks, reactProjectToolbar ? "React Project points toolbar Clear coordinates command reaches vanilla app state" : "Selected coordinate cells can be bulk cleared", firstLonInput?.value === "" && firstLatInput?.value === "");
             const deleteFromCellSelectionBtn = doc.querySelector("#deleteSelectedBtn");
+            const reactDeleteButton = () => Array.from(doc.querySelectorAll("#reactProjectPointsToolbarRoot button"))
+              .find(button => /^(Delete|Supprimer)$/.test(button.textContent.trim()));
             const rowsBeforeCellDelete = doc.querySelectorAll("#projectTable tbody tr").length;
             firstPriorityCell?.querySelector("input")?.click();
-            assert(checks, "Delete enables from a selected Project cell", deleteFromCellSelectionBtn && !deleteFromCellSelectionBtn.disabled);
+            if (reactProjectToolbar) {
+              await waitFor(() => {
+                const button = reactDeleteButton();
+                return button && !button.disabled ? button : null;
+              }, 2000);
+            }
+            assert(checks, reactProjectToolbar ? "React Project points toolbar Delete enables from a selected Project cell" : "Delete enables from a selected Project cell", reactProjectToolbar ? Boolean(reactDeleteButton() && !reactDeleteButton().disabled) : deleteFromCellSelectionBtn && !deleteFromCellSelectionBtn.disabled);
             const originalDeleteConfirm = frame.contentWindow.confirm;
             frame.contentWindow.confirm = () => true;
-            deleteFromCellSelectionBtn?.click();
+            if (reactProjectToolbar) reactDeleteButton()?.click();
+            else deleteFromCellSelectionBtn?.click();
             frame.contentWindow.confirm = originalDeleteConfirm;
             await waitFor(() => doc.querySelectorAll("#projectTable tbody tr").length === rowsBeforeCellDelete - 1, 2000);
-            assert(checks, "Delete removes rows represented by selected Project cells", doc.querySelectorAll("#projectTable tbody tr").length === rowsBeforeCellDelete - 1);
+            assert(checks, reactProjectToolbar ? "React Project points toolbar Delete command removes rows represented by selected Project cells" : "Delete removes rows represented by selected Project cells", doc.querySelectorAll("#projectTable tbody tr").length === rowsBeforeCellDelete - 1);
             const rowsBeforeAnyColumnDelete = doc.querySelectorAll("#projectTable tbody tr").length;
             const firstNameCellForDelete = doc.querySelector("#projectTable tbody tr:nth-child(1) .name-cell");
             const secondStatusCellForDelete = doc.querySelector("#projectTable tbody tr:nth-child(2) .status-cell");
             firstNameCellForDelete?.querySelector("input")?.click();
             secondStatusCellForDelete?.dispatchEvent(new frame.contentWindow.PointerEvent("pointerdown", { bubbles: true, ctrlKey: true }));
             secondStatusCellForDelete?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true, ctrlKey: true }));
-            assert(checks, "Delete enables from selected Project cells in any column", deleteFromCellSelectionBtn && !deleteFromCellSelectionBtn.disabled && firstNameCellForDelete?.classList.contains("is-cell-selected") && secondStatusCellForDelete?.classList.contains("is-cell-selected"));
+            if (reactProjectToolbar) {
+              await waitFor(() => {
+                const button = reactDeleteButton();
+                return button && !button.disabled && firstNameCellForDelete?.classList.contains("is-cell-selected") && secondStatusCellForDelete?.classList.contains("is-cell-selected") ? button : null;
+              }, 2000);
+            }
+            assert(checks, reactProjectToolbar ? "React Project points toolbar Delete enables from selected Project cells in any column" : "Delete enables from selected Project cells in any column", (reactProjectToolbar ? Boolean(reactDeleteButton() && !reactDeleteButton().disabled) : deleteFromCellSelectionBtn && !deleteFromCellSelectionBtn.disabled) && firstNameCellForDelete?.classList.contains("is-cell-selected") && secondStatusCellForDelete?.classList.contains("is-cell-selected"));
             const confirmForAnyColumnDelete = frame.contentWindow.confirm;
             frame.contentWindow.confirm = () => true;
-            deleteFromCellSelectionBtn?.click();
+            if (reactProjectToolbar) reactDeleteButton()?.click();
+            else deleteFromCellSelectionBtn?.click();
             frame.contentWindow.confirm = confirmForAnyColumnDelete;
             await waitFor(() => doc.querySelectorAll("#projectTable tbody tr").length === rowsBeforeAnyColumnDelete - 2, 2000);
-            assert(checks, "Delete removes every row that has a selected Project cell", doc.querySelectorAll("#projectTable tbody tr").length === rowsBeforeAnyColumnDelete - 2);
+            assert(checks, reactProjectToolbar ? "React Project points toolbar Delete command removes every row that has a selected Project cell" : "Delete removes every row that has a selected Project cell", doc.querySelectorAll("#projectTable tbody tr").length === rowsBeforeAnyColumnDelete - 2);
           }
           if (requestedWorkspace === "categories") {
             const cards = doc.querySelectorAll("#categoryList .category-editor");

@@ -9,11 +9,17 @@ describe("ProjectPointsToolbar", () => {
     );
 
     expect(html).toContain("Add");
+    expect(html).toContain("All");
+    expect(html).toContain("Missing coordinates");
+    expect(html).toContain("Callouts");
     expect(html).toContain("Row");
     expect(html).toContain("From source");
     expect(html).toContain("Multi select");
     expect(html).toContain("Clear coordinates");
     expect(html).toContain("Delete");
+    expect(html).toContain("Table");
+    expect(html).toContain("Import CSV");
+    expect(html).toContain("5");
   });
 
   it("disables selection-dependent actions when nothing is selected", () => {
@@ -34,17 +40,33 @@ describe("ProjectPointsToolbar", () => {
           clearCoordinates: "Effacer les coordonnées",
           clearTable: "Effacer le tableau",
           delete: "Supprimer",
+          filters: "Filtres",
+          importCsv: "Importer CSV",
           language: "Langue",
           multiSelectGroup: "Sélection multiple",
-          priority: "Priorité"
+          priority: "Priorité",
+          tableGroup: "Tableau"
         }}
-        state={{ activeLanguage: "fr", selectedCellCount: 1, selectedRowCount: 0 }}
+        state={{
+          activeFilter: "missing",
+          activeLanguage: "fr",
+          filterOptions: [
+            { label: "Tous 21", value: "all" },
+            { label: "Coordonnées manquantes 2", value: "missing" },
+            { label: "Repères 1", value: "callouts" }
+          ],
+          selectedCellCount: 1,
+          selectedRowCount: 0
+        }}
       />
     );
 
     expect(html).toContain("Ajouter");
+    expect(html).toContain("Coordonnées manquantes 2");
+    expect(html).toContain("aria-pressed=\"true\"");
     expect(html).toContain("Depuis une source");
     expect(html).toContain("Sélection multiple");
+    expect(html).toContain("Importer CSV");
     expect(html).toContain("Supprimer");
   });
 

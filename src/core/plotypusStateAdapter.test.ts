@@ -7,6 +7,8 @@ describe("plotypusStateAdapter", () => {
 
     expect(snapshot.locale).toBe("en");
     expect(snapshot.mapBaselayer.previewRows[0].name).toBe("Alberta");
+    expect(snapshot.projectPoints.toolbar.activeFilter).toBe("all");
+    expect(snapshot.projectPoints.toolbar.filterOptions?.[0].label).toBe("All 21");
     expect(snapshot.projectPoints.toolbar.selectedCellCount).toBe(3);
     expect(snapshot.properties.sections[0].rows[0].origin).toBe("editable");
     expect(snapshot.properties.title).toBe("Document");
@@ -36,9 +38,12 @@ describe("plotypusStateAdapter", () => {
     const adapter = createMemoryPlotypusStateAdapter();
 
     const result = adapter.runProjectPointsCommand({ priority: "2", type: "set-priority" });
+    const filterResult = adapter.runProjectPointsCommand({ filter: "missing", type: "set-filter" });
 
     expect(result.label).toBe("Priority 2 requested");
-    expect(adapter.getSnapshot().projectPoints.lastCommandLabel).toBe("Priority 2 requested");
+    expect(filterResult.label).toBe("Filter missing requested");
+    expect(adapter.getSnapshot().projectPoints.lastCommandLabel).toBe("Filter missing requested");
+    expect(adapter.getSnapshot().projectPoints.toolbar.activeFilter).toBe("missing");
     expect(adapter.getSnapshot().projectPoints.toolbar.selectedCellCount).toBe(3);
   });
 

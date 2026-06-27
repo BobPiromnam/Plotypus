@@ -36,8 +36,16 @@ describe("vanillaPlotypusStateAdapter", () => {
         ],
         rowCount: 4,
         toolbar: {
+          activeFilter: "callouts",
           activeLanguage: "fr",
+          filterOptions: [
+            { label: "Tous 4", value: "all" },
+            { label: "Coordonnées manquantes 0", value: "missing" },
+            { label: "Repères sans coordonnées 1", value: "callouts" }
+          ],
           selectedCellCount: 2,
+          selectedCoordinateCellCount: 1,
+          selectedPriorityCellCount: 1,
           selectedRowCount: 1
         }
       },
@@ -70,7 +78,14 @@ describe("vanillaPlotypusStateAdapter", () => {
     expect(snapshot.locale).toBe("fr");
     expect(snapshot.mapBaselayer.boundary).toBe("Provinces et territoires du Canada");
     expect(snapshot.mapBaselayer.previewRows[0].name).toBe("Colombie-Britannique");
+    expect(snapshot.projectPoints.toolbar.activeFilter).toBe("callouts");
+    expect(snapshot.projectPoints.toolbar.filterOptions?.[2]).toEqual({
+      label: "Repères sans coordonnées 1",
+      value: "callouts"
+    });
     expect(snapshot.projectPoints.toolbar.selectedCellCount).toBe(2);
+    expect(snapshot.projectPoints.toolbar.selectedCoordinateCellCount).toBe(1);
+    expect(snapshot.projectPoints.toolbar.selectedPriorityCellCount).toBe(1);
     expect(snapshot.projectPoints.previewRows[0].name).toBe("Route et port");
     expect(snapshot.projectPoints.previewRows[0].status).toBe("mapped");
     expect(snapshot.properties.collapsed).toBe(true);

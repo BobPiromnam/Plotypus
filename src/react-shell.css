@@ -187,6 +187,17 @@
   box-shadow: var(--shadow-soft);
 }
 
+.react-properties-panel-root {
+  min-width: 0;
+}
+
+.react-properties-panel-root .properties-shell {
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 .properties-shell {
   width: min(100%, 360px);
   display: grid;
@@ -676,7 +687,29 @@
   align-items: baseline;
 }
 
+.properties-facts-list {
+  display: grid;
+  gap: var(--space-4);
+  margin: 0;
+}
+
+.properties-facts-list div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-5);
+  align-items: baseline;
+}
+
 .properties-facts-section dt {
+  display: inline-flex;
+  gap: var(--space-3);
+  align-items: center;
+  min-width: 0;
+  color: var(--muted);
+  font-size: var(--text-body);
+}
+
+.properties-facts-list dt {
   display: inline-flex;
   gap: var(--space-3);
   align-items: center;
@@ -691,7 +724,20 @@
   white-space: nowrap;
 }
 
+.properties-facts-list dt span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .properties-facts-section dd {
+  margin: 0;
+  font-family: var(--font-data);
+  font-size: var(--text-body);
+  font-weight: 800;
+}
+
+.properties-facts-list dd {
   margin: 0;
   font-family: var(--font-data);
   font-size: var(--text-body);
