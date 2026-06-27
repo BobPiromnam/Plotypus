@@ -7,6 +7,11 @@ import {
 } from "./features/command-bar/mountCommandBar";
 import type { CommandBarCopy } from "./features/command-bar/CommandBar";
 import {
+  mountWorkspaceShell,
+  type WorkspaceShellMountHandle
+} from "./features/workspace/mountWorkspaceShell";
+import type { WorkspaceShellCopy } from "./features/workspace/WorkspaceShell";
+import {
   mountProjectPointsToolbar,
   type ProjectPointsToolbarMountHandle
 } from "./features/project-points/mountProjectPointsToolbar";
@@ -18,7 +23,13 @@ import type {
   ProjectPointsToolbarCopy,
   ProjectPointsToolbarState
 } from "./features/project-points/ProjectPointsToolbar";
-import type { CommandBarCommand, PlotypusSnapshot, PropertiesCommand } from "./core/plotypusStateAdapter";
+import type {
+  CommandBarCommand,
+  PlotypusSnapshot,
+  PropertiesCommand,
+  WorkspaceSummaryMetric,
+  WorkspaceValue
+} from "./core/plotypusStateAdapter";
 import "./components/primitives/primitives.css";
 import "./react-shell.css";
 
@@ -36,6 +47,14 @@ type CommandBarMountOptions = {
   copy?: Partial<CommandBarCopy>;
   onCommand?: (command: CommandBarCommand) => void;
   onPropertiesCommand?: (command: PropertiesCommand) => void;
+  snapshot: PlotypusSnapshot;
+  target: Element | null;
+};
+
+type WorkspaceShellMountOptions = {
+  copy?: Partial<WorkspaceShellCopy>;
+  onSummaryAction?: (metric: WorkspaceSummaryMetric) => void;
+  onWorkspaceChange?: (workspace: WorkspaceValue) => void;
   snapshot: PlotypusSnapshot;
   target: Element | null;
 };
@@ -66,6 +85,7 @@ type PlotypusReactAdapters = {
   mountMapDetailsDialog: (options: MapDetailsMountOptions) => { unmount: () => void } | null;
   mountPropertiesPanel: (options: PropertiesPanelMountOptions) => PropertiesPanelMountHandle | null;
   mountProjectPointsToolbar: (options: ProjectPointsToolbarMountOptions) => ProjectPointsToolbarMountHandle | null;
+  mountWorkspaceShell: (options: WorkspaceShellMountOptions) => WorkspaceShellMountHandle | null;
 };
 
 declare global {
@@ -77,6 +97,12 @@ declare global {
 window.PLOTYPUS_REACT_ADAPTERS = {
   mountCommandBar(options) {
     return mountCommandBar({
+      ...options,
+      enabled: true
+    });
+  },
+  mountWorkspaceShell(options) {
+    return mountWorkspaceShell({
       ...options,
       enabled: true
     });

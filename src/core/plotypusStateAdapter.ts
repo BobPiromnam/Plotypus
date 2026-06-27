@@ -36,6 +36,8 @@ export type WorkspaceSummarySnapshot = {
   qualityLabel: string;
 };
 
+export type WorkspaceValue = "categories" | "preview" | "projects" | "quality" | "regions" | "translate";
+
 export type CommandBarSnapshot = {
   canUndo: boolean;
   exportMenuOpen: boolean;
@@ -117,11 +119,15 @@ export type CommandBarCommand =
   | { type: "toggle-export-menu" }
   | { type: "undo" };
 
+export type WorkspaceCommand =
+  | { type: "set-active-workspace"; workspace: WorkspaceValue };
+
 export type PlotypusStateAdapter = {
   getSnapshot: () => PlotypusSnapshot;
   runCommandBarCommand: (command: CommandBarCommand) => AdapterCommandResult;
   runPropertiesCommand: (command: PropertiesCommand) => AdapterCommandResult;
   runProjectPointsCommand: (command: ProjectPointsCommand) => AdapterCommandResult;
+  runWorkspaceCommand: (command: WorkspaceCommand) => AdapterCommandResult;
   setLocale: (locale: PlotypusLocale) => void;
   setProjectPointsSelection: (selection: Pick<ProjectPointsToolbarState, "selectedCellCount" | "selectedRowCount">) => void;
   setPropertiesCollapsed: (collapsed: boolean) => void;
@@ -308,6 +314,14 @@ export function createMemoryPlotypusStateAdapter(
       });
 
       return createCommandResult(commandLabel);
+    },
+    runWorkspaceCommand(command) {
+      const nextWorkspace = command.workspace || snapshot.activeWorkspace;
+      update({
+        ...snapshot,
+        activeWorkspace: nextWorkspace
+      });
+      return createCommandResult(`Workspace ${nextWorkspace} requested`);
     },
     setLocale(locale) {
       update({

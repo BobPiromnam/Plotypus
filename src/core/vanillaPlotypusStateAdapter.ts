@@ -6,7 +6,8 @@ import {
   type PlotypusSnapshot,
   type PlotypusStateAdapter,
   type PlotypusStateListener,
-  type PropertiesCommand
+  type PropertiesCommand,
+  type WorkspaceCommand
 } from "./plotypusStateAdapter";
 import { createReadOnlyCommandResult, type AdapterCommandResult } from "./commandAdapter";
 
@@ -14,6 +15,7 @@ type VanillaReadonlyBridge = {
   getSnapshot: () => VanillaSnapshotSource;
   runCommandBarCommand?: (command: CommandBarCommand) => AdapterCommandResult;
   runPropertiesCommand?: (command: PropertiesCommand) => AdapterCommandResult;
+  runWorkspaceCommand?: (command: WorkspaceCommand) => AdapterCommandResult;
 };
 
 type VanillaPreviewRowSource = Partial<Omit<ProjectPointPreviewRow, "status">> & {
@@ -96,6 +98,14 @@ export function createVanillaPlotypusStateAdapter(
       return createReadOnlyCommandResult(command.type);
     },
     runProjectPointsCommand(command) {
+      return createReadOnlyCommandResult(command.type);
+    },
+    runWorkspaceCommand(command) {
+      if (options.allowCommands && typeof windowRef.PLOTYPUS_APP_STATE_READONLY?.runWorkspaceCommand === "function") {
+        const result = windowRef.PLOTYPUS_APP_STATE_READONLY.runWorkspaceCommand(command);
+        refreshSnapshot();
+        return result;
+      }
       return createReadOnlyCommandResult(command.type);
     },
     setLocale() {

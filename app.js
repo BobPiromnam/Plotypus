@@ -442,6 +442,8 @@
   let reactAdaptersLoadPromise = null;
   let reactCommandBarHandle = null;
   let reactCommandBarTarget = null;
+  let reactWorkspaceShellHandle = null;
+  let reactWorkspaceShellTarget = null;
   let reactMapDetailsDraft = null;
   let reactMapDetailsTarget = null;
   let reactProjectToolbarHandle = null;
@@ -1669,6 +1671,7 @@
 
   function publishReadonlyAppSnapshot() {
     updateReactCommandBar();
+    updateReactWorkspaceShell();
     updateReactPropertiesPanel();
     if (!window.PLOTYPUS_APP_STATE_READONLY) return;
     window.PLOTYPUS_APP_STATE_READONLY.notify();
@@ -1750,6 +1753,15 @@
     }
   }
 
+  function runReadonlyWorkspaceCommand(command) {
+    if (!command || typeof command !== "object") return { label: "Ignored invalid workspace command" };
+    if (command.type === "set-active-workspace") {
+      setActiveDataTab(command.workspace);
+      return { label: `Workspace ${command.workspace} requested` };
+    }
+    return { label: "Ignored unsupported workspace command" };
+  }
+
   const readonlyAppStateBridge = {
     getSnapshot: createReadonlyAppSnapshot,
     notify() {
@@ -1762,6 +1774,7 @@
   if (isReactCommandBridgeEnabled()) {
     readonlyAppStateBridge.runCommandBarCommand = runReadonlyCommandBarCommand;
     readonlyAppStateBridge.runPropertiesCommand = runReadonlyPropertiesCommand;
+    readonlyAppStateBridge.runWorkspaceCommand = runReadonlyWorkspaceCommand;
   }
 
   window.PLOTYPUS_APP_STATE_READONLY = Object.freeze(readonlyAppStateBridge);
@@ -2455,6 +2468,9 @@
     }
     if (reactCommandBarHandle) {
       mountReactCommandBar();
+    }
+    if (reactWorkspaceShellHandle) {
+      mountReactWorkspaceShell();
     }
     if (reactProjectToolbarHandle) {
       mountReactProjectToolbar();
@@ -8035,7 +8051,7 @@
       return window.PLOTYPUS_REACT_ADAPTERS;
     }
     if (!reactAdaptersLoadPromise) {
-      reactAdaptersLoadPromise = import("./dist/react/plotypus-react-adapters.js?v=20260626-command-bar")
+      reactAdaptersLoadPromise = import("./dist/react/plotypus-react-adapters.js?v=20260626-workspace-shell")
         .then(() => window.PLOTYPUS_REACT_ADAPTERS || null)
         .catch(() => null);
     }
@@ -8058,6 +8074,19 @@
   async function loadReactCommandBarAdapters() {
     const adapters = await loadReactAdapters();
     return adapters && typeof adapters.mountCommandBar === "function" ? adapters : null;
+  }
+
+  function isReactWorkspaceShellEnabled() {
+    try {
+      return new URLSearchParams(window.location.search).get("reactWorkspaceShell") === "1";
+    } catch {
+      return false;
+    }
+  }
+
+  async function loadReactWorkspaceShellAdapters() {
+    const adapters = await loadReactAdapters();
+    return adapters && typeof adapters.mountWorkspaceShell === "function" ? adapters : null;
   }
 
   function getReactCommandBarTarget() {
@@ -8160,6 +8189,116 @@
       return true;
     } catch (error) {
       restoreLegacyCommandBar("mount failed", error);
+      return false;
+    }
+  }
+
+  function getReactWorkspaceShellTarget() {
+    const band = document.querySelector(".workspace-nav-band");
+    if (!band || !band.parentElement) return null;
+    if (!reactWorkspaceShellTarget) {
+      reactWorkspaceShellTarget = document.createElement("div");
+      reactWorkspaceShellTarget.id = "reactWorkspaceShellRoot";
+      reactWorkspaceShellTarget.className = "react-workspace-shell-root";
+      reactWorkspaceShellTarget.hidden = true;
+      band.parentElement.insertBefore(reactWorkspaceShellTarget, band);
+    }
+    return reactWorkspaceShellTarget;
+  }
+
+  function setLegacyWorkspaceShellAvailable(isAvailable) {
+    const band = document.querySelector(".workspace-nav-band");
+    if (band) band.hidden = !isAvailable;
+  }
+
+  function restoreLegacyWorkspaceShell(reason, error = null) {
+    if (reactWorkspaceShellHandle && typeof reactWorkspaceShellHandle.unmount === "function") {
+      try {
+        reactWorkspaceShellHandle.unmount();
+      } catch (unmountError) {
+        if (window.console && typeof window.console.warn === "function") {
+          console.warn("[Plotypus React] Could not unmount Workspace shell.", unmountError);
+        }
+      }
+    }
+    reactWorkspaceShellHandle = null;
+    if (reactWorkspaceShellTarget) {
+      reactWorkspaceShellTarget.hidden = true;
+      reactWorkspaceShellTarget.replaceChildren();
+    }
+    setLegacyWorkspaceShellAvailable(true);
+    if (reason && window.console && typeof window.console.warn === "function") {
+      console.warn(`[Plotypus React] Workspace shell restored to vanilla UI: ${reason}`, error || "");
+    }
+  }
+
+  function getReactWorkspaceShellCopy() {
+    return {
+      ariaLabel: t("aria.workspaces"),
+      categories: t("tab.categories"),
+      map: t("tab.map"),
+      projects: t("tab.projects"),
+      quality: t("tab.quality"),
+      regions: t("tab.regions"),
+      summaryActionLabel: tOr("summary.openRelatedWorkspace", t("summary.openQuality")),
+      translate: t("tab.translate")
+    };
+  }
+
+  function getWorkspaceFromSummaryMetric(metric) {
+    if (!metric || !metric.key) return "";
+    if (metric.key === "quality") return "quality";
+    if (metric.key === "regions") return "regions";
+    if (metric.key === "rows" || metric.key === "mapped") return "projects";
+    return "";
+  }
+
+  function updateReactWorkspaceShell() {
+    if (!reactWorkspaceShellHandle || typeof reactWorkspaceShellHandle.render !== "function") return;
+    try {
+      reactWorkspaceShellHandle.render(createReadonlyAppSnapshot());
+    } catch (error) {
+      restoreLegacyWorkspaceShell("render failed", error);
+    }
+  }
+
+  async function mountReactWorkspaceShell() {
+    if (!isReactWorkspaceShellEnabled()) return false;
+    const adapters = await loadReactWorkspaceShellAdapters();
+    if (!adapters) {
+      restoreLegacyWorkspaceShell("adapter unavailable");
+      return false;
+    }
+    const target = getReactWorkspaceShellTarget();
+    if (!target) {
+      restoreLegacyWorkspaceShell("target unavailable");
+      return false;
+    }
+    if (reactWorkspaceShellHandle && typeof reactWorkspaceShellHandle.unmount === "function") {
+      reactWorkspaceShellHandle.unmount();
+    }
+    target.hidden = false;
+    setLegacyWorkspaceShellAvailable(false);
+    try {
+      reactWorkspaceShellHandle = adapters.mountWorkspaceShell({
+        copy: getReactWorkspaceShellCopy(),
+        onSummaryAction(metric) {
+          const workspaceName = getWorkspaceFromSummaryMetric(metric);
+          if (workspaceName) runReadonlyWorkspaceCommand({ type: "set-active-workspace", workspace: workspaceName });
+        },
+        onWorkspaceChange(workspaceName) {
+          runReadonlyWorkspaceCommand({ type: "set-active-workspace", workspace: workspaceName });
+        },
+        snapshot: createReadonlyAppSnapshot(),
+        target
+      });
+      if (!reactWorkspaceShellHandle) {
+        restoreLegacyWorkspaceShell("mount returned no handle");
+        return false;
+      }
+      return true;
+    } catch (error) {
+      restoreLegacyWorkspaceShell("mount failed", error);
       return false;
     }
   }
@@ -9360,6 +9499,7 @@
     setRows([], [], { render: false, resetProperties: false });
     applyUiLanguage(getSavedUiLanguagePreference(), { persist: false, renderMap: false });
     await mountReactCommandBar();
+    await mountReactWorkspaceShell();
     await mountReactProjectToolbar();
     await mountReactPropertiesPanel();
     updateUndoButtonState();

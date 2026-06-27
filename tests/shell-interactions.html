@@ -28,6 +28,7 @@
     const reactMapDetails = params.get("reactMapDetails") === "1";
     const reactProjectToolbar = params.get("reactProjectToolbar") === "1";
     const reactPropertiesPanel = params.get("reactPropertiesPanel") === "1";
+    const reactWorkspaceShell = params.get("reactWorkspaceShell") === "1";
     const reactCommands = params.get("reactCommands") === "1";
     if (visualCapture) document.documentElement.classList.add("is-visual-capture");
     try {
@@ -41,6 +42,7 @@
     if (reactMapDetails) appUrl.searchParams.set("reactMapDetails", "1");
     if (reactProjectToolbar) appUrl.searchParams.set("reactProjectToolbar", "1");
     if (reactPropertiesPanel) appUrl.searchParams.set("reactPropertiesPanel", "1");
+    if (reactWorkspaceShell) appUrl.searchParams.set("reactWorkspaceShell", "1");
     if (reactCommands) appUrl.searchParams.set("reactCommands", "1");
     frame.src = appUrl.toString();
 
@@ -324,6 +326,23 @@
           assert(checks, "React command bar is mounted behind the feature flag", Boolean(reactCommandBarRoot && !reactCommandBarRoot.hidden && reactCommandBarRoot.querySelector(".react-command-bar")));
           assert(checks, "React command bar hides the vanilla command bar", Boolean(legacyCommandBar?.hidden));
           assert(checks, "React command bar renders production shell controls", /Plotypus/.test(visibleText(reactCommandBarRoot)) && /Open|Ouvrir/.test(visibleText(reactCommandBarRoot)) && /Export|Exporter/.test(visibleText(reactCommandBarRoot)), visibleText(reactCommandBarRoot));
+        }
+        if (reactWorkspaceShell) {
+          const getReactWorkspaceRootState = () => {
+            const root = doc.querySelector("#reactWorkspaceShellRoot");
+            return root
+              ? `hidden=${root.hidden}; children=${root.children.length}; text=${visibleText(root)}`
+              : "missing";
+          };
+          await waitFor(() => doc.querySelector("#reactWorkspaceShellRoot"), 3000);
+          const reactWorkspaceShellRoot = doc.querySelector("#reactWorkspaceShellRoot");
+          const legacyWorkspaceBand = doc.querySelector(".workspace-nav-band");
+          assert(checks, "React workspace shell is mounted behind the feature flag", Boolean(reactWorkspaceShellRoot && !reactWorkspaceShellRoot.hidden && reactWorkspaceShellRoot.querySelector(".react-workspace-shell")), getReactWorkspaceRootState());
+          assert(checks, "React workspace shell hides the vanilla workspace band", Boolean(legacyWorkspaceBand?.hidden));
+          assert(checks, "React workspace shell renders workspace tabs and summary", /Map|Carte/.test(visibleText(reactWorkspaceShellRoot)) && /Project points|Points de projet/.test(visibleText(reactWorkspaceShellRoot)) && /Rows|Lignes/.test(visibleText(reactWorkspaceShellRoot)), visibleText(reactWorkspaceShellRoot));
+          reactWorkspaceShellRoot.querySelector("button[role='tab'][aria-selected='false']")?.click();
+          await waitFor(() => readonlyStateApi.getSnapshot().activeWorkspace !== "preview", 2000);
+          assert(checks, "React workspace shell tab command reaches vanilla app state", readonlyStateApi.getSnapshot().activeWorkspace !== "preview", readonlyStateApi.getSnapshot().activeWorkspace);
         }
 
         if (requestedDialog) {
