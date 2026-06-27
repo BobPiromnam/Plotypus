@@ -1588,6 +1588,15 @@
     const reviewCount = getReviewIssueCount();
     return {
       activeWorkspace: activeDataTable,
+      commandBar: {
+        canUndo: manualLayoutHistory.length > 0 || appUndoHistory.length > 0,
+        exportMenuOpen: Boolean(els.exportMenu && !els.exportMenu.hidden),
+        mapDetailsMissingCount: getMapDetailsMissingFields().length,
+        mapDetailsNeedsFrench: ["titleFr", "textFr"].some(key => !String(mapDetails[key] || "").trim()),
+        mapLanguage: currentMapLanguage,
+        mapStyle: getSelectedOptionText(els.mapStylePresetInput),
+        uiLanguage: currentUiLanguage
+      },
       locale: currentUiLanguage,
       mapLanguage: currentMapLanguage,
       mapBaselayer: {
@@ -1683,6 +1692,55 @@
     return { label: "Ignored unsupported Properties command" };
   }
 
+  function runReadonlyCommandBarCommand(command) {
+    if (!command || typeof command !== "object") return { label: "Ignored invalid command bar command" };
+    switch (command.type) {
+      case "undo":
+        els.ribbonUndoBtn?.click();
+        return { label: "Undo requested" };
+      case "open-project":
+        els.ribbonOpenProjectBtn?.click();
+        return { label: "Open project requested" };
+      case "save-project":
+        els.ribbonSaveProjectBtn?.click();
+        return { label: "Save project requested" };
+      case "load-sample":
+        els.ribbonLoadSampleBtn?.click();
+        return { label: "Load sample requested" };
+      case "import-csv":
+        els.ribbonImportCsvBtn?.click();
+        return { label: "Import CSV requested" };
+      case "export-csv":
+        els.ribbonExportCsvBtn?.click();
+        return { label: "Export CSV requested" };
+      case "export-png":
+        els.ribbonExportPngBtn?.click();
+        return { label: "Export PNG requested" };
+      case "export-svg":
+        els.ribbonExportSvgBtn?.click();
+        return { label: "Export SVG requested" };
+      case "open-map-details":
+        els.mapDetailsBtn?.click();
+        return { label: "Open map details requested" };
+      case "set-export-menu-open":
+        setExportMenuOpen(Boolean(command.open));
+        publishReadonlyAppSnapshot();
+        return { label: Boolean(command.open) ? "Open export menu requested" : "Close export menu requested" };
+      case "toggle-export-menu":
+        setExportMenuOpen(els.exportMenu ? els.exportMenu.hidden : true);
+        publishReadonlyAppSnapshot();
+        return { label: "Toggle export menu requested" };
+      case "set-map-language":
+        setMapLanguage(command.language);
+        return { label: `Map language ${command.language} requested` };
+      case "set-ui-language":
+        applyUiLanguage(command.language);
+        return { label: `UI language ${command.language} requested` };
+      default:
+        return { label: "Ignored unsupported command bar command" };
+    }
+  }
+
   const readonlyAppStateBridge = {
     getSnapshot: createReadonlyAppSnapshot,
     notify() {
@@ -1693,6 +1751,7 @@
   };
 
   if (isReactCommandBridgeEnabled()) {
+    readonlyAppStateBridge.runCommandBarCommand = runReadonlyCommandBarCommand;
     readonlyAppStateBridge.runPropertiesCommand = runReadonlyPropertiesCommand;
   }
 

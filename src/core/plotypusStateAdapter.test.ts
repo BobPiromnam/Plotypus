@@ -6,6 +6,8 @@ describe("plotypusStateAdapter", () => {
     const snapshot = createDefaultPlotypusSnapshot();
 
     expect(snapshot.locale).toBe("en");
+    expect(snapshot.commandBar.mapLanguage).toBe("en");
+    expect(snapshot.commandBar.mapDetailsMissingCount).toBe(4);
     expect(snapshot.mapBaselayer.previewRows[0].name).toBe("Alberta");
     expect(snapshot.projectPoints.toolbar.activeFilter).toBe("all");
     expect(snapshot.projectPoints.toolbar.filterOptions?.[0].label).toBe("All 21");
@@ -45,6 +47,21 @@ describe("plotypusStateAdapter", () => {
     expect(adapter.getSnapshot().projectPoints.lastCommandLabel).toBe("Filter missing requested");
     expect(adapter.getSnapshot().projectPoints.toolbar.activeFilter).toBe("missing");
     expect(adapter.getSnapshot().projectPoints.toolbar.selectedCellCount).toBe(3);
+  });
+
+  it("runs command bar commands through the adapter", () => {
+    const adapter = createMemoryPlotypusStateAdapter();
+
+    const languageResult = adapter.runCommandBarCommand({ language: "fr", type: "set-ui-language" });
+    const menuResult = adapter.runCommandBarCommand({ type: "toggle-export-menu" });
+
+    expect(languageResult.label).toBe("UI language fr requested");
+    expect(menuResult.label).toBe("Toggle export menu requested");
+    expect(adapter.getSnapshot().locale).toBe("fr");
+    expect(adapter.getSnapshot().mapLanguage).toBe("fr");
+    expect(adapter.getSnapshot().commandBar.uiLanguage).toBe("fr");
+    expect(adapter.getSnapshot().commandBar.mapLanguage).toBe("fr");
+    expect(adapter.getSnapshot().commandBar.exportMenuOpen).toBe(true);
   });
 
   it("clears sandbox selection for destructive project point commands", () => {

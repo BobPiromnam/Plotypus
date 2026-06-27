@@ -27,6 +27,7 @@
     const reactMapDetails = params.get("reactMapDetails") === "1";
     const reactProjectToolbar = params.get("reactProjectToolbar") === "1";
     const reactPropertiesPanel = params.get("reactPropertiesPanel") === "1";
+    const reactCommands = params.get("reactCommands") === "1";
     if (visualCapture) document.documentElement.classList.add("is-visual-capture");
     try {
       localStorage.removeItem("plotypus.propertiesPanel");
@@ -38,6 +39,7 @@
     if (reactMapDetails) appUrl.searchParams.set("reactMapDetails", "1");
     if (reactProjectToolbar) appUrl.searchParams.set("reactProjectToolbar", "1");
     if (reactPropertiesPanel) appUrl.searchParams.set("reactPropertiesPanel", "1");
+    if (reactCommands) appUrl.searchParams.set("reactCommands", "1");
     frame.src = appUrl.toString();
 
     function waitFor(predicate, timeout = 8000) {
@@ -292,6 +294,7 @@
         assert(checks, "Read-only app state bridge exposes workspace and project counts", Boolean(readonlySnapshot && readonlySnapshot.activeWorkspace === doc.body.dataset.workspaceView && Number(readonlySnapshot.projectPoints?.rowCount || 0) === doc.querySelectorAll("#projectTable tbody tr").length), JSON.stringify(readonlySnapshot || null));
         assert(checks, "Read-only app state bridge exposes project row previews", Boolean(readonlySnapshot?.projectPoints?.previewRows?.length && readonlySnapshot.projectPoints.previewRows[0].name && ["blank", "callout", "mapped", "missing"].includes(readonlySnapshot.projectPoints.previewRows[0].status)), JSON.stringify(readonlySnapshot?.projectPoints?.previewRows || null));
         assert(checks, "Read-only app state bridge exposes baselayer row previews", Boolean(readonlySnapshot?.mapBaselayer?.previewRows?.length && readonlySnapshot.mapBaselayer.previewRows[0].name && /^#[0-9a-f]{6}$/i.test(readonlySnapshot.mapBaselayer.previewRows[0].colour || "")), JSON.stringify(readonlySnapshot?.mapBaselayer || null));
+        assert(checks, "Read-only app state bridge exposes command bar state", Boolean(readonlySnapshot?.commandBar && typeof readonlySnapshot.commandBar.canUndo === "boolean" && ["en", "fr"].includes(readonlySnapshot.commandBar.uiLanguage) && ["en", "fr"].includes(readonlySnapshot.commandBar.mapLanguage) && typeof readonlySnapshot.commandBar.mapDetailsMissingCount === "number"), JSON.stringify(readonlySnapshot?.commandBar || null));
         assert(checks, "Read-only app state bridge exposes Properties fact sections", Boolean(readonlySnapshot?.properties?.sections?.length && readonlySnapshot.properties.sections[0].rows?.some(row => row.label && row.value && ["editable", "automatic"].includes(row.origin))), JSON.stringify(readonlySnapshot?.properties?.sections || null));
         assert(checks, "Read-only app state bridge exposes workspace summary metrics", Boolean(readonlySnapshot?.workspaceSummary?.metrics?.length >= 4 && readonlySnapshot.workspaceSummary.metrics.some(metric => metric.key === "quality")), JSON.stringify(readonlySnapshot?.workspaceSummary || null));
         let readonlySnapshotEvents = 0;
@@ -303,6 +306,13 @@
         assert(checks, "Read-only app state bridge publishes updates", readonlySnapshotEvents === 1 && frame.contentWindow.PLOTYPUS_APP_STATE_READONLY.getSnapshot().locale === "fr");
         doc.querySelector("[data-ui-language='en']")?.click();
         await waitFor(() => doc.documentElement.lang === "en", 2000);
+        if (reactCommands) {
+          readonlyStateApi.runCommandBarCommand?.({ open: true, type: "set-export-menu-open" });
+          await waitFor(() => readonlyStateApi.getSnapshot().commandBar.exportMenuOpen === true && doc.querySelector("#exportMenu")?.hidden === false, 2000);
+          assert(checks, "Feature-flagged command bar bridge reaches vanilla app state", readonlyStateApi.getSnapshot().commandBar.exportMenuOpen === true && doc.querySelector("#exportMenu")?.hidden === false);
+          readonlyStateApi.runCommandBarCommand?.({ open: false, type: "set-export-menu-open" });
+          await waitFor(() => readonlyStateApi.getSnapshot().commandBar.exportMenuOpen === false && doc.querySelector("#exportMenu")?.hidden === true, 2000);
+        }
 
         if (requestedDialog) {
           const dialogMap = {

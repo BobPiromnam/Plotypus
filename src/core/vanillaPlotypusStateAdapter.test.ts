@@ -5,6 +5,13 @@ describe("vanillaPlotypusStateAdapter", () => {
   it("normalizes partial vanilla snapshots into the React snapshot shape", () => {
     const snapshot = normalizeVanillaSnapshot({
       activeWorkspace: "projects",
+      commandBar: {
+        canUndo: true,
+        exportMenuOpen: true,
+        mapDetailsMissingCount: 2,
+        mapDetailsNeedsFrench: true,
+        mapStyle: "Vert GC"
+      },
       locale: "fr",
       mapBaselayer: {
         boundary: "Provinces et territoires du Canada",
@@ -75,6 +82,12 @@ describe("vanillaPlotypusStateAdapter", () => {
     });
 
     expect(snapshot.activeWorkspace).toBe("projects");
+    expect(snapshot.commandBar.canUndo).toBe(true);
+    expect(snapshot.commandBar.exportMenuOpen).toBe(true);
+    expect(snapshot.commandBar.mapDetailsMissingCount).toBe(2);
+    expect(snapshot.commandBar.mapLanguage).toBe("fr");
+    expect(snapshot.commandBar.mapStyle).toBe("Vert GC");
+    expect(snapshot.commandBar.uiLanguage).toBe("fr");
     expect(snapshot.locale).toBe("fr");
     expect(snapshot.mapBaselayer.boundary).toBe("Provinces et territoires du Canada");
     expect(snapshot.mapBaselayer.previewRows[0].name).toBe("Colombie-Britannique");
@@ -287,7 +300,30 @@ describe("vanillaPlotypusStateAdapter", () => {
     expect(adapter.runPropertiesCommand({ type: "toggle-collapsed" }).label).toBe(
       "Read-only bridge ignored toggle-collapsed"
     );
+    expect(adapter.runCommandBarCommand({ type: "toggle-export-menu" }).label).toBe(
+      "Read-only bridge ignored toggle-export-menu"
+    );
     expect(adapter.runProjectPointsCommand({ type: "add-row" }).label).toBe("Read-only bridge ignored add-row");
+  });
+
+  it("runs feature-flagged vanilla command bar commands when explicitly enabled", () => {
+    const runCommandBarCommand = vi.fn(() => ({ label: "Toggled vanilla export menu" }));
+    const adapter = createVanillaPlotypusStateAdapter(
+      {
+        PLOTYPUS_APP_STATE_READONLY: {
+          getSnapshot: () => ({}),
+          runCommandBarCommand
+        },
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn()
+      },
+      { allowCommands: true }
+    );
+
+    expect(adapter.runCommandBarCommand({ type: "toggle-export-menu" }).label).toBe(
+      "Toggled vanilla export menu"
+    );
+    expect(runCommandBarCommand).toHaveBeenCalledWith({ type: "toggle-export-menu" });
   });
 
   it("runs feature-flagged vanilla Properties commands when explicitly enabled", () => {

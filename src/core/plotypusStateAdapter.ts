@@ -36,6 +36,16 @@ export type WorkspaceSummarySnapshot = {
   qualityLabel: string;
 };
 
+export type CommandBarSnapshot = {
+  canUndo: boolean;
+  exportMenuOpen: boolean;
+  mapDetailsMissingCount: number;
+  mapDetailsNeedsFrench: boolean;
+  mapLanguage: PlotypusLocale;
+  mapStyle: string;
+  uiLanguage: PlotypusLocale;
+};
+
 export type ProjectPointPreviewRow = {
   hasLatitude: boolean;
   hasLongitude: boolean;
@@ -57,6 +67,7 @@ export type MapBaselayerPreviewRow = {
 
 export type PlotypusSnapshot = {
   activeWorkspace: string;
+  commandBar: CommandBarSnapshot;
   locale: PlotypusLocale;
   mapBaselayer: {
     boundary: string;
@@ -91,8 +102,24 @@ export type PropertiesCommand =
   | { collapsed: boolean; type: "set-collapsed" }
   | { type: "toggle-collapsed" };
 
+export type CommandBarCommand =
+  | { type: "export-csv" }
+  | { type: "export-png" }
+  | { type: "export-svg" }
+  | { type: "import-csv" }
+  | { type: "load-sample" }
+  | { type: "open-map-details" }
+  | { type: "open-project" }
+  | { type: "save-project" }
+  | { language: PlotypusLocale; type: "set-map-language" }
+  | { language: PlotypusLocale; type: "set-ui-language" }
+  | { open: boolean; type: "set-export-menu-open" }
+  | { type: "toggle-export-menu" }
+  | { type: "undo" };
+
 export type PlotypusStateAdapter = {
   getSnapshot: () => PlotypusSnapshot;
+  runCommandBarCommand: (command: CommandBarCommand) => AdapterCommandResult;
   runPropertiesCommand: (command: PropertiesCommand) => AdapterCommandResult;
   runProjectPointsCommand: (command: ProjectPointsCommand) => AdapterCommandResult;
   setLocale: (locale: PlotypusLocale) => void;
@@ -104,6 +131,15 @@ export type PlotypusStateAdapter = {
 export function createDefaultPlotypusSnapshot(): PlotypusSnapshot {
   return {
     activeWorkspace: "preview",
+    commandBar: {
+      canUndo: false,
+      exportMenuOpen: false,
+      mapDetailsMissingCount: 4,
+      mapDetailsNeedsFrench: true,
+      mapLanguage: "en",
+      mapStyle: "GoC green",
+      uiLanguage: "en"
+    },
     locale: "en",
     mapBaselayer: {
       boundary: "Canada provinces and territories",
@@ -210,6 +246,33 @@ export function createMemoryPlotypusStateAdapter(
 
   return {
     getSnapshot: () => snapshot,
+    runCommandBarCommand(command) {
+      const commandLabel = getCommandBarCommandLabel(command);
+      const nextCommandBar = {
+        ...snapshot.commandBar
+      };
+
+      if (command.type === "set-ui-language") {
+        nextCommandBar.uiLanguage = command.language;
+        nextCommandBar.mapLanguage = command.language;
+      }
+      if (command.type === "set-map-language") nextCommandBar.mapLanguage = command.language;
+      if (command.type === "set-export-menu-open") nextCommandBar.exportMenuOpen = command.open;
+      if (command.type === "toggle-export-menu") nextCommandBar.exportMenuOpen = !snapshot.commandBar.exportMenuOpen;
+
+      update({
+        ...snapshot,
+        commandBar: nextCommandBar,
+        locale: nextCommandBar.uiLanguage,
+        mapLanguage: nextCommandBar.mapLanguage,
+        projectPoints: {
+          ...snapshot.projectPoints,
+          lastCommandLabel: commandLabel
+        }
+      });
+
+      return createCommandResult(commandLabel);
+    },
     runPropertiesCommand(command) {
       const collapsed = command.type === "toggle-collapsed" ? !snapshot.properties.collapsed : command.collapsed;
       const commandLabel = collapsed ? "Collapse properties requested" : "Expand properties requested";
@@ -249,7 +312,13 @@ export function createMemoryPlotypusStateAdapter(
     setLocale(locale) {
       update({
         ...snapshot,
+        commandBar: {
+          ...snapshot.commandBar,
+          mapLanguage: locale,
+          uiLanguage: locale
+        },
         locale,
+        mapLanguage: locale,
         projectPoints: {
           ...snapshot.projectPoints,
           toolbar: {
@@ -293,6 +362,7 @@ export function createMemoryPlotypusStateAdapter(
 function cloneSnapshot(snapshot: PlotypusSnapshot): PlotypusSnapshot {
   return {
     activeWorkspace: snapshot.activeWorkspace,
+    commandBar: { ...snapshot.commandBar },
     locale: snapshot.locale,
     mapBaselayer: {
       boundary: snapshot.mapBaselayer.boundary,
@@ -321,6 +391,37 @@ function cloneSnapshot(snapshot: PlotypusSnapshot): PlotypusSnapshot {
       qualityLabel: snapshot.workspaceSummary.qualityLabel
     }
   };
+}
+
+function getCommandBarCommandLabel(command: CommandBarCommand) {
+  switch (command.type) {
+    case "export-csv":
+      return "Export CSV requested";
+    case "export-png":
+      return "Export PNG requested";
+    case "export-svg":
+      return "Export SVG requested";
+    case "import-csv":
+      return "Import CSV requested";
+    case "load-sample":
+      return "Load sample requested";
+    case "open-map-details":
+      return "Open map details requested";
+    case "open-project":
+      return "Open project requested";
+    case "save-project":
+      return "Save project requested";
+    case "set-export-menu-open":
+      return command.open ? "Open export menu requested" : "Close export menu requested";
+    case "set-map-language":
+      return `Map language ${command.language} requested`;
+    case "set-ui-language":
+      return `UI language ${command.language} requested`;
+    case "toggle-export-menu":
+      return "Toggle export menu requested";
+    case "undo":
+      return "Undo requested";
+  }
 }
 
 function getProjectPointsCommandLabel(command: ProjectPointsCommand) {

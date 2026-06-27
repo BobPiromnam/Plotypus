@@ -1,5 +1,6 @@
 import {
   createDefaultPlotypusSnapshot,
+  type CommandBarCommand,
   type MapBaselayerPreviewRow,
   type ProjectPointPreviewRow,
   type PlotypusSnapshot,
@@ -11,6 +12,7 @@ import { createReadOnlyCommandResult, type AdapterCommandResult } from "./comman
 
 type VanillaReadonlyBridge = {
   getSnapshot: () => VanillaSnapshotSource;
+  runCommandBarCommand?: (command: CommandBarCommand) => AdapterCommandResult;
   runPropertiesCommand?: (command: PropertiesCommand) => AdapterCommandResult;
 };
 
@@ -38,7 +40,8 @@ type VanillaWorkspaceMetricSource = {
   value?: unknown;
 };
 
-type VanillaSnapshotSource = Partial<Omit<PlotypusSnapshot, "mapBaselayer" | "projectPoints" | "properties" | "workspaceSummary">> & {
+type VanillaSnapshotSource = Partial<Omit<PlotypusSnapshot, "commandBar" | "mapBaselayer" | "projectPoints" | "properties" | "workspaceSummary">> & {
+  commandBar?: Partial<PlotypusSnapshot["commandBar"]>;
   mapBaselayer?: VanillaMapBaselayerSource;
   projectPoints?: Partial<Omit<PlotypusSnapshot["projectPoints"], "previewRows">> & {
     previewRows?: VanillaPreviewRowSource[];
@@ -75,6 +78,14 @@ export function createVanillaPlotypusStateAdapter(
   return {
     getSnapshot() {
       return cachedSnapshot;
+    },
+    runCommandBarCommand(command) {
+      if (options.allowCommands && typeof windowRef.PLOTYPUS_APP_STATE_READONLY?.runCommandBarCommand === "function") {
+        const result = windowRef.PLOTYPUS_APP_STATE_READONLY.runCommandBarCommand(command);
+        refreshSnapshot();
+        return result;
+      }
+      return createReadOnlyCommandResult(command.type);
     },
     runPropertiesCommand(command) {
       if (options.allowCommands && typeof windowRef.PLOTYPUS_APP_STATE_READONLY?.runPropertiesCommand === "function") {
@@ -122,6 +133,7 @@ export function normalizeVanillaSnapshot(source: VanillaSnapshotSource | undefin
 
   return {
     activeWorkspace: typeof source?.activeWorkspace === "string" ? source.activeWorkspace : fallback.activeWorkspace,
+    commandBar: normalizeCommandBarSnapshot(source?.commandBar, fallback.commandBar, locale, mapLanguage),
     locale,
     mapBaselayer: {
       boundary: stringOrFallback(source?.mapBaselayer?.boundary, fallback.mapBaselayer.boundary),
@@ -175,6 +187,26 @@ export function normalizeVanillaSnapshot(source: VanillaSnapshotSource | undefin
       metrics: normalizeWorkspaceMetrics(source?.workspaceSummary?.metrics, fallback.workspaceSummary.metrics),
       qualityLabel: stringOrFallback(source?.workspaceSummary?.qualityLabel, fallback.workspaceSummary.qualityLabel)
     }
+  };
+}
+
+function normalizeCommandBarSnapshot(
+  value: unknown,
+  fallback: PlotypusSnapshot["commandBar"],
+  locale: PlotypusSnapshot["locale"],
+  mapLanguage: PlotypusSnapshot["mapLanguage"]
+) {
+  const source = value && typeof value === "object" ? value as Partial<PlotypusSnapshot["commandBar"]> : {};
+  return {
+    canUndo: Boolean(source.canUndo),
+    exportMenuOpen: Boolean(source.exportMenuOpen),
+    mapDetailsMissingCount: normalizeCount(source.mapDetailsMissingCount, fallback.mapDetailsMissingCount),
+    mapDetailsNeedsFrench: typeof source.mapDetailsNeedsFrench === "boolean"
+      ? source.mapDetailsNeedsFrench
+      : fallback.mapDetailsNeedsFrench,
+    mapLanguage,
+    mapStyle: stringOrFallback(source.mapStyle, fallback.mapStyle),
+    uiLanguage: locale
   };
 }
 
