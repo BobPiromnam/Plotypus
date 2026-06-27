@@ -8065,7 +8065,8 @@
 
   function isReactCommandBarEnabled() {
     try {
-      return new URLSearchParams(window.location.search).get("reactCommandBar") === "1";
+      const params = new URLSearchParams(window.location.search);
+      return params.get("reactCommandBar") === "1" || params.get("reactTopShell") === "1";
     } catch {
       return false;
     }
@@ -8078,7 +8079,8 @@
 
   function isReactWorkspaceShellEnabled() {
     try {
-      return new URLSearchParams(window.location.search).get("reactWorkspaceShell") === "1";
+      const params = new URLSearchParams(window.location.search);
+      return params.get("reactWorkspaceShell") === "1" || params.get("reactTopShell") === "1";
     } catch {
       return false;
     }

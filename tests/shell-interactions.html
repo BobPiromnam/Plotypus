@@ -24,11 +24,12 @@
     const loadSample = params.get("sample") === "1";
     const measurePerformance = params.get("performance") === "1";
     const visualCapture = params.get("visual") === "1";
-    const reactCommandBar = params.get("reactCommandBar") === "1";
+    const reactTopShell = params.get("reactTopShell") === "1";
+    const reactCommandBar = params.get("reactCommandBar") === "1" || reactTopShell;
     const reactMapDetails = params.get("reactMapDetails") === "1";
     const reactProjectToolbar = params.get("reactProjectToolbar") === "1";
     const reactPropertiesPanel = params.get("reactPropertiesPanel") === "1";
-    const reactWorkspaceShell = params.get("reactWorkspaceShell") === "1";
+    const reactWorkspaceShell = params.get("reactWorkspaceShell") === "1" || reactTopShell;
     const reactCommands = params.get("reactCommands") === "1";
     if (visualCapture) document.documentElement.classList.add("is-visual-capture");
     try {
@@ -38,11 +39,12 @@
       // Storage may be unavailable in a locked-down browser profile.
     }
     const appUrl = new URL(frame.dataset.src, window.location.href);
-    if (reactCommandBar) appUrl.searchParams.set("reactCommandBar", "1");
+    if (reactTopShell) appUrl.searchParams.set("reactTopShell", "1");
+    if (!reactTopShell && reactCommandBar) appUrl.searchParams.set("reactCommandBar", "1");
     if (reactMapDetails) appUrl.searchParams.set("reactMapDetails", "1");
     if (reactProjectToolbar) appUrl.searchParams.set("reactProjectToolbar", "1");
     if (reactPropertiesPanel) appUrl.searchParams.set("reactPropertiesPanel", "1");
-    if (reactWorkspaceShell) appUrl.searchParams.set("reactWorkspaceShell", "1");
+    if (!reactTopShell && reactWorkspaceShell) appUrl.searchParams.set("reactWorkspaceShell", "1");
     if (reactCommands) appUrl.searchParams.set("reactCommands", "1");
     frame.src = appUrl.toString();
 
