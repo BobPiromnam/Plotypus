@@ -1015,10 +1015,13 @@
         const manual = useManualPositions
           ? manualLabelPositions[key] || (typeof getLegacyLabelKey === "function" ? manualLabelPositions[getLegacyLabelKey(d)] : null)
           : null;
+        const manualSide = manual && ["left", "right", "top", "bottom"].includes(manual.side) ? manual.side : d.labelSide;
         return {
           ...d,
           layoutId: `label-${index}`,
           labelKey: key,
+          labelSide: manualSide,
+          anchor: manualSide === "left" ? "end" : "start",
           labelX: manual ? manual.x : d.labelX,
           labelY: manual ? manual.y : d.labelY
         };
@@ -1032,7 +1035,8 @@
         if (!key || !Number.isFinite(label.labelX) || !Number.isFinite(label.labelY)) return;
         positions[key] = {
           x: Math.round(label.labelX * 10) / 10,
-          y: Math.round(label.labelY * 10) / 10
+          y: Math.round(label.labelY * 10) / 10,
+          side: label.labelSide
         };
       });
       return positions;

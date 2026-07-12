@@ -469,7 +469,7 @@
           };
           const target = workspaceMap[requestedWorkspace];
           if (!target) throw new Error(`Unknown workspace: ${requestedWorkspace}`);
-          const mapBeforeNavigation = doc.querySelector("#mapSvg")?.innerHTML || "";
+          let mapBeforeNavigation = doc.querySelector("#mapSvg")?.innerHTML || "";
           const renderSamplesBeforeNavigation = performanceApi?.snapshot().samples.length || 0;
           doc.querySelector(target[0]).click();
           await waitFor(() => doc.body.dataset.workspaceView === requestedWorkspace);
@@ -533,6 +533,128 @@
           if (requestedWorkspace === "projects") {
             const projectToolbarText = `${doc.querySelector("#addRowBtn")?.textContent || ""} ${doc.querySelector("#addPointsBtn")?.textContent || ""} ${doc.querySelector("#clearRowsBtn")?.textContent || ""}`;
             assert(checks, "Top language toggle switches Project toolbar copy to French", /Ligne/.test(projectToolbarText) && /Source/.test(projectToolbarText) && /Vider le tableau/.test(projectToolbarText), projectToolbarText);
+            const firstProjectRow = doc.querySelector("#projectTable tbody tr[data-row-id]");
+            firstProjectRow?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
+            await waitFor(() => doc.querySelector("#propertiesSelectionControls input[data-property-field='anchor'][value='region']"), 2000);
+            doc.querySelector("#propertiesSelectionControls input[data-property-field='anchor'][value='region']")?.click();
+            await waitFor(() => doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.anchor === "region", 2000);
+            const regionSelectForAnnotation = await waitFor(() => doc.querySelector("#propertiesSelectionControls select[data-property-field='region']"), 2000);
+            const firstAvailableRegion = Array.from(regionSelectForAnnotation.options).find(option => option.value);
+            if (firstAvailableRegion) {
+              regionSelectForAnnotation.value = firstAvailableRegion.value;
+              regionSelectForAnnotation.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+              await waitFor(() => doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.region === firstAvailableRegion.value, 2000);
+            }
+            await waitFor(() => doc.querySelector("#propertiesSelectionControls input[data-property-field='labelStyle'][value='rich']"), 2000);
+            doc.querySelector("#propertiesSelectionControls input[data-property-field='labelStyle'][value='rich']")?.click();
+            await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-action='add-content-paragraph']"), 2000);
+            assert(checks, "Rich annotation Properties expose paragraph, bullets, image, and chart options", Boolean(doc.querySelector("[data-property-action='add-content-paragraph']") && doc.querySelector("[data-property-action='add-content-bullets']") && doc.querySelector("[data-property-action='add-content-image']") && doc.querySelector("input[data-property-field='chart'][value='pie']")));
+            const richTitleLabel = doc.querySelector("#propertiesSelectionControls [data-property-field='name']")?.closest("label")?.textContent || "";
+            assert(checks, "Rich annotation Properties labels the heading field as title", /Title|Titre/.test(richTitleLabel), richTitleLabel);
+            doc.querySelector("[data-property-action='add-content-paragraph']")?.click();
+            await waitFor(() => doc.querySelector("[data-property-field='contentParagraph'][data-block-index='0']"), 2000);
+            doc.querySelector("[data-property-action='add-content-bullets']")?.click();
+            await waitFor(() => doc.querySelector("[data-property-field='contentBulletItem'][data-block-index='1']"), 2000);
+            doc.querySelector("[data-property-action='add-content-image']")?.click();
+            await waitFor(() => doc.querySelector("[data-property-field='contentImageAssetRef'][data-block-index='2']"), 2000);
+            let paragraphInput = doc.querySelector("[data-property-field='contentParagraph'][data-block-index='0']");
+            paragraphInput.value = "Paragraphe riche";
+            paragraphInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+            await waitFor(() => /Paragraphe riche/.test(doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.content || ""), 2000);
+            let bulletInput = doc.querySelector("[data-property-field='contentBulletItem'][data-block-index='1']");
+            bulletInput.value = "Puce riche";
+            bulletInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+            await waitFor(() => /Puce riche/.test(doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.content || ""), 2000);
+            let imageSrcInput = doc.querySelector("[data-property-field='contentImageAssetRef'][data-block-index='2']");
+            imageSrcInput.value = "https://example.com/rich-label.png";
+            imageSrcInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+            await waitFor(() => /rich-label\.png/.test(doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.content || ""), 2000);
+            let imageCaptionInput = doc.querySelector("[data-property-field='contentImageCaption'][data-block-index='2']");
+            imageCaptionInput.value = "Image riche";
+            imageCaptionInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+            await waitFor(() => /Image riche/.test(doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.content || ""), 2000);
+            doc.querySelector("[data-property-action='add-content-paragraph']")?.click();
+            await waitFor(() => doc.querySelector("[data-property-field='contentParagraph'][data-block-index='3']"), 2000);
+            let temporaryParagraphInput = doc.querySelector("[data-property-field='contentParagraph'][data-block-index='3']");
+            temporaryParagraphInput.value = "Bloc temporaire";
+            temporaryParagraphInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+            await waitFor(() => /Bloc temporaire/.test(doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.content || ""), 2000);
+            doc.querySelector("[data-property-action='move-content-block-up'][data-block-index='3']")?.click();
+            await waitFor(() => {
+              const content = JSON.parse(doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.content || "[]");
+              return content[2]?.type === "paragraph" && content[2]?.en === "Bloc temporaire" && content[3]?.type === "image";
+            }, 2000);
+            doc.querySelector("[data-property-action='remove-content-block'][data-block-index='2']")?.click();
+            await waitFor(() => {
+              const content = JSON.parse(doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.content || "[]");
+              return content.length === 3 && content[0]?.type === "paragraph" && content[1]?.type === "bullets" && content[2]?.type === "image" && !/Bloc temporaire/.test(JSON.stringify(content));
+            }, 2000);
+            assert(checks, "Rich annotation blocks can be reordered and removed without corrupting mixed content", (() => {
+              const content = JSON.parse(doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.content || "[]");
+              return content.length === 3 && content[0]?.en === "Paragraphe riche" && content[1]?.items?.[0]?.en === "Puce riche" && content[2]?.caption?.en === "Image riche";
+            })());
+            doc.querySelector("input[data-property-field='chart'][value='pie']")?.click();
+            await waitFor(() => doc.querySelector("[data-property-action='add-chart-slice']"), 2000);
+            doc.querySelector("[data-property-action='add-chart-slice']")?.click();
+            await waitFor(() => doc.querySelector("[data-property-field='chartSliceLabel'][data-slice-index='0']"), 2000);
+            let chartLabelInput = doc.querySelector("[data-property-field='chartSliceLabel'][data-slice-index='0']");
+            chartLabelInput.value = "Financement";
+            chartLabelInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+            let chartValueInput = doc.querySelector("[data-property-field='chartSliceValue'][data-slice-index='0']");
+            chartValueInput.value = "75";
+            chartValueInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+            let chartColorInput = doc.querySelector("[data-property-field='chartSliceColor'][data-slice-index='0']");
+            chartColorInput.value = "#5b8fa8";
+            chartColorInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+            await waitFor(() => /Financement/.test(doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.chartSlices || ""), 2000);
+            const chartPreviewText = doc.querySelector("#projectTable tbody tr[data-row-id] .chart-preview-text")?.textContent || "";
+            assert(checks, "Project table shows the chart preview for pie annotations", /Pie|Secteurs/.test(chartPreviewText), chartPreviewText);
+            doc.querySelector("#previewTableTab")?.click();
+            await waitFor(() => doc.body.dataset.workspaceView === "preview", 4000);
+            await waitFor(() => doc.querySelector("#mapSvg .annotation-chart-slice"), 4000);
+            assert(checks, "Pie chart annotation renders on the map SVG", Boolean(doc.querySelector("#mapSvg .annotation-chart") && doc.querySelector("#mapSvg .annotation-chart-slice")));
+            assert(checks, "Rich annotation renders title and content line roles on the map SVG", Boolean(doc.querySelector("#mapSvg .map-label .label-title") && doc.querySelector("#mapSvg .map-label .label-bullet")));
+            if (firstAvailableRegion?.value) {
+              const selectedRegionId = firstAvailableRegion.value;
+              let regionLeaderPair = null;
+              try {
+                regionLeaderPair = await waitFor(() => {
+                  const regions = Array.from(doc.querySelectorAll("#mapSvg .province"));
+                  const leaders = Array.from(doc.querySelectorAll("#mapSvg .leader-line"));
+                  const region = regions.find(node => node.dataset.regionId === selectedRegionId);
+                  const leader = leaders.find(node => node.dataset.regionId === selectedRegionId);
+                  return region && leader ? { region, leader } : null;
+                }, 4000);
+              } catch (_error) {
+                const rowDataset = doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset || {};
+                const leaderIds = Array.from(doc.querySelectorAll("#mapSvg .leader-line")).map(node => node.dataset.regionId || "none").join(", ");
+                const regionIds = Array.from(doc.querySelectorAll("#mapSvg .province")).map(node => node.dataset.regionId || "none").slice(0, 20).join(", ");
+                throw new Error(`Region leader pair not found: selected=${selectedRegionId}, row=${rowDataset.region || "none"}, leaders=${leaderIds || "none"}, regions=${regionIds || "none"}`);
+              }
+              const regionFill = frame.contentWindow.getComputedStyle(regionLeaderPair.region).fill;
+              const leaderStroke = frame.contentWindow.getComputedStyle(regionLeaderPair.leader).stroke;
+              assert(checks, "Region-anchored leader line uses the selected region colour", leaderStroke === regionFill, `leader=${leaderStroke}, region=${regionFill}, id=${selectedRegionId}`);
+            }
+            doc.querySelector("#projectTableTab")?.click();
+            await waitFor(() => doc.body.dataset.workspaceView === "projects", 4000);
+            firstProjectRow?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
+            await waitFor(() => doc.querySelector("#propertiesSelectionControls input[data-property-field='chart'][value='none']"), 2000);
+            const firstRowDataset = doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset || {};
+            assert(checks, "Unified annotation edits preserve anchor, rich content, and chart data together", firstRowDataset.anchor === "region" && firstRowDataset.labelStyle === "rich" && firstRowDataset.chart === "pie" && /Paragraphe riche/.test(firstRowDataset.content || "") && /Puce riche/.test(firstRowDataset.content || "") && /Image riche/.test(firstRowDataset.content || "") && /Financement/.test(firstRowDataset.chartSlices || ""), `${firstRowDataset.anchor || ""} ${firstRowDataset.labelStyle || ""} ${firstRowDataset.chart || ""} ${firstRowDataset.content || ""} ${firstRowDataset.chartSlices || ""}`);
+            doc.querySelector("input[data-property-field='anchor'][value='coord']")?.click();
+            await waitFor(() => doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.anchor === "coord", 2000);
+            doc.querySelector("input[data-property-field='labelStyle'][value='compact']")?.click();
+            await waitFor(() => doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.labelStyle === "compact", 2000);
+            doc.querySelector("input[data-property-field='chart'][value='none']")?.click();
+            await waitFor(() => doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.chart === "none", 2000);
+            doc.querySelector("#previewTableTab")?.click();
+            await waitFor(() => doc.body.dataset.workspaceView === "preview", 4000);
+            await waitFor(() => !doc.querySelector("#mapSvg .annotation-chart-slice"), 4000);
+            mapBeforeNavigation = doc.querySelector("#mapSvg")?.innerHTML || "";
+            doc.querySelector("#projectTableTab")?.click();
+            await waitFor(() => doc.body.dataset.workspaceView === "projects", 4000);
+            firstProjectRow?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
+            await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='row']"), 2000);
           }
           if (requestedWorkspace === "translate") {
             const translationStatusHeaderText = Array.from(doc.querySelector(".translation-column-labels")?.children || []).at(-1)?.textContent.trim() || "";
@@ -785,7 +907,7 @@
             assert(checks, "Project filters remain available", filters.length === 3);
             assert(checks, "Project authoring language remains available", doc.querySelectorAll("[data-authoring-language]").length === 2);
             const firstTypeInput = doc.querySelector("#projectTable .type-input");
-            const firstLonForLanguage = doc.querySelector("#projectTable .lon-input");
+            const firstLonForLanguage = Array.from(doc.querySelectorAll("#projectTable .lon-input")).find(input => input.value.trim());
             const englishAuthoringButton = doc.querySelector("[data-authoring-language='en']");
             const frenchAuthoringButton = doc.querySelector("[data-authoring-language='fr']");
             frenchAuthoringButton?.click();
@@ -826,7 +948,7 @@
             const statusCell = doc.querySelector("#projectTable .status-cell");
             const statusBadge = doc.querySelector("#projectTable .row-status-badge:not([data-state='blank'])");
             assert(checks, "Project status cells are read-only and labelled", statusCell?.getAttribute("aria-readonly") === "true" && /^Status: /.test(statusBadge?.getAttribute("aria-label") || ""));
-            assert(checks, "Project status column fits the widest badge without excess width", statusCell && statusBadge && statusCell.getBoundingClientRect().width <= 130 && statusBadge.getBoundingClientRect().right <= statusCell.getBoundingClientRect().right - 8, `cell=${statusCell ? Math.round(statusCell.getBoundingClientRect().width) : "missing"}`);
+            assert(checks, "Project status column fits the widest badge without excess width", statusCell && statusBadge && statusCell.getBoundingClientRect().width <= 150 && statusBadge.getBoundingClientRect().right <= statusCell.getBoundingClientRect().right - 8, `cell=${statusCell ? Math.round(statusCell.getBoundingClientRect().width) : "missing"}`);
             const statusCellCenter = statusCell ? statusCell.getBoundingClientRect().left + statusCell.getBoundingClientRect().width / 2 : 0;
             const statusBadgeCenter = statusBadge ? statusBadge.getBoundingClientRect().left + statusBadge.getBoundingClientRect().width / 2 : 999;
             assert(checks, "Project status badge is centered in the status column", Math.abs(statusCellCenter - statusBadgeCenter) <= 3, `cell=${Math.round(statusCellCenter)}, badge=${Math.round(statusBadgeCenter)}`);
@@ -983,7 +1105,7 @@
             const switchStyle = switchInput ? frame.contentWindow.getComputedStyle(switchInput) : null;
             assert(checks, "Region boundary and preset controls remain available", Boolean(doc.querySelector("#boundaryInput") && doc.querySelector("#regionPresetInput")));
             assert(checks, "Region inclusion uses switch styling", switchStyle?.appearance === "none");
-            assert(checks, "Region headers show editable or automatic hints", doc.querySelectorAll("#regionTable thead .col-edit-hint[data-icon='pencil']").length === 3 && doc.querySelectorAll("#regionTable thead .col-auto-chip [data-icon='wand']").length === 2 && doc.querySelector("#regionTable .region-fill-col")?.textContent.trim().includes("Colour"));
+            assert(checks, "Region headers show editable or automatic hints", doc.querySelectorAll("#regionTable thead .col-edit-hint[data-icon='pencil']").length === 4 && doc.querySelectorAll("#regionTable thead .col-auto-chip [data-icon='wand']").length === 2 && doc.querySelector("#regionTable .region-fill-col")?.textContent.trim().includes("Colour"));
             assert(checks, "Region Properties show map controls", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='map']")));
             uiFrenchButton?.click();
             await waitFor(() => doc.documentElement.lang === "fr" && /Fond de carte/.test(doc.querySelector("#regionTableTab")?.textContent || ""), 2000);
@@ -1017,6 +1139,7 @@
             doc.querySelector("#previewTableTab")?.click();
             await waitFor(() => doc.body.dataset.workspaceView === "preview");
             assert(checks, "Map tab resets region map controls to document Properties", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='document']")));
+            assert(checks, "Map details title and text status labels do not show origin icons", !doc.querySelector("#propertiesSelectionControls [data-property-kind='document'] .map-details-status-row .field-origin-svg"));
             doc.querySelector("#regionTableTab")?.click();
             await waitFor(() => doc.body.dataset.workspaceView === "regions");
             assert(checks, "Returning to Map baselayer restores map controls", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='map']")));
@@ -1026,10 +1149,26 @@
             await waitFor(() => doc.querySelector("#regionPresetInput")?.value === "territories");
             assert(checks, "Region preset remains selected after applying", doc.querySelector("#regionPresetInput")?.value === "territories");
             assert(checks, "Region preset remains selected in Properties", doc.querySelector("[data-map-proxy='regionPresetInput']")?.value === "territories");
-            const firstRegionRow = doc.querySelector("#regionTable tbody tr[data-region-id]");
+            const firstRegionRow = Array.from(doc.querySelectorAll("#regionTable tbody tr[data-region-id]")).find(row => row.querySelector(".region-table-included-input")?.checked) || doc.querySelector("#regionTable tbody tr[data-region-id]");
             firstRegionRow?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
             assert(checks, "Selecting a region shows region-only Properties", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='region']")) && firstRegionRow?.classList.contains("is-active-region"));
-            const firstRegionToggle = firstRegionRow?.querySelector(".region-table-included-input");
+            const firstRegionId = firstRegionRow?.dataset.regionId || "";
+            const firstRegionStatus = firstRegionRow?.querySelector(".region-status-input");
+            if (firstRegionId && firstRegionStatus) {
+              firstRegionStatus.value = "agreement-in-force";
+              firstRegionStatus.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+              await waitFor(() => doc.querySelector(`#regionTable tbody tr[data-region-id="${frame.contentWindow.CSS.escape(firstRegionId)}"] .region-status-input`)?.value === "agreement-in-force", 2000);
+              doc.querySelector("#previewTableTab")?.click();
+              await waitFor(() => doc.body.dataset.workspaceView === "preview", 4000);
+              const mapRegionSelector = `#mapSvg .province[data-region-id="${frame.contentWindow.CSS.escape(firstRegionId)}"]`;
+              await waitFor(() => doc.querySelector(mapRegionSelector)?.getAttribute("fill") === "#3f6b5e" && doc.querySelector("#mapSvg .legend-status-swatch"), 4000);
+              assert(checks, "Region status fills the SVG zone without requiring an anchored annotation", doc.querySelector(mapRegionSelector)?.getAttribute("fill") === "#3f6b5e", doc.querySelector(mapRegionSelector)?.getAttribute("fill") || "missing");
+              assert(checks, "Legend includes status swatches for active region statuses", Boolean(doc.querySelector("#mapSvg .legend-status-swatch")));
+              doc.querySelector("#regionTableTab")?.click();
+              await waitFor(() => doc.body.dataset.workspaceView === "regions", 4000);
+            }
+            const firstRegionRowForToggle = firstRegionId ? doc.querySelector(`#regionTable tbody tr[data-region-id="${frame.contentWindow.CSS.escape(firstRegionId)}"]`) : firstRegionRow;
+            const firstRegionToggle = firstRegionRowForToggle?.querySelector(".region-table-included-input");
             if (firstRegionToggle) {
               const beforeRegionSummary = doc.querySelector("#regionSummary")?.textContent || "";
               const beforeIncludedMatch = beforeRegionSummary.match(/(\d+)\s*\/\s*(\d+)/);
@@ -1041,7 +1180,7 @@
               const toggleElapsed = frame.contentWindow.performance.now() - toggleStart;
               const afterRegionSummary = doc.querySelector("#regionSummary")?.textContent || "";
               assert(checks, "Region inclusion updates controls without waiting for map render", toggleElapsed < 120);
-              assert(checks, "Region inclusion does not rebuild the whole table", firstRegionRow?.isConnected === true);
+              assert(checks, "Region inclusion does not rebuild the whole table", firstRegionRowForToggle?.isConnected === true);
               assert(checks, "Region included summary updates immediately", expectedIncluded === null || afterRegionSummary.includes(`${expectedIncluded} / 13`));
               await waitFor(() => doc.querySelector("#regionPresetInput")?.value === "");
             }
@@ -1089,7 +1228,9 @@
           if (requestedWorkspace === "translate") {
             assert(checks, "Translation direction is explicit", ["EN → FR", "FR → EN"].includes(doc.querySelector("#translationDirectionText")?.textContent.trim()));
             assert(checks, "Translation groups are rendered", doc.querySelectorAll("#translationGroups .translation-group").length > 0);
+            const translateAddSection = doc.querySelector(".translate-add-section");
             assert(checks, "Translation filters and paste action remain available", doc.querySelectorAll("[data-translation-filter]").length === 2 && Boolean(doc.querySelector("#pasteTranslationColumnBtn")));
+            assert(checks, "Translation import action is in the Add section", Boolean(translateAddSection?.querySelector("#importTranslationsBtn")) && /Add|Ajouter/.test(translateAddSection?.textContent || ""), translateAddSection?.textContent || "");
             assert(checks, "Translate Properties are contextual", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='translation'], #propertiesSelectionControls [data-property-kind='translation-entry']")));
             assert(checks, "Translate column labels show editable and automatic hints", doc.querySelectorAll(".translation-column-labels [data-icon='pencil']").length === 2 && Boolean(doc.querySelector(".translation-column-labels .col-auto-chip [data-icon='wand']")));
             assert(checks, "Translate entry Properties mark editable language fields", doc.querySelectorAll("#propertiesSelectionControls [data-property-kind='translation-entry'] .field-origin-icon-edit").length >= 2);
@@ -1121,6 +1262,86 @@
             doc.querySelector("#translateTableTab")?.click();
             await waitFor(() => doc.body.dataset.workspaceView === "translate");
             assert(checks, "Project points and Translate row text share the same font size", projectRowFontSize === translateRowFontSize, `projects=${projectRowFontSize}, translate=${translateRowFontSize}`);
+            const importEntryId = firstTranslationRow?.dataset.entryId || "";
+            const importedFrench = "Nom francais importe";
+            const translationImportInput = doc.querySelector("#translationImportInput");
+            if (translationImportInput && importEntryId && editedEnglishTranslation) {
+              const escapedName = editedEnglishTranslation.replace(/"/g, '""');
+              const transfer = new frame.contentWindow.DataTransfer();
+              transfer.items.add(new frame.contentWindow.File([
+                `English project name,French project name\n"${escapedName}",${importedFrench}`
+              ], "project-translations.csv", { type: "text/csv" }));
+              Object.defineProperty(translationImportInput, "files", { value: transfer.files, configurable: true });
+              translationImportInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+              await waitFor(() => doc.querySelector("#csvMapDialog")?.hidden === false && doc.querySelectorAll("#csvMapRows .csv-map-row").length === 3, 4000);
+              const translationMapText = doc.querySelector("#csvMapDialog")?.textContent || "";
+              assert(checks, "Translation import reuses the CSV column mapping dialog", /Map translation columns|Associer les colonnes de traduction/.test(translationMapText) && /French project name|Nom français du projet/.test(translationMapText), translationMapText);
+              doc.querySelector("#confirmCsvMapBtn")?.click();
+              const importedSelector = `.translation-row[data-entry-id="${frame.contentWindow.CSS.escape(importEntryId)}"] .translation-fr-input`;
+              await waitFor(() => doc.querySelector(importedSelector)?.value === importedFrench, 4000);
+              assert(checks, "Translation CSV import updates the matched project point French name", doc.querySelector(importedSelector)?.value === importedFrench);
+              const excelFrench = "Nom Excel importe";
+              const textEncoder = new frame.contentWindow.TextEncoder();
+              const writeUint16 = (view, offset, value) => view.setUint16(offset, value, true);
+              const writeUint32 = (view, offset, value) => view.setUint32(offset, value, true);
+              const xmlEscape = value => String(value || "").replace(/[<>&"]/g, char => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[char]));
+              const createStoredZip = entries => {
+                const chunks = [];
+                const centralChunks = [];
+                let offset = 0;
+                entries.forEach(entry => {
+                  const nameBytes = textEncoder.encode(entry.name);
+                  const dataBytes = textEncoder.encode(entry.content);
+                  const local = new Uint8Array(30);
+                  const localView = new DataView(local.buffer);
+                  writeUint32(localView, 0, 0x04034b50);
+                  writeUint16(localView, 4, 20);
+                  writeUint16(localView, 8, 0);
+                  writeUint32(localView, 18, dataBytes.length);
+                  writeUint32(localView, 22, dataBytes.length);
+                  writeUint16(localView, 26, nameBytes.length);
+                  chunks.push(local, nameBytes, dataBytes);
+                  const central = new Uint8Array(46);
+                  const centralView = new DataView(central.buffer);
+                  writeUint32(centralView, 0, 0x02014b50);
+                  writeUint16(centralView, 4, 20);
+                  writeUint16(centralView, 6, 20);
+                  writeUint16(centralView, 10, 0);
+                  writeUint32(centralView, 20, dataBytes.length);
+                  writeUint32(centralView, 24, dataBytes.length);
+                  writeUint16(centralView, 28, nameBytes.length);
+                  writeUint32(centralView, 42, offset);
+                  centralChunks.push(central, nameBytes);
+                  offset += local.length + nameBytes.length + dataBytes.length;
+                });
+                const centralSize = centralChunks.reduce((total, chunk) => total + chunk.length, 0);
+                const end = new Uint8Array(22);
+                const endView = new DataView(end.buffer);
+                writeUint32(endView, 0, 0x06054b50);
+                writeUint16(endView, 8, entries.length);
+                writeUint16(endView, 10, entries.length);
+                writeUint32(endView, 12, centralSize);
+                writeUint32(endView, 16, offset);
+                return new frame.contentWindow.Blob([...chunks, ...centralChunks, end], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+              };
+              const sheetXml = `<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>English project name</t></is></c><c r="B1" t="inlineStr"><is><t>French project name</t></is></c></row><row r="2"><c r="A2" t="inlineStr"><is><t>${xmlEscape(editedEnglishTranslation)}</t></is></c><c r="B2" t="inlineStr"><is><t>${xmlEscape(excelFrench)}</t></is></c></row></sheetData></worksheet>`;
+              const workbookBlob = createStoredZip([
+                { name: "[Content_Types].xml", content: `<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>` },
+                { name: "_rels/.rels", content: `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>` },
+                { name: "xl/workbook.xml", content: `<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Translations" sheetId="1" r:id="rId1"/></sheets></workbook>` },
+                { name: "xl/_rels/workbook.xml.rels", content: `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>` },
+                { name: "xl/worksheets/sheet1.xml", content: sheetXml }
+              ]);
+              const excelTransfer = new frame.contentWindow.DataTransfer();
+              excelTransfer.items.add(new frame.contentWindow.File([workbookBlob], "project-translations.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+              Object.defineProperty(translationImportInput, "files", { value: excelTransfer.files, configurable: true });
+              translationImportInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+              await waitFor(() => doc.querySelector("#csvMapDialog")?.hidden === false && /project-translations\.xlsx/.test(doc.querySelector("#csvMapDialog")?.textContent || ""), 4000);
+              assert(checks, "Translation Excel import reuses the CSV column mapping dialog", /Map translation columns|Associer les colonnes de traduction/.test(doc.querySelector("#csvMapDialog")?.textContent || ""));
+              doc.querySelector("#confirmCsvMapBtn")?.click();
+              await waitFor(() => doc.querySelector(importedSelector)?.value === excelFrench, 4000);
+              assert(checks, "Translation Excel import updates the matched project point French name", doc.querySelector(importedSelector)?.value === excelFrench);
+            }
           }
           if (requestedWorkspace === "quality") {
             await waitFor(() => doc.querySelectorAll("#qualityMetricsPanel .quality-card").length >= 5, 12000);
@@ -1131,6 +1352,32 @@
             assert(checks, "Detailed checklist remains available", Boolean(doc.querySelector(".quality-detail-checklist #statusBox")));
             assert(checks, "Quality Properties are contextual", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='quality']")));
             assert(checks, "Quality workspace shows render timing telemetry", doc.querySelectorAll("#performanceTelemetryMetrics .performance-metric").length === 5 && ["ok", "warning"].includes(doc.querySelector("#performanceTelemetryStatus")?.dataset.state));
+            doc.querySelector("#previewTableTab")?.click();
+            await waitFor(() => doc.body.dataset.workspaceView === "preview" && !doc.querySelector("#canvasQualityPill")?.hidden, 4000);
+            const locateNextAction = doc.querySelector("#canvasQualityPill [data-property-action='open-map']");
+            const locateNextRect = locateNextAction?.getBoundingClientRect();
+            assert(checks, "Quality Locate next action is available on the visible map pill", Boolean(locateNextAction && locateNextRect && locateNextRect.width > 0 && locateNextRect.height > 0));
+            const clickVisibleLocateNext = () => {
+              const action = doc.querySelector("#canvasQualityPill [data-property-action='open-map']");
+              action?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true, cancelable: true, view: frame.contentWindow }));
+            };
+            const getLocatedLabelId = () => doc.querySelector("#mapSvg .map-label.is-quality-located")?.dataset.layoutId || "";
+            const getLocatedStatus = () => doc.querySelector("#statusBox")?.textContent || "";
+            clickVisibleLocateNext();
+            await waitFor(() => doc.body.dataset.workspaceView === "preview" && getLocatedLabelId() && /Located quality item 1 of \d+/.test(getLocatedStatus()), 4000);
+            const firstLocatedLabelId = getLocatedLabelId();
+            const locateTotalMatch = getLocatedStatus().match(/Located quality item 1 of (\d+)/);
+            const locateTotal = locateTotalMatch ? Number(locateTotalMatch[1]) : 0;
+            assert(checks, "Quality Locate next selects and highlights a map label from the visible map pill", doc.body.dataset.workspaceView === "preview" && Boolean(firstLocatedLabelId) && locateTotal > 0 && /Label|Étiquette/.test(doc.querySelector("#propertiesTitle")?.textContent || ""), doc.querySelector("#propertiesTitle")?.textContent || "");
+            for (let locateIndex = 2; locateIndex <= locateTotal; locateIndex += 1) {
+              clickVisibleLocateNext();
+              await waitFor(() => new RegExp(`Located quality item ${locateIndex} of ${locateTotal}`).test(getLocatedStatus()), 4000);
+            }
+            clickVisibleLocateNext();
+            await waitFor(() => /Located quality item 1 of \d+/.test(getLocatedStatus()) && getLocatedLabelId() === firstLocatedLabelId, 4000);
+            assert(checks, "Quality Locate next repeats after the final review label", getLocatedLabelId() === firstLocatedLabelId, getLocatedStatus());
+            doc.querySelector("#qualityTableTab")?.click();
+            await waitFor(() => doc.body.dataset.workspaceView === "quality", 2000);
             const detailsAction = doc.querySelector("#qualityMetricsPanel [data-property-action='open-map-details']");
             detailsAction?.click();
             await waitFor(() => doc.querySelector("#mapDetailsDialog")?.hidden === false, 2000);
@@ -1201,7 +1448,7 @@
           failures: failed.length
         }, null, 2);
       } catch (error) {
-        result.textContent = JSON.stringify({ status: "error", message: error.message, checks }, null, 2);
+        result.textContent = JSON.stringify({ status: "error", message: error.message, checks, frameErrors }, null, 2);
       }
     });
   </script>

@@ -184,6 +184,11 @@
     lat: ["lat", "latitude"],
     hideLine: ["hide line", "hide lines", "hideline", "no line", "no leader line"]
   };
+  const translationColumnAliases = appConfig.translationColumnAliases || {
+    rowId: ["row id", "rowid", "id", "project id", "plotypus id", "translation id"],
+    name: ["name", "project", "project name", "english", "english project name", "source", "source text", "en"],
+    nameFr: ["name_fr", "nom", "nom du projet", "french", "french name", "fr name", "project fr", "project name fr", "french project name", "translation", "fr"]
+  };
   const tableFields = appConfig.tableFields || ["name", "footnote", "type", "priority", "lon", "lat"];
   const layoutDefaults = appConfig.layoutDefaults || {
     bookSizeInput: "letter",
@@ -277,6 +282,7 @@
     translationPasteHint: document.querySelector("#translationPasteHint"),
     translationFilters: Array.from(document.querySelectorAll("[data-translation-filter]")),
     pasteTranslationColumnBtn: document.querySelector("#pasteTranslationColumnBtn"),
+    importTranslationsBtn: document.querySelector("#importTranslationsBtn"),
     propertiesTitle: document.querySelector("#propertiesTitle"),
     propertiesSubtitle: document.querySelector("#propertiesSubtitle"),
     propertiesPanel: document.querySelector("#propertiesPanel"),
@@ -291,6 +297,7 @@
     resetRegionValuesBtn: document.querySelector("#resetRegionValuesBtn"),
     themeStylesheet: document.querySelector("#themeStylesheet"),
     csvInput: document.querySelector("#csvInput"),
+    translationImportInput: document.querySelector("#translationImportInput"),
     projectInput: document.querySelector("#projectInput"),
     ribbonUndoBtn: document.querySelector("#ribbonUndoBtn"),
     ribbonOpenProjectBtn: document.querySelector("#ribbonOpenProjectBtn"),
@@ -374,6 +381,9 @@
     catalogAddPointsBtn: document.querySelector("#catalogAddPointsBtn"),
     catalogImportCsvBtn: document.querySelector("#catalogImportCsvBtn"),
     csvMapDialog: document.querySelector("#csvMapDialog"),
+    csvMapTitle: document.querySelector("#csvMapTitle"),
+    csvMapGuidance: document.querySelector("#csvMapGuidance"),
+    csvMapRequired: document.querySelector("#csvMapRequired"),
     csvMapFileMeta: document.querySelector("#csvMapFileMeta"),
     csvMapRows: document.querySelector("#csvMapRows"),
     csvFirstRowHeadersInput: document.querySelector("#csvFirstRowHeadersInput"),
@@ -393,7 +403,14 @@
   let regionVisibility = {};
   let regionFills = {};
   let regionValues = {};
+  let regionStatuses = {};
   let regionColourOverrides = {};
+  const regionStatusOptions = Object.freeze([
+    { value: "", labelKey: "region.status.none", colour: "" },
+    { value: "agreement-in-force", labelKey: "region.status.agreement-in-force", colour: "#3f6b5e" },
+    { value: "negotiations-ongoing", labelKey: "region.status.negotiations-ongoing", colour: "#9f7616" },
+    { value: "concluded-not-in-force", labelKey: "region.status.concluded-not-in-force", colour: "#5b8fa8" }
+  ]);
   const defaultMapStylePreset = appConfig.defaultMapStylePreset || Object.keys(mapStylePresets)[0] || "goc-green";
   let currentMapStylePreset = defaultMapStylePreset;
   let currentBoundary = "canada";
@@ -403,6 +420,8 @@
   let activeCategoryDropEditor = null;
   let activeCategoryDropPlacement = null;
   let activePropertiesSelection = null;
+  let qualityLocateIndex = -1;
+  let activeQualityLocateTarget = null;
   let activeProjectFilter = "all";
   let activeTranslationFilter = "all";
   let activeTranslationEntryId = "";
@@ -766,6 +785,7 @@
       regionFills: clonePlainObject(regionFills),
       regionColourOverrides: clonePlainObject(regionColourOverrides),
       regionValues: clonePlainObject(regionValues),
+      regionStatuses: clonePlainObject(regionStatuses),
       languageLayouts: serializeLanguageLayouts()
     };
   }
@@ -812,6 +832,7 @@
       regionFills = normalizeColourMap(snapshot.regionFills || {});
       regionColourOverrides = clonePlainObject(snapshot.regionColourOverrides);
       regionValues = clonePlainObject(snapshot.regionValues);
+      regionStatuses = clonePlainObject(snapshot.regionStatuses || {});
       restoreLanguageLayouts({ languageLayouts: snapshot.languageLayouts || {} }, snapshot.mapLanguage || currentMapLanguage);
       setRows(snapshot.rows || [], [], { preserveManualPositions: true, render: false, resetProperties: false });
       if (boundaryChanged) await loadGeo();
@@ -1321,7 +1342,148 @@
     return matchedKey ? row[matchedKey] : undefined;
   }
 
+  function parseArrayField(value) {
+    if (Array.isArray(value)) return value;
+    if (typeof value === "string" && value.trim()) {
+      try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (error) {
+        return [];
+      }
+    }
+    return [];
+  }
+
+  function normalizeAnchor(value) {
+    return String(value || "").toLowerCase() === "region" ? "region" : "coord";
+  }
+
+  function normalizeLabelStyle(value) {
+    return String(value || "").toLowerCase() === "rich" ? "rich" : "compact";
+  }
+
+  function normalizeLocalizedText(value) {
+    if (value && typeof value === "object") {
+      return {
+        en: String(value.en ?? value.text ?? value.label ?? "").trim(),
+        fr: String(value.fr ?? "").trim()
+      };
+    }
+    return { en: String(value || "").trim(), fr: "" };
+  }
+
+  function normalizeContentBlock(value) {
+    const item = value && typeof value === "object" ? value : {};
+    const rawType = String(item.type || "paragraph").toLowerCase();
+    if (rawType === "bullets" || rawType === "bullet") {
+      const items = parseArrayField(item.items).map(normalizeLocalizedText);
+      return { type: "bullets", items };
+    }
+    if (rawType === "image") {
+      return {
+        type: "image",
+        assetRef: String(item.assetRef || item.src || item.url || "").trim(),
+        caption: normalizeLocalizedText(item.caption || item.alt || {})
+      };
+    }
+    return {
+      type: "paragraph",
+      ...normalizeLocalizedText(item.text !== undefined ? item.text : item)
+    };
+  }
+
+  function normalizeAnnotationContent(value) {
+    return parseArrayField(value).map(normalizeContentBlock).filter(Boolean);
+  }
+
+  function hasAnnotationContent(value) {
+    return normalizeAnnotationContent(value).length > 0;
+  }
+
+  function annotationArrayToDataset(value) {
+    return JSON.stringify(Array.isArray(value) ? value : []);
+  }
+
+  function normalizeChart(value) {
+    return String(value || "").toLowerCase() === "pie" ? "pie" : "none";
+  }
+
+  const chartSlicePalette = Object.freeze(["#3f6b5e", "#9f7616", "#5b8fa8", "#8f4f6a", "#596b8f", "#7a6f55"]);
+
+  function normalizeChartSlices(value) {
+    return parseArrayField(value).map((slice, index) => {
+      const item = slice && typeof slice === "object" ? slice : {};
+      const numericValue = Number(item.value);
+      const colour = isHexColour(item.color || item.colour) ? String(item.color || item.colour).trim() : chartSlicePalette[index % chartSlicePalette.length];
+      return {
+        label: normalizeLocalizedText(item.label || {}),
+        value: Number.isFinite(numericValue) && numericValue >= 0 ? numericValue : 0,
+        color: colour
+      };
+    });
+  }
+
+  function normalizeRegionStatus(value) {
+    const next = String(value || "").trim();
+    return regionStatusOptions.some(option => option.value === next) ? next : "";
+  }
+
+  function getRegionStatusOption(value) {
+    const status = normalizeRegionStatus(value);
+    return regionStatusOptions.find(option => option.value === status) || regionStatusOptions[0];
+  }
+
+  function getLocalizedPairText(pair, language = currentMapLanguage) {
+    const en = String(pair && pair.en || "").trim();
+    const fr = String(pair && pair.fr || "").trim();
+    return language === "fr" ? fr || en : en || fr;
+  }
+
+  function getRegionFeatureById(regionId, geo = canadaGeo) {
+    const id = String(regionId || "");
+    if (!id || !geo || !Array.isArray(geo.features)) return null;
+    for (let index = 0; index < geo.features.length; index += 1) {
+      const feature = geo.features[index];
+      if (getRegionId(feature, index) === id) return { feature, index };
+    }
+    return null;
+  }
+
+  function getRegionNameById(regionId) {
+    const match = getRegionFeatureById(regionId, canadaGeo);
+    return match ? getRegionDisplayName(match.feature, match.index) : String(regionId || "");
+  }
+
+  function regionStatusOptionsHtml(selectedValue) {
+    const selected = normalizeRegionStatus(selectedValue);
+    return regionStatusOptions.map(option => `<option value="${escapeHtml(option.value)}"${option.value === selected ? " selected" : ""}>${escapeHtml(t(option.labelKey))}</option>`).join("");
+  }
+
+  function getAnchorPreview(row) {
+    if (row && row.anchor === "region") return row.region ? t("table.anchor.regionNamed", { name: getRegionNameById(row.region) }) : t("table.anchor.region");
+    const lon = row && row.lon !== "" ? formatProjectCoordinate(row.lon) : "";
+    const lat = row && row.lat !== "" ? formatProjectCoordinate(row.lat) : "";
+    return lon && lat ? `${lon}, ${lat}` : t("table.anchor.coordinates");
+  }
+
+  function getLabelStylePreview(row) {
+    if (row && row.labelStyle === "rich") {
+      const count = Array.isArray(row.content) ? row.content.length : 0;
+      return t("table.label.rich", { count, unit: t(count === 1 ? "table.label.item" : "table.label.items") });
+    }
+    return t("table.label.compact");
+  }
+
+  function getChartPreview(row) {
+    if (row && normalizeChart(row.chart) === "pie") {
+      const count = normalizeChartSlices(row.chartSlices).length;
+      return t("table.chart.pie", { count, unit: t(count === 1 ? "table.chart.slice" : "table.chart.slices") });
+    }
+    return t("table.chart.none");
+  }
   function normalizeRow(row) {
+    const anchor = normalizeAnchor(row && row.anchor);
     return {
       rowId: row && row.rowId ? String(row.rowId) : "",
       name: String(getField(row, csvColumnAliases.name) || "").trim(),
@@ -1330,8 +1492,14 @@
       type: cleanType(getField(row, csvColumnAliases.type) || getDefaultCategory().label),
       typeFr: String(getField(row, csvColumnAliases.typeFr) || row.typeFr || "").trim(),
       priority: toPriority(getField(row, csvColumnAliases.priority)),
-      lon: toNumber(getField(row, csvColumnAliases.lon)),
-      lat: toNumber(getField(row, csvColumnAliases.lat)),
+      lon: anchor === "region" ? "" : toNumber(getField(row, csvColumnAliases.lon)),
+      lat: anchor === "region" ? "" : toNumber(getField(row, csvColumnAliases.lat)),
+      anchor,
+      region: String(row && row.region || "").trim(),
+      labelStyle: normalizeLabelStyle(row && row.labelStyle),
+      content: normalizeAnnotationContent(row && row.content),
+      chart: normalizeChart(row && row.chart),
+      chartSlices: normalizeChartSlices(row && row.chartSlices),
       hideLine: toBoolean(getField(row, csvColumnAliases.hideLine)),
       elbowLeader: toBoolean(row && row.elbowLeader),
       labelMaxChars: normalizeLabelMaxCharsOverride(row && row.labelMaxChars)
@@ -1372,7 +1540,7 @@
   }
 
   function addRow(
-    row = { name: "", nameFr: "", footnote: "", type: getDefaultCategory().id, priority: 0, lon: "", lat: "", hideLine: false, elbowLeader: false, labelMaxChars: "" },
+    row = { name: "", nameFr: "", footnote: "", type: getDefaultCategory().id, priority: 0, lon: "", lat: "", anchor: "coord", region: "", labelStyle: "compact", content: [], chart: "none", chartSlices: [], hideLine: false, elbowLeader: false, labelMaxChars: "" },
     options = {}
   ) {
     const tr = document.createElement("tr");
@@ -1382,6 +1550,14 @@
     tr.dataset.nameEn = row.name || "";
     tr.dataset.nameFr = row.nameFr || "";
     tr.dataset.labelMaxChars = normalizeLabelMaxCharsOverride(row.labelMaxChars);
+    tr.dataset.anchor = normalizeAnchor(row.anchor);
+    tr.dataset.region = String(row.region || "").trim();
+    tr.dataset.labelStyle = normalizeLabelStyle(row.labelStyle);
+    tr.dataset.content = annotationArrayToDataset(normalizeAnnotationContent(row.content));
+    tr.dataset.chart = normalizeChart(row.chart);
+    tr.dataset.chartSlices = annotationArrayToDataset(normalizeChartSlices(row.chartSlices));
+    tr.dataset.coordLon = formatProjectCoordinate(row.lon);
+    tr.dataset.coordLat = formatProjectCoordinate(row.lat);
     const numericRowId = Number(rowId);
     nextRowId = Number.isFinite(numericRowId) ? Math.max(nextRowId, numericRowId + 1) : nextRowId + 1;
     tr.innerHTML = `
@@ -1392,6 +1568,9 @@
           ${getTypeOptions(row.type)}
         </select>
       </td>
+      <td class="annotation-preview-cell anchor-preview-cell" data-cell-field="anchor" aria-readonly="true"><span class="anchor-preview-text"></span></td>
+      <td class="annotation-preview-cell label-preview-cell" data-cell-field="labelStyle" aria-readonly="true"><span class="label-preview-text"></span></td>
+      <td class="annotation-preview-cell chart-preview-cell" data-cell-field="chart" aria-readonly="true"><span class="chart-preview-text"></span></td>
       <td class="bulk-edit-cell priority-cell vcell" data-cell-field="priority"><input class="priority-input" type="number" min="0" max="5" step="1" value="${priority}" aria-label="${escapeHtml(t("properties.field.priority"))}"></td>
       <td class="bulk-edit-cell coordinate-cell lon-cell vcell" data-cell-field="lon"><input class="lon-input" type="text" inputmode="decimal" value="${escapeHtml(formatProjectCoordinate(row.lon))}" aria-label="${escapeHtml(t("table.longitude"))}"><button class="clear-coordinate-cell" type="button" data-clear-coordinate="lon" aria-label="${escapeHtml(t("table.clearLongitude"))}" title="${escapeHtml(t("table.clearLongitude"))}" hidden>&times;</button></td>
       <td class="bulk-edit-cell coordinate-cell lat-cell vcell" data-cell-field="lat"><input class="lat-input" type="text" inputmode="decimal" value="${escapeHtml(formatProjectCoordinate(row.lat))}" aria-label="${escapeHtml(t("table.latitude"))}"><button class="clear-coordinate-cell" type="button" data-clear-coordinate="lat" aria-label="${escapeHtml(t("table.clearLatitude"))}" title="${escapeHtml(t("table.clearLatitude"))}" hidden>&times;</button></td>
@@ -1404,7 +1583,8 @@
     const handleRowEdit = (input) => {
       captureInputUndo(input, "project row edit");
       updateRowTitles(tr);
-      syncCoordinateClearButtons(tr);
+      updateRowAnnotationPreview(tr);
+    syncCoordinateClearButtons(tr);
       if (isProjectStatusInput(input)) scheduleProjectTableUxRefresh();
       requestPreviewRefresh();
       refreshActiveRowProperties();
@@ -1436,6 +1616,7 @@
       setProjectRowPropertiesFromElement(tr);
     });
     (options.container || els.tableBody).appendChild(tr);
+    updateRowAnnotationPreview(tr);
     syncCoordinateClearButtons(tr);
     if (!options.deferRefresh) {
       updateDeleteButtonState();
@@ -1490,10 +1671,52 @@
       .replace(/"/g, "&quot;");
   }
 
+  function setPreviewCell(tr, selector, value) {
+    const cell = tr && tr.querySelector(selector);
+    if (!cell) return;
+    cell.textContent = value;
+    cell.title = value;
+  }
+
+  function syncAnchorCoordinateInputs(tr, row = null) {
+    if (!tr) return;
+    const current = row || readRowElement(tr);
+    const useRegion = current && current.anchor === "region";
+    const lonInput = tr.querySelector(".lon-input");
+    const latInput = tr.querySelector(".lat-input");
+    if (lonInput) {
+      if (!useRegion) tr.dataset.coordLon = lonInput.value;
+      lonInput.disabled = useRegion;
+      lonInput.value = useRegion ? "" : tr.dataset.coordLon || lonInput.value;
+    }
+    if (latInput) {
+      if (!useRegion) tr.dataset.coordLat = latInput.value;
+      latInput.disabled = useRegion;
+      latInput.value = useRegion ? "" : tr.dataset.coordLat || latInput.value;
+    }
+    tr.classList.toggle("is-region-anchored", Boolean(useRegion));
+  }
+
+  function updateRowAnnotationPreview(tr, row = null) {
+    if (!tr) return;
+    const current = row || readRowElement(tr);
+    syncAnchorCoordinateInputs(tr, current);
+    setPreviewCell(tr, ".anchor-preview-text", getAnchorPreview(current));
+    setPreviewCell(tr, ".label-preview-text", getLabelStylePreview(current));
+    setPreviewCell(tr, ".chart-preview-text", getChartPreview(current));
+  }
   function getRows() {
     return getTableRows()
       .map(readRowElement)
-      .filter(row => row && (row.name.length > 0 || row.nameFr.length > 0 || row.lon !== "" || row.lat !== ""));
+      .filter(row => row && (
+        row.name.length > 0
+        || row.nameFr.length > 0
+        || row.lon !== ""
+        || row.lat !== ""
+        || row.region !== ""
+        || row.content.length > 0
+        || normalizeChart(row.chart) === "pie"
+      ));
   }
 
   function getProjectRowState(tr) {
@@ -1503,11 +1726,12 @@
     const hasLat = row && row.lat !== "";
     const hasAnyCoordinate = Boolean(hasLon || hasLat);
     const hasBothCoordinates = Boolean(hasLon && hasLat);
-    const isBlank = !hasName && !hasAnyCoordinate;
-    const isMissingCoordinate = !isBlank && hasAnyCoordinate && !hasBothCoordinates;
-    const isCallout = !isBlank && hasName && !hasAnyCoordinate;
-    const isMapped = !isBlank && hasBothCoordinates;
-    return { isBlank, isMapped, isCallout, isMissingCoordinate };
+    const hasRegionAnchor = Boolean(row && row.anchor === "region" && row.region);
+    const isBlank = !hasName && !hasAnyCoordinate && !hasRegionAnchor;
+    const isMissingCoordinate = row && row.anchor !== "region" && !isBlank && hasAnyCoordinate && !hasBothCoordinates;
+    const isCallout = row && row.anchor !== "region" && !isBlank && hasName && !hasAnyCoordinate;
+    const isMapped = !isBlank && (hasBothCoordinates || hasRegionAnchor);
+    return { isBlank, isMapped, isCallout, isMissingCoordinate, row };
   }
 
   function isProjectStatusInput(input) {
@@ -1663,6 +1887,7 @@
       if (hideLineInput) hideLineInput.setAttribute("aria-label", t("properties.field.hideLeaderLine"));
       if (elbowLeaderInput) elbowLeaderInput.setAttribute("aria-label", t("properties.field.useElbowLeader"));
       if (selectInput) selectInput.setAttribute("aria-label", t("table.selectRow"));
+      updateRowAnnotationPreview(tr, state.row);
       if (clearLonButton) {
         clearLonButton.setAttribute("aria-label", t("table.clearLongitude"));
         clearLonButton.title = t("table.clearLongitude");
@@ -1797,8 +2022,14 @@
       footnote: normalizeFootnote(tr.querySelector(".footnote-input").value),
       type: cleanType(tr.querySelector(".type-input").value),
       priority: toPriority(tr.querySelector(".priority-input").value),
-      lon: toNumber(tr.querySelector(".lon-input").value),
-      lat: toNumber(tr.querySelector(".lat-input").value),
+      lon: normalizeAnchor(tr.dataset.anchor) === "region" ? "" : toNumber(tr.querySelector(".lon-input").value),
+      lat: normalizeAnchor(tr.dataset.anchor) === "region" ? "" : toNumber(tr.querySelector(".lat-input").value),
+      anchor: normalizeAnchor(tr.dataset.anchor),
+      region: String(tr.dataset.region || "").trim(),
+      labelStyle: normalizeLabelStyle(tr.dataset.labelStyle),
+      content: normalizeAnnotationContent(tr.dataset.content),
+      chart: normalizeChart(tr.dataset.chart),
+      chartSlices: normalizeChartSlices(tr.dataset.chartSlices),
       hideLine: tr.querySelector(".hide-line-input").checked,
       elbowLeader: tr.querySelector(".elbow-leader-input")?.checked || false,
       labelMaxChars: normalizeLabelMaxCharsOverride(tr.dataset.labelMaxChars)
@@ -1819,14 +2050,27 @@
     if (field === "footnote") tr.querySelector(".footnote-input").value = normalizeFootnote(value);
     if (field === "type") tr.querySelector(".type-input").value = cleanType(value);
     if (field === "priority") tr.querySelector(".priority-input").value = toPriority(value);
-    if (field === "lon") tr.querySelector(".lon-input").value = formatProjectCoordinate(value);
-    if (field === "lat") tr.querySelector(".lat-input").value = formatProjectCoordinate(value);
+    if (field === "lon") {
+      tr.dataset.coordLon = formatProjectCoordinate(value);
+      tr.querySelector(".lon-input").value = tr.dataset.coordLon;
+    }
+    if (field === "lat") {
+      tr.dataset.coordLat = formatProjectCoordinate(value);
+      tr.querySelector(".lat-input").value = tr.dataset.coordLat;
+    }
+    if (field === "anchor") tr.dataset.anchor = normalizeAnchor(value);
+    if (field === "region") tr.dataset.region = String(value || "").trim();
+    if (field === "labelStyle") tr.dataset.labelStyle = normalizeLabelStyle(value);
+    if (field === "content") tr.dataset.content = annotationArrayToDataset(normalizeAnnotationContent(value));
+    if (field === "chart") tr.dataset.chart = normalizeChart(value);
+    if (field === "chartSlices") tr.dataset.chartSlices = annotationArrayToDataset(normalizeChartSlices(value));
     if (field === "hideLine") tr.querySelector(".hide-line-input").checked = Boolean(value);
     if (field === "elbowLeader") tr.querySelector(".elbow-leader-input").checked = Boolean(value);
     if (field === "labelMaxChars") tr.dataset.labelMaxChars = normalizeLabelMaxCharsOverride(value);
     updateRowTitles(tr);
-    if (field === "lon" || field === "lat") syncCoordinateClearButtons(tr);
-    if (["lon", "lat"].includes(field) || (field === "name" && activeDataTable !== "translate")) scheduleProjectTableUxRefresh();
+    updateRowAnnotationPreview(tr);
+    if (field === "lon" || field === "lat" || field === "anchor") syncCoordinateClearButtons(tr);
+    if (["lon", "lat", "anchor", "region", "labelStyle", "content", "chart", "chartSlices"].includes(field) || (field === "name" && activeDataTable !== "translate")) scheduleProjectTableUxRefresh();
     return readRowElement(tr);
   }
 
@@ -2242,7 +2486,61 @@
       rowId: row.rowId,
       kind: "project"
     }));
-    const categoryEntries = categorySettings.map(category => ({
+    const annotationEntries = getRows().flatMap(row => {
+      const contentEntries = normalizeAnnotationContent(row.content).flatMap((block, index) => {
+        if (block.type === "paragraph") {
+          return [{
+            id: `content-paragraph:${row.rowId}:${index}`,
+            group: "annotations",
+            groupLabel: t("translate.group.annotations"),
+            ref: block.en || "",
+            fr: block.fr || "",
+            rowId: row.rowId,
+            index,
+            kind: "content-paragraph"
+          }];
+        }
+        if (block.type === "bullets") {
+          return (block.items || []).map((item, itemIndex) => ({
+            id: `content-bullet:${row.rowId}:${index}:${itemIndex}`,
+            group: "annotations",
+            groupLabel: t("translate.group.annotations"),
+            ref: item.en || "",
+            fr: item.fr || "",
+            rowId: row.rowId,
+            index,
+            itemIndex,
+            kind: "content-bullet"
+          }));
+        }
+        if (block.type === "image") {
+          return [{
+            id: `content-image:${row.rowId}:${index}`,
+            group: "annotations",
+            groupLabel: t("translate.group.annotations"),
+            ref: block.caption.en || block.assetRef || "",
+            fr: block.caption.fr || "",
+            rowId: row.rowId,
+            index,
+            kind: "content-image"
+          }];
+        }
+        return [];
+      });
+      const chartEntries = normalizeChart(row.chart) === "pie"
+        ? normalizeChartSlices(row.chartSlices).map((slice, index) => ({
+          id: `chart-slice:${row.rowId}:${index}`,
+          group: "annotations",
+          groupLabel: t("translate.group.annotations"),
+          ref: slice.label.en || "",
+          fr: slice.label.fr || "",
+          rowId: row.rowId,
+          index,
+          kind: "chart-slice"
+        }))
+        : [];
+      return contentEntries.concat(chartEntries);
+    });    const categoryEntries = categorySettings.map(category => ({
       id: `category:${category.id}`,
       group: "categories",
       groupLabel: t("translate.group.categories"),
@@ -2263,7 +2561,7 @@
         chromeKey: item.key,
         kind: "chrome"
       }));
-    return [...projectEntries, ...categoryEntries, ...chromeEntries];
+    return [...projectEntries, ...annotationEntries, ...categoryEntries, ...chromeEntries];
   }
 
   function getTranslationSummary() {
@@ -2273,8 +2571,8 @@
       total: entries.length,
       complete: entries.length - missing,
       missing,
-      projectTotal: entries.filter(entry => entry.group === "projects").length,
-      projectMissing: entries.filter(entry => entry.group === "projects" && (!String(entry.ref || "").trim() || !String(entry.fr || "").trim())).length
+      projectTotal: entries.filter(entry => entry.group === "projects" || entry.group === "annotations").length,
+      projectMissing: entries.filter(entry => (entry.group === "projects" || entry.group === "annotations") && (!String(entry.ref || "").trim() || !String(entry.fr || "").trim())).length
     };
   }
 
@@ -2298,7 +2596,7 @@
   }
 
   function translationGroupOrder() {
-    return ["projects", "categories", "chrome", "footnotes"];
+    return ["projects", "annotations", "categories", "chrome", "footnotes"];
   }
 
   function writeTranslationEntry(entryId, value, language = "fr") {
@@ -2307,7 +2605,34 @@
     const editingFrench = language !== "en";
     if (kind === "project") {
       updateProjectRowField(id, editingFrench ? "nameFr" : "name", nextValue);
-    } else if (kind === "category") {
+    } else if (kind === "content-paragraph" || kind === "content-bullet" || kind === "content-image") {
+      const parts = String(entryId || "").split(":");
+      const rowId = parts[1];
+      const blockIndex = Number(parts[2]);
+      const itemIndex = Number(parts[3]);
+      const row = readRowElement(getRowElementById(rowId));
+      if (row && Number.isInteger(blockIndex)) {
+        const content = normalizeAnnotationContent(row.content);
+        const block = content[blockIndex];
+        if (block && kind === "content-paragraph") block[editingFrench ? "fr" : "en"] = nextValue;
+        if (block && kind === "content-image") block.caption[editingFrench ? "fr" : "en"] = nextValue;
+        if (block && kind === "content-bullet" && Number.isInteger(itemIndex) && block.items[itemIndex]) {
+          block.items[itemIndex][editingFrench ? "fr" : "en"] = nextValue;
+        }
+        updateProjectRowField(rowId, "content", content);
+      }
+    } else if (kind === "chart-slice") {
+      const parts = String(entryId || "").split(":");
+      const rowId = parts[1];
+      const index = Number(parts[2]);
+      const row = readRowElement(getRowElementById(rowId));
+      if (row && Number.isInteger(index)) {
+        const slices = normalizeChartSlices(row.chartSlices);
+        if (slices[index]) {
+          slices[index].label[editingFrench ? "fr" : "en"] = nextValue;
+          updateProjectRowField(rowId, "chartSlices", slices);
+        }
+      }    } else if (kind === "category") {
       const category = categorySettings.find(item => item.id === id);
       if (category) category[editingFrench ? "labelFr" : "label"] = nextValue;
     } else if (kind === "chrome" && chromeTranslations[id]) {
@@ -2853,7 +3178,22 @@
 
   function getRegionFill(feature, index) {
     const colours = getCurrentRegionColourSet();
-    return regionFills[getRegionId(feature, index)] || colours[index % colours.length];
+    const id = getRegionId(feature, index);
+    const status = getRegionStatusOption(regionStatuses[id]);
+    if (status.colour) return status.colour;
+    return regionFills[id] || colours[index % colours.length];
+  }
+
+  function getRegionFillById(regionId) {
+    const id = String(regionId || "").trim();
+    if (!id) return "";
+    const match = getRegionFeatureById(id, canadaGeo);
+    return match ? getRegionFill(match.feature, match.index) : "";
+  }
+
+  function getLeaderLineColour(row) {
+    if (row && row.anchor === "region") return getRegionFillById(row.region) || null;
+    return null;
   }
 
   function getRegionColourPresetLabel(index, total) {
@@ -2908,6 +3248,9 @@
         colourSource: regionColourOverrides[region.id] ? "manual" : "auto-by-value",
         colourSourceLabel: regionColourOverrides[region.id] ? t("properties.region.manual") : t("region.colour.autoByValue"),
         included: regionVisibility[region.id] !== false,
+        status: normalizeRegionStatus(regionStatuses[region.id]),
+        statusLabel: t(getRegionStatusOption(regionStatuses[region.id]).labelKey),
+        statusColour: getRegionStatusOption(regionStatuses[region.id]).colour,
         colour: getRegionFill(region.feature, region.index)
       };
     });
@@ -3028,6 +3371,11 @@
     }
     const colourText = row.querySelector(".region-fill-picker span");
     if (colourText) colourText.textContent = region.colour;
+    const statusInput = row.querySelector(".region-status-input");
+    if (statusInput) {
+      statusInput.innerHTML = regionStatusOptionsHtml(region.status);
+      statusInput.setAttribute("aria-label", t("properties.region.statusAria", { name: region.name }));
+    }
   }
 
   function refreshRegionValueTableRows() {
@@ -3039,7 +3387,7 @@
   function renderRegionValueTable() {
     if (!els.regionTableBody) return;
     if (!canadaGeo || !Array.isArray(canadaGeo.features)) {
-      els.regionTableBody.innerHTML = `<tr><td colspan="6" class="empty-table-message">${escapeHtml(t("region.table.unavailable"))}</td></tr>`;
+      els.regionTableBody.innerHTML = `<tr><td colspan="7" class="empty-table-message">${escapeHtml(t("region.table.unavailable"))}</td></tr>`;
       return;
     }
 
@@ -3050,6 +3398,11 @@
         <td><span class="region-table-name" title="${escapeHtml(region.name)}">${escapeHtml(region.name)}</span></td>
         <td class="region-included-cell region-vcell">
           <input class="region-table-included-input" type="checkbox" data-region-id="${escapeHtml(region.id)}" aria-label="${escapeHtml(t("properties.region.includeAria", { name: region.name }))}"${region.included ? " checked" : ""}>
+        </td>
+        <td class="region-status-cell region-vcell">
+          <select class="region-status-input" data-region-id="${escapeHtml(region.id)}" aria-label="${escapeHtml(t("properties.region.statusAria", { name: region.name }))}">
+            ${regionStatusOptionsHtml(region.status)}
+          </select>
         </td>
         <td class="region-count-cell">${region.count}</td>
         <td class="region-value-cell region-vcell">
@@ -3230,6 +3583,7 @@
     regionVisibility = {};
     regionFills = {};
     regionValues = {};
+    regionStatuses = {};
     regionColourOverrides = {};
     await loadGeo();
     render();
@@ -3346,7 +3700,36 @@
   function getLabelLines(row, settings) {
     const maxChars = normalizeLabelMaxCharsOverride(row && row.labelMaxChars) || settings.labelMaxChars;
     const lang = settings.mapLanguage === "fr" ? "fr" : "en";
-    return wrapLabel(getLabelText(row, settings.mapLanguage), maxChars).map(line => asLabelLine(line, lang));
+    const headingRole = row && row.labelStyle === "rich" ? "title" : "text";
+    const headingLines = wrapLabel(getLabelText(row, settings.mapLanguage), maxChars).map(line => asLabelLine(line, lang, headingRole));
+    if (!row || row.labelStyle !== "rich") return headingLines;
+    const contentLines = normalizeAnnotationContent(row.content)
+      .flatMap(block => {
+        if (block.type === "paragraph") {
+          const text = getLocalizedPairText(block, settings.mapLanguage);
+          return text ? wrapLabel(text, maxChars).map(line => asLabelLine(line, lang, "paragraph")) : [];
+        }
+        if (block.type === "bullets") {
+          return (block.items || []).flatMap(item => {
+            const text = getLocalizedPairText(item, settings.mapLanguage);
+            return text ? wrapLabel(`- ${text}`, maxChars).map(line => asLabelLine(line, lang, "bullet")) : [];
+          });
+        }
+        if (block.type === "image") {
+          const lines = [];
+          if (block.assetRef) {
+            const imageLine = asLabelLine("", lang, "image");
+            imageLine.assetRef = block.assetRef;
+            imageLine.caption = getLocalizedPairText(block.caption, settings.mapLanguage);
+            lines.push(imageLine, asLabelLine("", lang, "separator"));
+          }
+          const caption = getLocalizedPairText(block.caption, settings.mapLanguage);
+          if (caption) lines.push(...wrapLabel(caption, maxChars).map(line => asLabelLine(line, lang, "caption")));
+          return lines;
+        }
+        return [];
+      });
+    return contentLines.length ? headingLines.concat(contentLines) : headingLines;
   }
 
   function visibleLabelLines(lines) {
@@ -3449,13 +3832,37 @@
       .fitExtent(mapExtent, geo));
   }
 
-  function projectRowsForLayout(rows, projection) {
+  function projectRowsForLayout(rows, projection, path, visibleGeo) {
     const mappedRows = [];
     const calloutRows = [];
     const projectedProblems = [];
     const hiddenRegionProblems = [];
 
     rows.forEach(row => {
+      if (row.anchor === "region") {
+        if (!row.region) {
+          calloutRows.push(row);
+          return;
+        }
+        const visibleRegion = getRegionFeatureById(row.region, visibleGeo);
+        if (!visibleRegion) {
+          const regionName = getRegionNameById(row.region) || row.region;
+          hiddenRegionProblems.push(`${row.name || t("status.unnamedPoint")} (${regionName})`);
+          return;
+        }
+        const centroid = path.centroid(visibleRegion.feature);
+        if (!centroid || !Number.isFinite(centroid[0]) || !Number.isFinite(centroid[1])) {
+          projectedProblems.push(row.name || t("status.unnamedPoint"));
+          return;
+        }
+        mappedRows.push({
+          ...row,
+          regionName: getRegionDisplayName(visibleRegion.feature, visibleRegion.index),
+          x: centroid[0],
+          y: centroid[1]
+        });
+        return;
+      }
       const hasCoords = row.lon !== "" && row.lat !== "";
       if (!hasCoords) {
         calloutRows.push(row);
@@ -3492,7 +3899,7 @@
       projection,
       path,
       mapBounds,
-      ...projectRowsForLayout(rows, projection)
+      ...projectRowsForLayout(rows, projection, path, visibleGeo)
     };
   }
 
@@ -4124,10 +4531,15 @@
   }
 
   function getVisibleRegionSignature() {
-    return Object.keys(regionVisibility)
+    const visibility = Object.keys(regionVisibility)
       .sort()
       .map(name => `${name}:${regionVisibility[name] === false ? 0 : 1}`)
       .join("|");
+    const statuses = Object.keys(regionStatuses)
+      .sort()
+      .map(name => `${name}:${normalizeRegionStatus(regionStatuses[name])}`)
+      .join("|");
+    return `${visibility}::${statuses}`;
   }
 
   function getLayoutCacheKey(rows, settings, resizeMap) {
@@ -4140,6 +4552,12 @@
       row.priority,
       row.lon,
       row.lat,
+      row.anchor || "coord",
+      row.region || "",
+      row.labelStyle || "compact",
+      JSON.stringify(row.content || []),
+      row.chart || "none",
+      JSON.stringify(row.chartSlices || []),
       row.hideLine ? 1 : 0,
       row.elbowLeader ? 1 : 0,
       row.labelMaxChars || ""
@@ -4159,6 +4577,7 @@
       boundary: currentBoundary,
       mapStyle: currentMapStylePreset,
       regions: getVisibleRegionSignature(),
+      regionStatuses,
       regionColourOverrides,
       manualBoxPositions,
       width: settings.width,
@@ -4266,11 +4685,12 @@
   }
 
   function lineEnd(d) {
-    const box = labelVisualBox(d);
-    if (d.labelSide === "left") return { x: box.x1 + 8, y: box.centerY };
-    if (d.labelSide === "right") return { x: box.x0 - 8, y: box.centerY };
-    if (d.labelSide === "top") return { x: box.centerX, y: box.y1 + 8 };
-    return { x: box.centerX, y: box.y0 - 8 };
+    const box = labelBackgroundRect(d);
+    const gap = 4;
+    if (d.labelSide === "left") return { x: box.x1 + gap, y: box.centerY };
+    if (d.labelSide === "right") return { x: box.x0 - gap, y: box.centerY };
+    if (d.labelSide === "top") return { x: box.centerX, y: box.y1 + gap };
+    return { x: box.centerX, y: box.y0 - gap };
   }
 
   function labelVisualBox(d, pad = 0) {
@@ -4306,6 +4726,43 @@
     return labelVisualBox(d, 10);
   }
 
+  function getLabelSideForPosition(d) {
+    const box = labelVisualBox(d);
+    const dx = box.centerX - d.x;
+    const dy = box.centerY - d.y;
+    if (Math.abs(dx) >= Math.abs(dy)) return dx < 0 ? "left" : "right";
+    return dy < 0 ? "top" : "bottom";
+  }
+
+  function setLabelSidePreservingBox(d, side) {
+    const box = labelVisualBox(d);
+    d.labelSide = side;
+    d.anchor = side === "left" ? "end" : "start";
+    d.labelX = side === "left" ? box.x1 : box.x0;
+    d.labelY = box.y0 + labelFontSize(d);
+    return d;
+  }
+
+  function getQualityIssueKey(type, row) {
+    const labelKey = row && (row.labelKey || getLabelKey(row));
+    return `${type}:${labelKey || row && row.rowId || ""}`;
+  }
+
+  function addQualityIssueTarget(targets, seen, type, row) {
+    if (!row) return;
+    const labelKey = row.labelKey || getLabelKey(row);
+    const key = getQualityIssueKey(type, row);
+    if (!labelKey || seen.has(key)) return;
+    seen.add(key);
+    targets.push({
+      type,
+      rowId: row.rowId,
+      labelKey,
+      layoutId: row.layoutId,
+      name: labelKeyText(row)
+    });
+  }
+
   function analyzeLayout(placed, settings, projectedProblems, hiddenRegionProblems, mapBounds) {
     let crossings = 0;
     let overlaps = 0;
@@ -4313,19 +4770,27 @@
     const lines = placed
       .filter(d => !d.hideLine)
       .map(d => ({ segments: leaderSegmentsForLabel(d, settings), length: leaderPathLength(d, settings), d }));
-    const rects = placed.map(labelRect);
+    const rectItems = placed.map(d => ({ d, rect: labelRect(d) }));
+    const rects = rectItems.map(item => item.rect);
+    const qualityTargets = [];
+    const qualityTargetKeys = new Set();
     const edgeLimit = Math.max(10, settings.labelSizeRender || settings.labelSize || 12);
-    const labelsNearEdge = rects.filter(rect => (
+    const labelsNearEdgeItems = rectItems.filter(({ rect }) => (
       rect.x0 < edgeLimit
       || rect.y0 < edgeLimit
       || settings.width - rect.x1 < edgeLimit
       || settings.height - rect.y1 < edgeLimit
-    )).length;
+    ));
+    const labelsNearEdge = labelsNearEdgeItems.length;
 
     for (let i = 0; i < lines.length; i++) {
       for (let j = i + 1; j < lines.length; j++) {
         const crosses = lines[i].segments.some(a => lines[j].segments.some(b => segmentsCross(a.start, a.end, b.start, b.end)));
-        if (crosses) crossings++;
+        if (crosses) {
+          crossings++;
+          addQualityIssueTarget(qualityTargets, qualityTargetKeys, "crossing", lines[i].d);
+          addQualityIssueTarget(qualityTargets, qualityTargetKeys, "crossing", lines[j].d);
+        }
       }
     }
 
@@ -4333,6 +4798,8 @@
       for (let j = i + 1; j < rects.length; j++) {
         if (rectsOverlap(rects[i], rects[j])) {
           overlaps++;
+          addQualityIssueTarget(qualityTargets, qualityTargetKeys, "overlap", rectItems[i].d);
+          addQualityIssueTarget(qualityTargets, qualityTargetKeys, "overlap", rectItems[j].d);
           minLabelGap = 0;
         } else {
           const dx = Math.max(0, Math.max(rects[i].x0 - rects[j].x1, rects[j].x0 - rects[i].x1));
@@ -4342,7 +4809,10 @@
       }
     }
 
-    const longLines = lines.filter(line => line.length > maxAllowedLeaderLength(settings)).length;
+    labelsNearEdgeItems.forEach(item => addQualityIssueTarget(qualityTargets, qualityTargetKeys, "near-edge", item.d));
+    const longLineItems = lines.filter(line => line.length > maxAllowedLeaderLength(settings));
+    longLineItems.forEach(line => addQualityIssueTarget(qualityTargets, qualityTargetKeys, "long-line", line.d));
+    const longLines = longLineItems.length;
     const longestLeader = lines.reduce((best, line) => !best || line.length > best.length ? line : best, null);
 
     return {
@@ -4354,7 +4824,8 @@
       labelsNearEdge,
       minLabelGap: Number.isFinite(minLabelGap) ? minLabelGap : null,
       longestLeaderLength: longestLeader ? longestLeader.length : 0,
-      longestLeaderName: longestLeader ? longestLeader.d.name : ""
+      longestLeaderName: longestLeader ? longestLeader.d.name : "",
+      qualityTargets
     };
   }
 
@@ -4633,6 +5104,69 @@
       <button type="button" data-property-action="open-map">${escapeHtml(t("quality.canvas.locateNext"))}</button>`;
   }
 
+  function getQualityLocateTargets(report = lastLayout && lastLayout.report) {
+    if (!report || !Array.isArray(report.qualityTargets)) return [];
+    const seen = new Set();
+    return report.qualityTargets.filter(target => {
+      if (!target || !target.labelKey || seen.has(target.labelKey)) return false;
+      seen.add(target.labelKey);
+      return true;
+    });
+  }
+
+  function clearQualityLocateHighlight() {
+    document.querySelectorAll(".is-quality-located").forEach(node => node.classList.remove("is-quality-located"));
+  }
+
+  function highlightQualityLocateTarget(target) {
+    clearQualityLocateHighlight();
+    if (!target || !target.layoutId || !window.CSS || typeof CSS.escape !== "function") return;
+    const selector = `[data-layout-id="${CSS.escape(target.layoutId)}"]`;
+    document.querySelectorAll(selector).forEach(node => node.classList.add("is-quality-located"));
+  }
+
+  function restoreActiveQualityLocateTarget() {
+    if (!activeQualityLocateTarget) return;
+    const targets = getQualityLocateTargets();
+    const match = targets.find(target => target.labelKey === activeQualityLocateTarget.labelKey || target.layoutId === activeQualityLocateTarget.layoutId);
+    if (!match) {
+      activeQualityLocateTarget = null;
+      qualityLocateIndex = -1;
+      clearQualityLocateHighlight();
+      return;
+    }
+    activeQualityLocateTarget = match;
+    qualityLocateIndex = Math.max(0, targets.findIndex(target => target.labelKey === match.labelKey || target.layoutId === match.layoutId));
+    highlightQualityLocateTarget(match);
+  }
+
+  function locateNextQualityIssue() {
+    const targets = getQualityLocateTargets();
+    setActiveDataTab("preview");
+    if (!targets.length) {
+      activeQualityLocateTarget = null;
+      qualityLocateIndex = -1;
+      clearQualityLocateHighlight();
+      setStatusMessage(t("status.qualityNoLocateTargets"), "warning");
+      return;
+    }
+    qualityLocateIndex = (qualityLocateIndex + 1) % targets.length;
+    activeQualityLocateTarget = targets[qualityLocateIndex];
+    const placed = lastLayout && Array.isArray(lastLayout.placed)
+      ? lastLayout.placed.find(row => row.labelKey === activeQualityLocateTarget.labelKey || row.layoutId === activeQualityLocateTarget.layoutId)
+      : null;
+    const row = placed || getRows().find(item => String(item.rowId) === String(activeQualityLocateTarget.rowId)) || activeQualityLocateTarget;
+    setRowPropertiesContext("label", row, {
+      labelKey: activeQualityLocateTarget.labelKey,
+      manual: Boolean(manualLabelPositions[activeQualityLocateTarget.labelKey])
+    });
+    highlightQualityLocateTarget(activeQualityLocateTarget);
+    setStatusMessage(t("status.qualityLocated", {
+      index: qualityLocateIndex + 1,
+      total: targets.length,
+      label: activeQualityLocateTarget.name || labelKeyText(row)
+    }), "ok");
+  }
   function renderQualityMetrics() {
     const report = lastLayout && lastLayout.report;
     const metadataMissing = getMapDetailsMissingFields().length;
@@ -4713,7 +5247,8 @@
     const canResetLabel = Boolean(options.manual);
     const hasLon = row.lon !== "";
     const hasLat = row.lat !== "";
-    const status = hasLon && hasLat ? t("project.status.mapped") : hasLon || hasLat ? t("project.status.coordinateIssue") : t("project.status.callout");
+    const hasRegionAnchor = row.anchor === "region" && row.region;
+    const status = hasRegionAnchor ? "Mapped to region" : hasLon && hasLat ? t("project.status.mapped") : hasLon || hasLat ? t("project.status.coordinateIssue") : t("project.status.callout");
     const displayRow = {
       ...row,
       lon: formatProjectCoordinate(row.lon),
@@ -4729,6 +5264,8 @@
       priority: toPriority(row.priority),
       typeOptions: getTypeOptions(row.type),
       status,
+      regionOptions: getRegionRows().map(region => ({ value: region.id, label: region.name })),
+      authoringLanguage: activeAuthoringLanguage,
       globalLabelMaxChars: normalizeLabelMaxChars(els.labelCharsInput.value),
       escapeHtml,
       iconSvg,
@@ -4825,7 +5362,7 @@
   function renderRegionPropertyControls(regionId) {
     const region = getRegionTableRows().find(item => item.id === regionId);
     if (!region) return renderMapPropertyControls();
-    return properties.renderRegionPropertyControls({ region, pluralize, escapeHtml, iconSvg, t });
+    return properties.renderRegionPropertyControls({ region, statusOptions: regionStatusOptions, pluralize, escapeHtml, iconSvg, t });
   }
 
   function setCategoryPropertiesContext() {
@@ -5124,6 +5661,12 @@
         regionVisibility[regionId] = event.target.checked;
         applyRegionColoursByValue(false, { refreshRowsOnly: true });
         scheduleRender();
+      } else if (regionProperty === "status") {
+        const status = normalizeRegionStatus(event.target.value);
+        if (status) regionStatuses[regionId] = status;
+        else delete regionStatuses[regionId];
+        refreshRegionValueTableRow(getRegionTableRows().find(region => region.id === regionId));
+        scheduleRender();
       } else if (regionProperty === "value") {
         const value = normalizeRegionValue(event.target.value);
         if (value === "") delete regionValues[regionId];
@@ -5173,11 +5716,42 @@
 
     const rowId = form.dataset.rowId;
     if (!rowId) return;
-    const value = ["hideLine", "elbowLeader"].includes(field) ? event.target.checked : event.target.value;
-    pushAppUndoHistory("project row edit");
-    const row = updateProjectRowField(rowId, field, value);
+    const currentRow = readRowElement(getRowElementById(rowId));
+    let fieldToUpdate = field;
+    let value = ["hideLine", "elbowLeader"].includes(field) ? event.target.checked : event.target.value;
+    if (field === "contentParagraph" || field === "contentImageCaption" || field === "contentImageAssetRef" || field === "contentBulletItem") {
+      const content = normalizeAnnotationContent(currentRow && currentRow.content);
+      const blockIndex = Number(event.target.dataset.blockIndex);
+      const itemIndex = Number(event.target.dataset.itemIndex);
+      const block = Number.isInteger(blockIndex) ? content[blockIndex] : null;
+      if (!block) return;
+      if (field === "contentParagraph" && block.type === "paragraph") {
+        block[activeAuthoringLanguage === "fr" ? "fr" : "en"] = String(event.target.value || "").trim();
+      } else if (field === "contentImageCaption" && block.type === "image") {
+        block.caption[activeAuthoringLanguage === "fr" ? "fr" : "en"] = String(event.target.value || "").trim();
+      } else if (field === "contentImageAssetRef" && block.type === "image") {
+        block.assetRef = String(event.target.value || "").trim();
+      } else if (field === "contentBulletItem" && block.type === "bullets" && Number.isInteger(itemIndex) && block.items[itemIndex]) {
+        block.items[itemIndex][activeAuthoringLanguage === "fr" ? "fr" : "en"] = String(event.target.value || "").trim();
+      } else {
+        return;
+      }
+      fieldToUpdate = "content";
+      value = content;
+    } else if (field === "chartSliceLabel" || field === "chartSliceValue" || field === "chartSliceColor") {
+      const slices = normalizeChartSlices(currentRow && currentRow.chartSlices);
+      const index = Number(event.target.dataset.sliceIndex);
+      const slice = Number.isInteger(index) ? slices[index] : null;
+      if (!slice) return;
+      if (field === "chartSliceLabel") slice.label[activeAuthoringLanguage === "fr" ? "fr" : "en"] = String(event.target.value || "").trim();
+      if (field === "chartSliceValue") slice.value = Math.max(0, Number(event.target.value) || 0);
+      if (field === "chartSliceColor") slice.color = isHexColour(event.target.value) ? event.target.value : slice.color;
+      fieldToUpdate = "chartSlices";
+      value = slices;
+    }    pushAppUndoHistory("project row edit");
+    const row = updateProjectRowField(rowId, fieldToUpdate, value);
     if (!row) return;
-    if (field === "nameFr") {
+    if (fieldToUpdate === "nameFr" || fieldToUpdate === "content" || fieldToUpdate === "chartSlices") {
       updateWorkspaceSummary();
       updateExportLanguageNotice();
     }
@@ -5195,6 +5769,60 @@
     if (!button) return;
     const action = button.dataset.propertyAction;
 
+    const rowForm = button.closest(".properties-form[data-row-id]");
+    if (rowForm && ["add-content-paragraph", "add-content-bullets", "add-content-image", "move-content-block-up", "move-content-block-down", "remove-content-block", "add-content-bullet-item", "remove-content-bullet-item", "add-chart-slice", "remove-chart-slice"].includes(action)) {
+      const rowId = rowForm.dataset.rowId;
+      const tr = getRowElementById(rowId);
+      const row = readRowElement(tr);
+      if (!row) return;
+      pushAppUndoHistory("project row edit");
+      if (action === "add-content-paragraph") {
+        updateProjectRowField(rowId, "content", row.content.concat([{ type: "paragraph", en: "", fr: "" }]));
+        updateProjectRowField(rowId, "labelStyle", "rich");
+      } else if (action === "add-content-bullets") {
+        updateProjectRowField(rowId, "content", row.content.concat([{ type: "bullets", items: [{ en: "", fr: "" }] }]));
+        updateProjectRowField(rowId, "labelStyle", "rich");
+      } else if (action === "add-content-image") {
+        updateProjectRowField(rowId, "content", row.content.concat([{ type: "image", assetRef: "", caption: { en: "", fr: "" } }]));
+        updateProjectRowField(rowId, "labelStyle", "rich");
+      } else if (action === "move-content-block-up" || action === "move-content-block-down") {
+        const index = Number(button.dataset.blockIndex);
+        const nextIndex = action === "move-content-block-up" ? index - 1 : index + 1;
+        const content = row.content.slice();
+        if (Number.isInteger(index) && nextIndex >= 0 && nextIndex < content.length) {
+          [content[index], content[nextIndex]] = [content[nextIndex], content[index]];
+          updateProjectRowField(rowId, "content", content);
+        }
+      } else if (action === "remove-content-block") {
+        const index = Number(button.dataset.blockIndex);
+        updateProjectRowField(rowId, "content", row.content.filter((item, itemIndex) => itemIndex !== index));
+      } else if (action === "add-content-bullet-item" || action === "remove-content-bullet-item") {
+        const blockIndex = Number(button.dataset.blockIndex);
+        const itemIndex = Number(button.dataset.itemIndex);
+        const content = normalizeAnnotationContent(row.content);
+        const block = Number.isInteger(blockIndex) ? content[blockIndex] : null;
+        if (block && block.type === "bullets") {
+          if (action === "add-content-bullet-item") block.items.push({ en: "", fr: "" });
+          if (action === "remove-content-bullet-item") block.items = block.items.filter((item, index) => index !== itemIndex);
+          updateProjectRowField(rowId, "content", content);
+        }
+      } else if (action === "add-chart-slice") {
+        const slices = normalizeChartSlices(row.chartSlices);
+        updateProjectRowField(rowId, "chartSlices", slices.concat([{ label: { en: "", fr: "" }, value: 1, color: chartSlicePalette[slices.length % chartSlicePalette.length] }]));
+        updateProjectRowField(rowId, "chart", "pie");
+      } else if (action === "remove-chart-slice") {
+        const index = Number(button.dataset.sliceIndex);
+        updateProjectRowField(rowId, "chartSlices", row.chartSlices.filter((item, itemIndex) => itemIndex !== index));
+      }
+      updateWorkspaceSummary();
+      updateExportLanguageNotice();
+      requestPreviewRefresh();
+      setRowPropertiesContext(activePropertiesSelection && activePropertiesSelection.kind || "label", readRowElement(tr), {
+        labelKey: rowForm.dataset.labelKey,
+        manual: Boolean(manualLabelPositions[rowForm.dataset.labelKey])
+      });
+      return;
+    }
     if (action === "reset-label") {
       const labelKey = button.dataset.labelKey;
       if (labelKey && manualLabelPositions[labelKey]) pushManualLayoutHistory("selected label reset");
@@ -5231,7 +5859,7 @@
     }
 
     if (action === "open-map") {
-      setActiveDataTab("preview");
+      locateNextQualityIssue();
       return;
     }
 
@@ -5764,6 +6392,7 @@
       .data(visibleGeo.features)
       .join("path")
       .attr("class", "province")
+      .attr("data-region-id", (d, i) => getRegionId(d, i))
       .attr("d", path)
       .attr("fill", (d, i) => getRegionFill(d, i))
       .on("click", (event, feature) => {
@@ -5776,6 +6405,12 @@
     const placed = layoutBundle.placed;
     rememberLabelPositions(placed);
     const placedByRowId = new Map(placed.map(row => [row.rowId, row]));
+    const sourceRowsByRowId = new Map(rows.map(row => [String(row.rowId), row]));
+    const sourceRowForLayout = row => sourceRowsByRowId.get(String(row.rowId)) || row;
+    const leaderRegionId = row => {
+      const sourceRow = sourceRowForLayout(row);
+      return sourceRow && sourceRow.anchor === "region" ? sourceRow.region || null : null;
+    };
     const markerRows = mappedRows.map(row => placedByRowId.get(row.rowId) || row);
     const leaderRows = placed.filter(row => !row.hideLine);
     const report = analyzeLayout(placed, settings, projectedProblems, hiddenRegionProblems, mapBounds);
@@ -5800,7 +6435,9 @@
       .attr("data-layout-id", d => d.layoutId)
       .attr("data-label-side", d => d.labelSide)
       .attr("data-label-name", d => d.name)
+      .attr("data-region-id", d => leaderRegionId(d))
       .attr("stroke-width", d => getCategoryLineWidth(getCategory(d.type), settings))
+      .style("stroke", d => getLeaderLineColour(sourceRowForLayout(d)))
       .attr("d", d => linePath(d, settings));
 
     const markerLayer = svg.append("g").attr("class", "marker-layer");
@@ -5867,8 +6504,9 @@
     labels.each(function (d) {
       const text = d3.select(this);
       d.lines.forEach((line, i) => {
+        const role = line && line.role || "text";
         text.append("tspan")
-          .attr("class", line.role === "separator" ? "label-line label-separator" : "label-line")
+          .attr("class", role === "separator" ? "label-line label-separator" : `label-line label-${role}`)
           .attr("x", d.labelX)
           .attr("dy", i === 0 ? 0 : d.lineHeight)
           .text(line.role === "separator" ? "" : lineText(line));
@@ -5876,15 +6514,116 @@
       });
     });
     attachLabelDragging(labels);
+    drawRichLabelImages(svg, placed, settings);
+    drawAnnotationCharts(svg, placed, settings, mapBounds);
 
     if (settings.showCallouts && calloutRows.length) drawCallouts(svg, calloutRows, settings, mapBounds);
     if (settings.showLegend) drawLegend(svg, settings, mapBounds);
     if (mapScaleControlsVisible) drawMapScaleControls(svg, settings, mapBounds);
     updateStatus(rows, mappedRows, calloutRows, report, true);
+    restoreActiveQualityLocateTarget();
     refreshDocumentPropertiesIfActive();
     if (!els.regionTableBody.contains(document.activeElement)) renderRegionValueTable();
   }
 
+  function drawRichLabelImages(svg, placed, settings) {
+    const imageRows = placed.filter(row => row.labelStyle === "rich" && row.lines.some(line => line.role === "image" && line.assetRef));
+    if (!imageRows.length) return;
+    const layer = svg.append("g").attr("class", "rich-label-image-layer");
+    imageRows.forEach(row => {
+      row.lines.forEach((line, imageLineIndex) => {
+        if (line.role !== "image" || !line.assetRef) return;
+        const box = labelVisualBox(row);
+        const imageWidth = Math.min(row.textWidth, Math.max(72, settings.labelSizeRender * 6));
+        const imageHeight = Math.max(row.lineHeight * 1.55, settings.labelSizeRender * 1.8);
+        const imageX = row.labelSide === "left" ? box.x1 - imageWidth : box.x0;
+        const imageY = row.labelY - labelFontSize(row) + imageLineIndex * row.lineHeight + 2;
+        const group = layer.append("g")
+          .attr("class", "rich-label-image")
+          .attr("data-layout-id", row.layoutId)
+          .on("click", event => {
+            event.stopPropagation();
+            setRowPropertiesContext("label", row, { labelKey: row.labelKey, manual: Boolean(manualLabelPositions[row.labelKey]) });
+          });
+        if (line.caption) group.append("title").text(line.caption);
+        group.append("rect")
+          .attr("x", imageX)
+          .attr("y", imageY)
+          .attr("width", imageWidth)
+          .attr("height", imageHeight)
+          .attr("rx", 2)
+          .attr("fill", "#f8f6f0")
+          .attr("stroke", "#c9c1ae")
+          .attr("stroke-width", 0.8);
+        group.append("image")
+          .attr("href", line.assetRef)
+          .attr("xlink:href", line.assetRef)
+          .attr("x", imageX + 2)
+          .attr("y", imageY + 2)
+          .attr("width", imageWidth - 4)
+          .attr("height", imageHeight - 4)
+          .attr("preserveAspectRatio", "xMidYMid meet");
+      });
+    });
+  }
+
+  function getAnnotationChartLayout(row, settings) {
+    const key = `chart:${row.rowId}`;
+    const fallbackDimensions = { width: 92, height: 92 };
+    const constraints = { minWidth: 68, minHeight: 68, maxWidth: 170, maxHeight: 170 };
+    const dimensions = getBoxDimensions(key, fallbackDimensions, constraints, settings);
+    const fallback = row.labelSide === "left"
+      ? { x: row.labelX - dimensions.width - 18, y: row.labelY + row.lineHeight * 0.35 }
+      : { x: row.labelX + 18, y: row.labelY + row.lineHeight * 0.35 };
+    const position = getBoxPosition(key, fallback, dimensions, settings);
+    return { key, dimensions, constraints, position };
+  }
+
+  function drawAnnotationCharts(svg, placed, settings, mapBounds) {
+    const chartRows = placed
+      .filter(row => normalizeChart(row.chart) === "pie")
+      .map(row => ({ row, slices: normalizeChartSlices(row.chartSlices).filter(slice => slice.value > 0) }))
+      .filter(item => item.slices.length > 0);
+    if (!chartRows.length) return;
+    const layer = svg.append("g").attr("class", "annotation-chart-layer");
+    chartRows.forEach(({ row, slices }) => {
+      const layout = getAnnotationChartLayout(row, settings);
+      const { key, dimensions, constraints, position } = layout;
+      const label = t("properties.annotation.chartPie");
+      const group = layer.append("g")
+        .attr("class", "annotation-chart movable-map-box")
+        .attr("data-layout-id", row.layoutId)
+        .attr("transform", translatePosition(position))
+        .on("click", event => {
+          event.stopPropagation();
+          setRowPropertiesContext("label", row, { labelKey: row.labelKey, manual: Boolean(manualLabelPositions[row.labelKey]) });
+        });
+      group.append("rect")
+        .attr("class", "annotation-chart-box")
+        .attr("x", 0)
+        .attr("y", 0)
+        .attr("width", dimensions.width)
+        .attr("height", dimensions.height)
+        .attr("rx", 4);
+      const radius = Math.max(18, Math.min(dimensions.width, dimensions.height) / 2 - 10);
+      const cx = dimensions.width / 2;
+      const cy = dimensions.height / 2;
+      const arc = d3.arc().innerRadius(0).outerRadius(radius);
+      const pie = d3.pie().sort(null).value(slice => slice.value);
+      group.append("g")
+        .attr("transform", `translate(${cx},${cy})`)
+        .selectAll("path")
+        .data(pie(slices))
+        .join("path")
+        .attr("class", "annotation-chart-slice")
+        .attr("d", arc)
+        .attr("fill", d => d.data.color)
+        .attr("stroke", "#ffffff")
+        .attr("stroke-width", 1.2);
+      attachBoxDragging(group, key, position, dimensions, settings, label, mapBounds);
+      attachBoxControls(group, key, position, dimensions, constraints, settings, label, mapBounds, null);
+    });
+  }
   function appendSuperscript(textSelection, value, labelSize) {
     textSelection.append("tspan")
       .attr("class", "label-footnote")
@@ -6092,18 +6831,22 @@
         );
         d.labelX = next.x;
         d.labelY = next.y;
-        manualLabelPositions[d.labelKey] = { x: d.labelX, y: d.labelY };
+        setLabelSidePreservingBox(d, getLabelSideForPosition(d));
+        manualLabelPositions[d.labelKey] = { x: d.labelX, y: d.labelY, side: d.labelSide };
 
         const label = d3.select(this)
+          .attr("data-label-side", d.labelSide)
           .attr("x", d.labelX)
-          .attr("y", d.labelY);
+          .attr("y", d.labelY)
+          .attr("text-anchor", d.anchor);
         label.selectAll("tspan.label-line").attr("x", d.labelX);
 
         d3.select(`rect.map-label-background[data-layout-id="${d.layoutId}"]`)
+          .attr("data-label-side", d.labelSide)
           .call(node => positionLabelBackground(node, d));
         d3.selectAll(`path[data-layout-id="${d.layoutId}"]`)
+          .attr("data-label-side", d.labelSide)
           .attr("d", linePath(d, settings));
-
         drawDistanceMarkers(els.svg, settings, labelVisualBox(d, 8), {
           mapBounds: lastLayout ? lastLayout.mapBounds : null,
           includeNearbyLabels: true,
@@ -6217,6 +6960,7 @@
 
     tr.querySelector(".lon-input").value = formatProjectCoordinate(lon);
     tr.querySelector(".lat-input").value = formatProjectCoordinate(lat);
+    updateRowAnnotationPreview(tr);
     syncCoordinateClearButtons(tr);
   }
 
@@ -6881,11 +7625,13 @@
     const verticalPadding = Math.max(compact ? 18 : 22, Math.round(settings.labelSize * (compact ? 1.45 : 1.7)));
     const headingRuleY = verticalPadding + headingHeight;
     const headingText = getChromeText("legendHeading", settings.mapLanguage);
-    const longestLabelLength = Math.max(6, headingText.length, ...categorySettings.map(category => getCategoryText(category, settings.mapLanguage).length));
+    const statusItems = getUsedRegionStatusOptions();
+    const legendLabels = categorySettings.map(category => getCategoryText(category, settings.mapLanguage)).concat(statusItems.map(item => item.label));
+    const longestLabelLength = Math.max(6, headingText.length, ...legendLabels.map(label => label.length));
     const widthPad = compact ? 112 : 126;
     const fallbackDimensions = {
       width: Math.max(compact ? 270 : 300, Math.min(420, Math.round(longestLabelLength * settings.labelSize * 0.58 + widthPad))),
-      height: verticalPadding * 2 + headingHeight + categorySettings.length * rowHeight
+      height: verticalPadding * 2 + headingHeight + (categorySettings.length + statusItems.length) * rowHeight
     };
     const constraints = {
       minWidth: Math.max(compact ? 260 : 290, Math.round(longestLabelLength * settings.labelSizeRender * 0.58 + (compact ? 106 : 126))),
@@ -6905,6 +7651,7 @@
       rowHeight,
       headingHeight,
       verticalPadding,
+      statusItems,
       ...rowMetrics
     };
   }
@@ -7069,31 +7816,31 @@
   }
 
   function attachBoxControls(group, key, position, dimensions, constraints, settings, label, mapBounds, visibilityInput) {
-    const hide = group.append("g")
-      .attr("class", "box-controls box-hide-control")
-      .attr("role", "button")
-      .attr("aria-label", t("map.hideBox", { label }))
-      .on("click", event => {
-        event.stopPropagation();
-        if (visibilityInput) {
+    if (visibilityInput) {
+      const hide = group.append("g")
+        .attr("class", "box-controls box-hide-control")
+        .attr("role", "button")
+        .attr("aria-label", t("map.hideBox", { label }))
+        .on("click", event => {
+          event.stopPropagation();
           setMapFurnitureVisibility(key, false, visibilityInput, label);
-        }
-      });
+        });
 
-    hide.append("rect")
-      .attr("width", 17)
-      .attr("height", 17)
-      .attr("rx", 3);
-    hide.append("line")
-      .attr("x1", 5)
-      .attr("y1", 5)
-      .attr("x2", 12)
-      .attr("y2", 12);
-    hide.append("line")
-      .attr("x1", 12)
-      .attr("y1", 5)
-      .attr("x2", 5)
-      .attr("y2", 12);
+      hide.append("rect")
+        .attr("width", 17)
+        .attr("height", 17)
+        .attr("rx", 3);
+      hide.append("line")
+        .attr("x1", 5)
+        .attr("y1", 5)
+        .attr("x2", 12)
+        .attr("y2", 12);
+      hide.append("line")
+        .attr("x1", 12)
+        .attr("y1", 5)
+        .attr("x2", 5)
+        .attr("y2", 12);
+    }
 
     const resizeState = {
       x: position.x,
@@ -7127,7 +7874,7 @@
           resizeState.height = nextDimensions.height;
           saveManualBoxState(key, nextPosition, nextDimensions);
           group.attr("transform", translatePosition(nextPosition));
-          group.select(".legend-box, .callout-box")
+          group.select(".legend-box, .callout-box, .annotation-chart-box")
             .attr("width", nextDimensions.width)
             .attr("height", nextDimensions.height);
           positionBoxControls(group, nextDimensions);
@@ -7156,6 +7903,13 @@
     positionBoxControls(group, dimensions);
   }
 
+  function getUsedRegionStatusOptions() {
+    const used = new Set(Object.values(regionStatuses).map(normalizeRegionStatus).filter(Boolean));
+    return regionStatusOptions
+      .filter(option => option.value && used.has(option.value))
+      .map(option => ({ ...option, label: t(option.labelKey) }));
+  }
+
   function drawLegend(svg, settings, mapBounds) {
     const {
       dimensions,
@@ -7168,7 +7922,8 @@
       headingHeight,
       verticalPadding,
       markerX,
-      textX
+      textX,
+      statusItems
     } = getLegendBoxLayout(settings);
     const group = svg.append("g")
       .attr("class", "legend-layer movable-map-box")
@@ -7220,6 +7975,28 @@
         .attr("text-anchor", "start")
         .attr("dominant-baseline", "middle")
         .text(getCategoryText(category, settings.mapLanguage));
+    });
+
+    statusItems.forEach((status, index) => {
+      const itemY = verticalPadding + headingHeight + (categorySettings.length + index) * rowHeight + rowHeight / 2;
+      group.append("rect")
+        .attr("class", "legend-status-swatch")
+        .attr("x", markerX - 9)
+        .attr("y", itemY - 9)
+        .attr("width", 18)
+        .attr("height", 18)
+        .attr("fill", status.colour)
+        .attr("stroke", "#ffffff")
+        .attr("stroke-width", 1.5);
+      group.append("text")
+        .attr("class", "legend-text")
+        .attr("x", textX)
+        .attr("y", itemY)
+        .attr("font-size", settings.labelSizeRender)
+        .attr("font-family", settings.fontFamily)
+        .attr("text-anchor", "start")
+        .attr("dominant-baseline", "middle")
+        .text(status.label);
     });
 
     attachBoxDragging(group, "legend", position, dimensions, settings, t("properties.furniture.legend"), mapBounds);
@@ -7636,6 +8413,7 @@
       regionFills,
       regionColourOverrides,
       regionValues,
+      regionStatuses,
       languageLayouts: serializeLanguageLayouts(),
       manualLabelPositions,
       manualBoxPositions,
@@ -7681,6 +8459,7 @@
         regionFills = normalizeColourMap(project.regionFills || {});
         regionColourOverrides = project.regionColourOverrides || {};
         regionValues = project.regionValues || {};
+        regionStatuses = project.regionStatuses || {};
         restoreLanguageLayouts(project, projectLanguage);
         setRows(project.rows, [], { preserveManualPositions: true, render: false });
         await loadGeo();
@@ -7888,14 +8667,44 @@
     { key: "lat", labelKey: "dialog.csv.field.lat", required: true }
   ];
 
+  const translationCsvMapTargets = [
+    { key: "name", labelKey: "dialog.csv.field.translationName", required: true },
+    { key: "nameFr", labelKey: "dialog.csv.field.translationNameFr", required: true },
+    { key: "rowId", labelKey: "dialog.csv.field.translationRowId", required: false }
+  ];
+
+  function getCsvMappingMode() {
+    return pendingCsvMapping && pendingCsvMapping.mode === "translations" ? "translations" : "projects";
+  }
+
+  function getCsvMappingTargets(mode = getCsvMappingMode()) {
+    return mode === "translations" ? translationCsvMapTargets : csvMapTargets;
+  }
+
+  function getCsvMappingStorageKey(mode = getCsvMappingMode()) {
+    return mode === "translations" ? "plotypus.translationCsvMapping" : "plotypus.csvMapping";
+  }
+
   function findCsvSourceForTarget(fields, target) {
     const aliases = csvColumnAliases[target] || [target];
+    return fields.find(field => aliases.includes(normalizeHeader(field))) || "";
+  }
+
+  function findTranslationCsvSourceForTarget(fields, target) {
+    const aliases = translationColumnAliases[target] || csvColumnAliases[target] || [target];
     return fields.find(field => aliases.includes(normalizeHeader(field))) || "";
   }
 
   function renderCsvMappingDialog() {
     if (!pendingCsvMapping || !els.csvMapRows) return;
     const { fields, data } = pendingCsvMapping;
+    const mode = getCsvMappingMode();
+    const targets = getCsvMappingTargets(mode);
+    const translationMode = mode === "translations";
+    if (els.csvMapTitle) els.csvMapTitle.textContent = t(translationMode ? "dialog.csv.translationTitle" : "dialog.csv.title");
+    if (els.csvMapGuidance) els.csvMapGuidance.textContent = t(translationMode ? "dialog.csv.translationGuidance" : "dialog.csv.guidance");
+    if (els.csvMapRequired) els.csvMapRequired.textContent = t(translationMode ? "dialog.csv.translationRequired" : "dialog.csv.required");
+    if (els.confirmCsvMapBtn) els.confirmCsvMapBtn.textContent = t(translationMode ? "dialog.csv.importTranslations" : "dialog.csv.importRows");
     if (els.csvMapFileMeta) {
       const rowCount = data.length;
       els.csvMapFileMeta.textContent = t("dialog.csv.fileMeta", {
@@ -7906,34 +8715,42 @@
         columnLabel: fields.length === 1 ? t("dialog.csv.columnSingular") : t("dialog.csv.columnPlural")
       });
     }
-    els.csvMapRows.innerHTML = csvMapTargets.map(target => {
+    const firstRequiredKey = (targets.find(target => target.required) || targets[0] || {}).key;
+    els.csvMapRows.innerHTML = targets.map(target => {
       const selected = pendingCsvMapping.mapping[target.key] || "";
       const sample = selected && data[0] ? data[0][selected] : "";
       const label = t(target.labelKey);
       return `<div class="csv-map-row" data-csv-target="${target.key}">
         <div class="csv-map-source"><strong>${escapeHtml(label)}</strong><span class="field-requirement ${target.required ? "is-required" : "is-optional"}">${escapeHtml(target.required ? t("dialog.csv.requiredTag") : t("dialog.csv.optionalTag"))}</span></div>
-        <select aria-label="${escapeHtml(t("dialog.csv.columnFor", { label }))}"${target.key === "name" ? " data-dialog-initial-focus" : ""}><option value="">${escapeHtml(t("dialog.csv.notMapped"))}</option>${fields.map(field => `<option value="${escapeHtml(field)}"${field === selected ? " selected" : ""}>${escapeHtml(field)}</option>`).join("")}</select>
+        <select aria-label="${escapeHtml(t("dialog.csv.columnFor", { label }))}"${target.key === firstRequiredKey ? " data-dialog-initial-focus" : ""}><option value="">${escapeHtml(t("dialog.csv.notMapped"))}</option>${fields.map(field => `<option value="${escapeHtml(field)}"${field === selected ? " selected" : ""}>${escapeHtml(field)}</option>`).join("")}</select>
         <span class="csv-map-sample" title="${escapeHtml(String(sample || ""))}">${escapeHtml(String(sample || t("dialog.csv.noSample")))}</span>
       </div>`;
     }).join("");
-    const missingRequired = csvMapTargets.some(target => target.required && !pendingCsvMapping.mapping[target.key]);
+    const missingRequired = targets.some(target => target.required && !pendingCsvMapping.mapping[target.key]);
     if (els.confirmCsvMapBtn) els.confirmCsvMapBtn.disabled = missingRequired;
   }
 
   function openCsvMapping(results, file, options = {}) {
-    const preset = projectIo.getSavedJson(localStorage, "plotypus.csvMapping");
-    pendingCsvMapping = projectIo.createCsvMappingState({
-      results,
-      file,
-      targets: csvMapTargets,
-      savedMapping: preset,
-      findSourceForTarget: findCsvSourceForTarget,
-      defaultFileName: t("dialog.csv.selectedCsv")
-    });
+    const mode = options.mode === "translations" ? "translations" : "projects";
+    const targets = getCsvMappingTargets(mode);
+    const preset = projectIo.getSavedJson(localStorage, getCsvMappingStorageKey(mode));
+    pendingCsvMapping = {
+      ...projectIo.createCsvMappingState({
+        results,
+        file,
+        targets,
+        savedMapping: preset,
+        findSourceForTarget: mode === "translations" ? findTranslationCsvSourceForTarget : findCsvSourceForTarget,
+        defaultFileName: t(mode === "translations" ? "dialog.csv.selectedTranslationFile" : "dialog.csv.selectedCsv")
+      }),
+      sourceRows: options.sourceRows || null,
+      mode,
+      trigger: options.trigger || (mode === "translations" ? els.importTranslationsBtn : els.ribbonImportCsvBtn)
+    };
     renderCsvMappingDialog();
     if (options.open !== false) {
-      openDialog(els.csvMapDialog, els.ribbonImportCsvBtn);
-      const firstMapping = els.csvMapRows.querySelector('[data-csv-target="name"] select');
+      openDialog(els.csvMapDialog, pendingCsvMapping.trigger);
+      const firstMapping = els.csvMapRows.querySelector("[data-dialog-initial-focus]");
       if (firstMapping) firstMapping.focus();
     }
   }
@@ -7943,6 +8760,7 @@
     Papa.parse(file, {
       header: firstRowHeaders,
       skipEmptyLines: true,
+      delimitersToGuess: [",", "\t", "|", ";"],
       complete: results => {
         if (firstRowHeaders) {
           openCsvMapping(results, file, options);
@@ -7958,25 +8776,145 @@
     });
   }
 
+  function isExcelWorkbookFile(file) {
+    return window.PlotypusXlsx ? window.PlotypusXlsx.isWorkbookFile(file) : false;
+  }
+
+  function uniqueTabularFields(values) {
+    const counts = new Map();
+    return values.map((value, index) => {
+      const base = String(value || "").trim() || t("dialog.csv.columnNumber", { number: index + 1 });
+      const count = counts.get(base) || 0;
+      counts.set(base, count + 1);
+      return count ? `${base}_${count + 1}` : base;
+    });
+  }
+
+  function openTabularRowsForMapping(rows, file, firstRowHeaders = true, options = {}) {
+    const arrays = Array.isArray(rows) ? rows.filter(row => Array.isArray(row) && row.some(value => String(value || "").trim())) : [];
+    if (!arrays.length) throw new Error(t("status.excelNoRows"));
+    const width = arrays.reduce((maximum, row) => Math.max(maximum, row.length), 0);
+    const fields = firstRowHeaders
+      ? uniqueTabularFields(Array.from({ length: width }, (_, index) => arrays[0][index] || ""))
+      : Array.from({ length: width }, (_, index) => t("dialog.csv.columnNumber", { number: index + 1 }));
+    const sourceRows = firstRowHeaders ? arrays.slice(1) : arrays;
+    const data = sourceRows.map(row => Object.fromEntries(fields.map((field, index) => [field, row[index] || ""])));
+    openCsvMapping({ data, errors: [], meta: { fields } }, file, { ...options, sourceRows: arrays });
+  }
+
+  async function readExcelWorkbookRows(file) {
+    if (!window.PlotypusXlsx) throw new Error(t("status.excelInvalidWorkbook"));
+    return window.PlotypusXlsx.readWorkbookRows(file, {
+      invalidWorkbook: t("status.excelInvalidWorkbook"),
+      unsupportedCompression: t("status.excelUnsupportedCompression")
+    });
+  }
+  function normalizeTranslationMatch(value) {
+    return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
+  }
+
+  function normalizeTranslationRowId(value) {
+    return String(value || "").trim().replace(/^project:/i, "");
+  }
+
+  function importProjectTranslations(data) {
+    const rows = getRows();
+    const byId = new Map(rows.map(row => [String(row.rowId), row]));
+    const usedRowIds = new Set();
+    const updates = [];
+    let skipped = 0;
+
+    (data || []).forEach(rawRow => {
+      const french = String(rawRow.nameFr || "").trim();
+      const rowId = normalizeTranslationRowId(rawRow.rowId);
+      const source = normalizeTranslationMatch(rawRow.name);
+      let row = rowId ? byId.get(rowId) : null;
+      if (!row && source) {
+        row = rows.find(candidate => !usedRowIds.has(String(candidate.rowId)) && normalizeTranslationMatch(candidate.name) === source);
+      }
+      if (!french || !row) {
+        skipped += 1;
+        return;
+      }
+      usedRowIds.add(String(row.rowId));
+      updates.push({ rowId: row.rowId, french });
+    });
+
+    if (!updates.length) return { updated: 0, skipped };
+    pushAppUndoHistory("translation import");
+    updates.forEach(update => updateProjectRowField(update.rowId, "nameFr", update.french));
+    refreshProjectTableUx();
+    renderTranslationWorkbench();
+    renderPropertiesForActiveState(activePropertiesSelection || { kind: "translation" });
+    updateWorkspaceSummary();
+    updateExportLanguageNotice();
+    requestPreviewRefresh(languageFitRenderOptions());
+    return { updated: updates.length, skipped };
+  }
+
+  function confirmTranslationCsvMapping(targets) {
+    const mappingToSave = { ...pendingCsvMapping.mapping };
+    const data = projectIo.mapCsvRowsForImport(pendingCsvMapping, targets);
+    if (els.csvSavePresetInput && els.csvSavePresetInput.checked) {
+      projectIo.saveJson(localStorage, getCsvMappingStorageKey("translations"), mappingToSave);
+    }
+    pendingCsvMapping = null;
+    closeDialog(els.csvMapDialog);
+    const result = importProjectTranslations(data);
+    setActiveDataTab("translate");
+    if (result.updated) {
+      setStatusMessage(result.skipped
+        ? t("status.translationImportResultSkipped", { count: result.updated, skipped: result.skipped })
+        : t("status.translationImportResult", { count: result.updated }),
+        result.skipped ? "warning" : "ok");
+    } else {
+      setStatusMessage(t("status.translationImportNoMatches"), "warning");
+    }
+  }
+
   function confirmCsvMapping() {
     if (!pendingCsvMapping) return;
-    const missing = projectIo.getMissingCsvTargets(pendingCsvMapping.mapping, csvMapTargets);
+    const mode = getCsvMappingMode();
+    const targets = getCsvMappingTargets(mode);
+    const missing = projectIo.getMissingCsvTargets(pendingCsvMapping.mapping, targets);
     if (missing.length) {
-      setStatusMessage(t("status.csvRequiredFields", { fields: missing.map(item => item.label).join(", ") }), "danger");
+      setStatusMessage(t("status.csvRequiredFields", { fields: missing.map(item => t(item.labelKey)).join(", ") }), "danger");
+      return;
+    }
+    if (mode === "translations") {
+      confirmTranslationCsvMapping(targets);
       return;
     }
     const mappingToSave = { ...pendingCsvMapping.mapping };
-    const data = projectIo.mapCsvRowsForImport(pendingCsvMapping, csvMapTargets);
-    const fields = projectIo.getMappedCsvFields(pendingCsvMapping.mapping, csvMapTargets);
+    const data = projectIo.mapCsvRowsForImport(pendingCsvMapping, targets);
+    const fields = projectIo.getMappedCsvFields(pendingCsvMapping.mapping, targets);
     const report = validateCsvImport({ data, errors: pendingCsvMapping.errors, meta: { fields } });
     if (els.csvSavePresetInput && els.csvSavePresetInput.checked) {
-      projectIo.saveJson(localStorage, "plotypus.csvMapping", mappingToSave);
+      projectIo.saveJson(localStorage, getCsvMappingStorageKey("projects"), mappingToSave);
     }
     pendingCsvMapping = null;
     closeDialog(els.csvMapDialog);
     pushAppUndoHistory("CSV import");
     setRows(report.rows, report.messages);
     setActiveDataTab("projects");
+  }
+
+  async function importTranslationFile(file) {
+    try {
+      if (els.csvFirstRowHeadersInput) els.csvFirstRowHeadersInput.checked = true;
+      const options = { mode: "translations", trigger: els.importTranslationsBtn };
+      if (isExcelWorkbookFile(file)) {
+        openTabularRowsForMapping(await readExcelWorkbookRows(file), file, true, options);
+        return;
+      }
+      if (!window.Papa) {
+        setStatusMessage(t("status.csvReadFailed"), "danger");
+        return;
+      }
+      parseCsvForMapping(file, true, options);
+    } catch (error) {
+      setStatusMessage(t("status.csvGenericFailed", { message: translateErrorMessage(error) }), "danger");
+    }
   }
 
   function importCsv(file) {
@@ -8168,7 +9106,19 @@
     on(els.confirmCsvMapBtn, "click", confirmCsvMapping);
     on(els.csvFirstRowHeadersInput, "change", () => {
       if (pendingCsvMapping && pendingCsvMapping.file) {
-        parseCsvForMapping(pendingCsvMapping.file, els.csvFirstRowHeadersInput.checked, { open: false });
+        if (pendingCsvMapping.sourceRows) {
+          openTabularRowsForMapping(pendingCsvMapping.sourceRows, pendingCsvMapping.file, els.csvFirstRowHeadersInput.checked, {
+            open: false,
+            mode: pendingCsvMapping.mode,
+            trigger: pendingCsvMapping.trigger
+          });
+        } else {
+          parseCsvForMapping(pendingCsvMapping.file, els.csvFirstRowHeadersInput.checked, {
+            open: false,
+            mode: pendingCsvMapping.mode,
+            trigger: pendingCsvMapping.trigger
+          });
+        }
       }
     });
     on(els.csvMapRows, "change", event => {
@@ -8233,6 +9183,12 @@
     on(els.translationGroups, "keydown", handleTranslationKeydown);
     on(els.translationGroups, "paste", handleTranslationPaste);
     on(els.pasteTranslationColumnBtn, "click", pasteTranslationColumnFromClipboard);
+    on(els.importTranslationsBtn, "click", () => els.translationImportInput.click());
+    on(els.translationImportInput, "change", e => {
+      const file = e.target.files && e.target.files[0];
+      if (file) importTranslationFile(file);
+      e.target.value = "";
+    });
     [els.mapLanguageInput, els.previewLanguageInput].forEach(input => {
       on(input, "change", event => setMapLanguage(event.target.value));
     });
@@ -8336,6 +9292,16 @@
         clearActiveRegionPreset();
         regionVisibility[event.target.dataset.regionId] = event.target.checked;
         applyRegionColoursByValue(false, { refreshRowsOnly: true });
+        scheduleRender();
+        return;
+      }
+
+      if (event.target.classList.contains("region-status-input")) {
+        pushAppUndoHistory("region edit");
+        const status = normalizeRegionStatus(event.target.value);
+        if (status) regionStatuses[event.target.dataset.regionId] = status;
+        else delete regionStatuses[event.target.dataset.regionId];
+        refreshRegionValueTableRow(getRegionTableRows().find(region => region.id === event.target.dataset.regionId));
         scheduleRender();
         return;
       }
@@ -8538,6 +9504,7 @@
       pointInRect,
       segmentIntersectsRect,
       lineEnd,
+      labelBackgroundRect,
       leaderPathPoints,
       makeLabelPlacement,
       createCandidateForSide,
@@ -8579,3 +9546,14 @@
 
   init();
 })();
+
+
+
+
+
+
+
+
+
+
+

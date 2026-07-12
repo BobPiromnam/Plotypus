@@ -95,7 +95,8 @@
 
   <main class="app-shell">
     <div class="layout-state-controls" hidden aria-hidden="true">
-      <input id="csvInput" type="file" accept=".csv,text/csv" />
+      <input id="csvInput" type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values" />
+      <input id="translationImportInput" type="file" accept=".csv,.tsv,.txt,.xlsx,text/csv,text/tab-separated-values,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
       <input id="projectInput" type="file" accept=".json,application/json" />
         <select id="fontFamilyInput">
           <option value="Lato, Segoe UI, Arial, sans-serif">Lato</option>
@@ -187,6 +188,10 @@
                 <th class="name-col"><span class="editable-col-heading"><span data-i18n="table.projectName">Project name</span> <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
                 <th class="footnote-col" title="Superscript footnote marker" data-i18n-title="table.footnote.title"><span class="editable-col-heading"><span data-i18n="table.footnote">Fnote</span> <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
                 <th class="type-col"><span class="editable-col-heading"><span data-i18n="table.type">Type</span> <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
+                <th class="annotation-preview-col anchor-preview-col"><span data-i18n="table.anchor">Anchor</span> <span class="col-auto-chip" title="Auto" aria-label="Auto" data-i18n-title="table.auto" data-i18n-aria-label="table.auto"><span data-icon="wand" aria-hidden="true"></span></span></th>
+                <th class="annotation-preview-col label-preview-col"><span data-i18n="table.label">Label</span> <span class="col-auto-chip" title="Auto" aria-label="Auto" data-i18n-title="table.auto" data-i18n-aria-label="table.auto"><span data-icon="wand" aria-hidden="true"></span></span></th>
+                <th class="annotation-preview-col chart-preview-col"><span data-i18n="table.chart">Chart</span> <span class="col-auto-chip" title="Auto" aria-label="Auto" data-i18n-title="table.auto" data-i18n-aria-label="table.auto"><span data-icon="wand" aria-hidden="true"></span></span></th>
+
                 <th class="priority-col" title="Priority controls label placement order. Higher numbers are placed earlier when labels compete for space." data-i18n-title="table.priority.title"><span class="editable-col-heading"><span data-i18n="table.priority">Priority</span> <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
                 <th class="coordinate-col lon-col"><span class="editable-col-heading"><span data-i18n="table.longitude">Longitude</span> <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
                 <th class="coordinate-col lat-col"><span class="editable-col-heading"><span data-i18n="table.latitude">Latitude</span> <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
@@ -248,6 +253,7 @@
                 <tr>
                   <th class="region-name-col"><span data-i18n="region.table.region">Region</span></th>
                   <th class="region-included-col"><span class="editable-col-heading"><span data-i18n="region.table.included">Included</span> <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
+                  <th class="region-status-col"><span class="editable-col-heading"><span data-i18n="region.table.status">Status</span> <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
                   <th class="region-count-col"><span data-i18n="region.table.points">Points</span> <span class="col-auto-chip" title="Auto" aria-label="Auto" data-i18n-title="table.auto" data-i18n-aria-label="table.auto"><span data-icon="wand" aria-hidden="true"></span></span></th>
                   <th class="region-value-col"><span class="editable-col-heading"><span data-i18n="region.table.colourOrder">Colour order</span> <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
                   <th class="region-preset-col"><span data-i18n="region.table.colourPreset">Colour preset</span> <span class="col-auto-chip" title="Auto" aria-label="Auto" data-i18n-title="table.auto" data-i18n-aria-label="table.auto"><span data-icon="wand" aria-hidden="true"></span></span></th>
@@ -275,6 +281,10 @@
                 <button type="button" class="is-active" data-translation-filter="all" data-i18n="translate.filters.all">All</button>
                 <button type="button" data-translation-filter="missing" data-i18n="translate.filters.missing">Missing</button>
                 <button id="pasteTranslationColumnBtn" type="button" data-icon="paste" data-i18n="translate.pasteColumn">Paste column</button>
+              </div>
+              <div class="translate-add-section" aria-label="Add" data-i18n-aria-label="translate.add">
+                <span data-i18n="translate.add">Add</span>
+                <button id="importTranslationsBtn" type="button" data-icon="upload" data-i18n="translate.importFile">Import CSV/Excel</button>
               </div>
               <div class="translation-column-labels" aria-hidden="true">
                 <span></span>
@@ -551,8 +561,8 @@
       </header>
       <div class="dialog-body">
         <div class="csv-map-guidance">
-          <span data-i18n="dialog.csv.guidance">Match each Plotypus field to a column from your file. Recognized headings are matched automatically.</span>
-          <strong data-i18n="dialog.csv.required">Required fields must be mapped to import.</strong>
+          <span id="csvMapGuidance" data-i18n="dialog.csv.guidance">Match each Plotypus field to a column from your file. Recognized headings are matched automatically.</span>
+          <strong id="csvMapRequired" data-i18n="dialog.csv.required">Required fields must be mapped to import.</strong>
         </div>
         <label class="toolbar-check csv-header-toggle"><input id="csvFirstRowHeadersInput" type="checkbox" checked /><span data-i18n="dialog.csv.firstRowHeaders">First row contains column headers</span></label>
         <div class="csv-map-heading" aria-hidden="true"><span data-i18n="dialog.csv.plotypusField">Plotypus field</span><span data-i18n="dialog.csv.yourColumn">Your CSV column</span><span data-i18n="dialog.csv.sampleValue">Sample value</span></div>
@@ -594,9 +604,15 @@
   <script src="geometry.js?v=20260622-module-extraction"></script>
   <script src="label-layout.js?v=20260622-module-extraction"></script>
   <script src="project-io.js?v=20260622-module-extraction"></script>
+  <script src="xlsx-lite.js?v=20260711-import-refactor"></script>
   <script src="workspace.js?v=20260622-module-extraction"></script>
   <script src="properties.js?v=20260624-i18n-quality"></script>
   <script src="i18n.js?v=20260624-i18n-quality"></script>
   <script src="app.js?v=20260624-i18n-quality"></script>
 </body>
 </html>
+
+
+
+
+

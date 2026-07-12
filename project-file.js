@@ -113,6 +113,7 @@
       "regionFills",
       "regionColourOverrides",
       "regionValues",
+      "regionStatuses",
       "manualLabelPositions",
       "manualBoxPositions"
     ].forEach(field => {

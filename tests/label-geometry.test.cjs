@@ -56,6 +56,13 @@ function loadApi() {
   return windowStub.PLOTYPUS_TEST_API;
 }
 
+function loadProjectIo() {
+  const projectIoSource = fs.readFileSync(path.join(__dirname, "..", "project-io.js"), "utf8");
+  const windowStub = {};
+  vm.runInNewContext(projectIoSource, { window: windowStub }, { filename: "project-io.js" });
+  assert.ok(windowStub.PLOTYPUS_PROJECT_IO, "project I/O API should be exported");
+  return windowStub.PLOTYPUS_PROJECT_IO;
+}
 function makeLabel(overrides = {}) {
   return {
     rowId: "row-a",
@@ -92,6 +99,48 @@ function makeMapBounds() {
   return { x0: 80, y0: 60, x1: 220, y1: 160 };
 }
 
+test("project snapshots preserve unified annotation content and chart metadata", () => {
+  const projectIo = loadProjectIo();
+  const content = [
+    { type: "paragraph", en: "Rich paragraph", fr: "Paragraphe riche" },
+    { type: "bullets", items: [{ en: "Rich bullet", fr: "Puce riche" }] },
+    {
+      type: "image",
+      assetRef: "https://example.com/rich-label.png",
+      caption: { en: "Rich label image", fr: "Image d'etiquette enrichie" }
+    }
+  ];
+  const chartSlices = [
+    { label: { en: "Federal", fr: "Federal" }, value: 60, color: "#3f6b5e" },
+    { label: { en: "Partner", fr: "Partenaire" }, value: 40, color: "#9f7616" }
+  ];
+
+  const snapshot = projectIo.createProjectSnapshot({
+    version: 2,
+    rows: [{
+      rowId: "row-rich",
+      name: "Rich row",
+      type: "referred",
+      priority: 1,
+      lon: -75,
+      lat: 45,
+      labelStyle: "rich",
+      content,
+      chart: "pie",
+      chartSlices,
+      bullets: ["legacy"]
+    }],
+    categories: [],
+    cleanType: value => value
+  });
+
+  assert.deepEqual(snapshot.rows[0].content, content);
+  assert.equal(snapshot.rows[0].chart, "pie");
+  assert.deepEqual(snapshot.rows[0].chartSlices, chartSlices);
+  assert.equal(Object.hasOwn(snapshot.rows[0], "labelBlocks"), false);
+  assert.equal(Object.hasOwn(snapshot.rows[0], "labelImage"), false);
+  assert.equal(Object.hasOwn(snapshot.rows[0], "bullets"), false);
+});
 test("rect overlap detects collisions and computes positive area only", () => {
   const api = loadApi();
   const a = { x0: 0, y0: 0, x1: 10, y1: 10 };
@@ -332,6 +381,38 @@ test("manual positions override automatic labels and preserve stable keys", () =
   assert.equal(result[0].layoutId, "label-0");
   assert.equal(result[0].labelX, 88);
   assert.equal(result[0].labelY, 99);
+});
+
+test("manual positions can override label side and anchor", () => {
+  const api = loadApi();
+  const placed = [
+    makeLabel({ rowId: "42", name: "Manual label", labelX: 220, labelY: 120, labelSide: "right" })
+  ];
+
+  api.setManualLabelPositions({ "row:42": { x: 88, y: 99, side: "left" } });
+  const result = api.applyManualLabelPositions(placed);
+
+  assert.equal(result[0].labelSide, "left");
+  assert.equal(result[0].anchor, "end");
+  assert.equal(result[0].labelX, 88);
+  assert.equal(result[0].labelY, 99);
+});
+
+test("leader endpoints stay outside padded label backgrounds", () => {
+  const api = loadApi();
+  const right = makeLabel({ labelSide: "right", labelX: 130, labelY: 100, textWidth: 40 });
+  const rightEnd = api.lineEnd(right);
+  const rightBox = api.labelBackgroundRect(right);
+
+  assert.ok(rightEnd.x < rightBox.x0, "right-side leaders should stop before the label background");
+  assert.equal(rightEnd.y, rightBox.centerY);
+
+  const left = makeLabel({ labelSide: "left", labelX: 130, labelY: 100, textWidth: 40 });
+  const leftEnd = api.lineEnd(left);
+  const leftBox = api.labelBackgroundRect(left);
+
+  assert.ok(leftEnd.x > leftBox.x1, "left-side leaders should stop after the label background");
+  assert.equal(leftEnd.y, leftBox.centerY);
 });
 
 test("automatic labels keep stable IDs when manual positions are ignored", () => {

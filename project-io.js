@@ -24,6 +24,7 @@
       regionFills,
       regionColourOverrides,
       regionValues,
+      regionStatuses,
       languageLayouts,
       manualLabelPositions,
       manualBoxPositions,
@@ -62,6 +63,12 @@
         priority: row.priority || 0,
         lon: row.lon,
         lat: row.lat,
+        anchor: row.anchor || "coord",
+        region: row.region || "",
+        labelStyle: row.labelStyle || "compact",
+        content: Array.isArray(row.content) ? row.content : [],
+        chart: row.chart === "pie" ? "pie" : "none",
+        chartSlices: Array.isArray(row.chartSlices) ? row.chartSlices : [],
         hideLine: row.hideLine,
         labelMaxChars: row.labelMaxChars || ""
       })),
@@ -69,6 +76,7 @@
       regionFills,
       regionColourOverrides,
       regionValues,
+      regionStatuses,
       languageLayouts,
       manualLabelPositions,
       manualBoxPositions

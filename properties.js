@@ -123,11 +123,11 @@
           <h3>${escapeHtml(t("properties.section.mapDetails"))}</h3>
           <div class="map-details-status-card" data-state="${missingDetails ? "review" : "ok"}">
             <div class="map-details-status-row">
-              <span>${escapeHtml(t("properties.status.titleRequired"))} ${propertyOriginIcon(options, "auto")}</span>
+              <span>${escapeHtml(t("properties.status.titleRequired"))}</span>
               <strong>${escapeHtml(titleMissing ? t("properties.status.missing") : t("properties.status.complete"))}</strong>
             </div>
             <div class="map-details-status-row">
-              <span>${escapeHtml(t("properties.status.textRequired"))} ${propertyOriginIcon(options, "auto")}</span>
+              <span>${escapeHtml(t("properties.status.textRequired"))}</span>
               <strong>${escapeHtml(textMissing ? t("properties.status.missing") : t("properties.status.complete"))}</strong>
             </div>
             <button type="button" data-property-action="open-map-details">${iconSvg("file-text")} ${escapeHtml(t("properties.button.openMapDetails"))}</button>
@@ -168,6 +168,8 @@
       typeOptions = "",
       status = "",
       globalLabelMaxChars = 24,
+      regionOptions = [],
+      authoringLanguage = "en",
       escapeHtml
     } = options || {};
     const t = translator(options);
@@ -177,16 +179,106 @@
       ? globalLabelMaxChars
       : row.labelMaxChars;
     const numericStyle = "font-family: &quot;IBM Plex Mono&quot;, ui-monospace, monospace; text-align: right; font-variant-numeric: tabular-nums;";
+    const anchor = row.anchor === "region" ? "region" : "coord";
+    const labelStyle = row.labelStyle === "rich" ? "rich" : "compact";
+    const languageKey = authoringLanguage === "fr" ? "fr" : "en";
+    const content = Array.isArray(row.content) ? row.content : [];
+    const chart = row.chart === "pie" ? "pie" : "none";
+    const chartSlices = Array.isArray(row.chartSlices) ? row.chartSlices : [];
+    const localText = value => value && typeof value === "object" ? String(value[languageKey] || "") : "";
+    const chartPalette = ["#3f6b5e", "#9f7616", "#5b8fa8", "#8f4f6a", "#596b8f", "#7a6f55"];
+    const titleLabel = labelStyle === "rich" ? t("properties.annotation.title") : t("properties.field.projectName");
+    const titleFrLabel = labelStyle === "rich" ? t("properties.annotation.titleFr") : t("properties.field.projectNameFr");
+    const regionSelectOptions = regionOptions.length
+      ? regionOptions.map(region => `<option value="${escapeHtml(region.value)}"${region.value === row.region ? " selected" : ""}>${escapeHtml(region.label)}</option>`).join("")
+      : `<option value="">${escapeHtml(t("properties.annotation.noRegions"))}</option>`;
+    const segmented = (field, current, choices) => `
+      <div class="annotation-segmented" role="group">
+        ${choices.map(choice => `
+          <label class="annotation-segment${choice.value === current ? " is-active" : ""}">
+            <input type="radio" name="${escapeHtml(field)}-${rowId}" data-property-field="${escapeHtml(field)}" value="${escapeHtml(choice.value)}"${choice.value === current ? " checked" : ""}>
+            <span>${escapeHtml(choice.label)}</span>
+          </label>
+        `).join("")}
+      </div>`;
+    const blockControls = index => `
+      <div class="annotation-block-controls">
+        <button type="button" data-property-action="move-content-block-up" data-block-index="${index}"${index === 0 ? " disabled" : ""} aria-label="${escapeHtml(t("properties.annotation.moveUp"))}">&uarr;</button>
+        <button type="button" data-property-action="move-content-block-down" data-block-index="${index}"${index >= content.length - 1 ? " disabled" : ""} aria-label="${escapeHtml(t("properties.annotation.moveDown"))}">&darr;</button>
+        <button type="button" data-property-action="remove-content-block" data-block-index="${index}" aria-label="${escapeHtml(t("properties.annotation.remove"))}">&times;</button>
+      </div>`;
+    const contentEditor = labelStyle === "rich" ? `
+      <div class="annotation-list-editor">
+        ${content.map((block, index) => {
+          const type = block && block.type || "paragraph";
+          if (type === "bullets") {
+            const items = Array.isArray(block.items) ? block.items : [];
+            return `
+              <div class="annotation-list-row annotation-block" data-content-block-type="bullets">
+                <div class="annotation-list-row-label"><span>${escapeHtml(t("properties.annotation.bullets"))}</span>${blockControls(index)}</div>
+                <div class="annotation-bullet-items">
+                  ${items.map((item, itemIndex) => `
+                    <div class="annotation-bullet-item">
+                      <textarea rows="2" data-property-field="contentBulletItem" data-block-index="${index}" data-item-index="${itemIndex}" placeholder="${escapeHtml(t("properties.annotation.bulletPlaceholder"))}">${escapeHtml(localText(item))}</textarea>
+                      <button type="button" data-property-action="remove-content-bullet-item" data-block-index="${index}" data-item-index="${itemIndex}" aria-label="${escapeHtml(t("properties.annotation.remove"))}">&times;</button>
+                    </div>
+                  `).join("")}
+                </div>
+                <button type="button" data-property-action="add-content-bullet-item" data-block-index="${index}">${escapeHtml(t("properties.annotation.addBulletItem"))}</button>
+              </div>`;
+          }
+          if (type === "image") {
+            const caption = block.caption && typeof block.caption === "object" ? block.caption : {};
+            return `
+              <div class="annotation-list-row annotation-block" data-content-block-type="image">
+                <div class="annotation-list-row-label"><span>${escapeHtml(t("properties.annotation.image"))}</span>${blockControls(index)}</div>
+                <label>
+                  ${propertyFieldLabel(options, t("properties.annotation.imageUrl"))}
+                  <input type="url" data-property-field="contentImageAssetRef" data-block-index="${index}" value="${escapeHtml(block.assetRef || "")}" placeholder="${escapeHtml(t("properties.annotation.imageUrlPlaceholder"))}">
+                </label>
+                <label>
+                  ${propertyFieldLabel(options, t("properties.annotation.caption"))}
+                  <textarea rows="2" data-property-field="contentImageCaption" data-block-index="${index}" placeholder="${escapeHtml(t("properties.annotation.captionPlaceholder"))}">${escapeHtml(localText(caption))}</textarea>
+                </label>
+              </div>`;
+          }
+          return `
+            <div class="annotation-list-row annotation-block" data-content-block-type="paragraph">
+              <div class="annotation-list-row-label"><span>${escapeHtml(t("properties.annotation.paragraph"))}</span>${blockControls(index)}</div>
+              <textarea rows="3" data-property-field="contentParagraph" data-block-index="${index}" placeholder="${escapeHtml(t("properties.annotation.paragraphPlaceholder"))}">${escapeHtml(localText(block))}</textarea>
+            </div>`;
+        }).join("")}
+        <div class="properties-actions annotation-add-actions">
+          <button type="button" data-property-action="add-content-paragraph">${escapeHtml(t("properties.annotation.addParagraph"))}</button>
+          <button type="button" data-property-action="add-content-bullets">${escapeHtml(t("properties.annotation.addBullets"))}</button>
+          <button type="button" data-property-action="add-content-image">${escapeHtml(t("properties.annotation.addImage"))}</button>
+        </div>
+      </div>` : "";
+    const chartEditor = chart === "pie" ? `
+      <div class="annotation-chart-editor">
+        ${chartSlices.map((slice, index) => {
+          const label = slice && slice.label && typeof slice.label === "object" ? slice.label : {};
+          const colour = slice && (slice.color || slice.colour) || chartPalette[index % chartPalette.length];
+          return `
+            <div class="chart-slice-row">
+              <input type="color" data-property-field="chartSliceColor" data-slice-index="${index}" value="${escapeHtml(colour)}" aria-label="${escapeHtml(t("properties.annotation.chartSliceColor"))}">
+              <input type="text" data-property-field="chartSliceLabel" data-slice-index="${index}" value="${escapeHtml(localText(label))}" placeholder="${escapeHtml(t("properties.annotation.chartSliceLabel"))}">
+              <input type="number" min="0" step="any" data-property-field="chartSliceValue" data-slice-index="${index}" value="${escapeHtml(String(slice && Number.isFinite(Number(slice.value)) ? slice.value : 0))}" aria-label="${escapeHtml(t("properties.annotation.chartSliceValue"))}">
+              <button type="button" data-property-action="remove-chart-slice" data-slice-index="${index}" aria-label="${escapeHtml(t("properties.annotation.remove"))}">&times;</button>
+            </div>`;
+        }).join("")}
+        <button type="button" data-property-action="add-chart-slice">${escapeHtml(t("properties.annotation.addChartSlice"))}</button>
+      </div>` : "";
     return `
       <div class="properties-form" data-property-kind="${escapeHtml(kind)}" data-row-id="${rowId}" data-label-key="${safeLabelKey}">
         <div class="properties-record-status">${escapeHtml(status)} ${propertyOriginIcon(options, "auto")}</div>
         <label>
-          ${propertyFieldLabel(options, t("properties.field.projectName"))}
+          ${propertyFieldLabel(options, titleLabel)}
           <input type="text" data-property-field="name" value="${escapeHtml(row.name || "")}">
         </label>
         <label>
-          ${propertyFieldLabel(options, t("properties.field.projectNameFr"))}
-          <textarea data-property-field="nameFr" rows="2" placeholder="${escapeHtml(t("properties.field.projectNameFr"))}">${escapeHtml(row.nameFr || "")}</textarea>
+          ${propertyFieldLabel(options, titleFrLabel)}
+          <textarea data-property-field="nameFr" rows="2" placeholder="${escapeHtml(titleFrLabel)}">${escapeHtml(row.nameFr || "")}</textarea>
         </label>
         <label>
           ${propertyFieldLabel(options, t("properties.field.priority"))}
@@ -198,16 +290,36 @@
             ${typeOptions}
           </select>
         </label>
-        <div class="properties-inline-grid">
-          <label>
-            ${propertyFieldLabel(options, t("properties.field.longitude"))}
-            <input type="text" inputmode="decimal" data-property-field="lon" style="${numericStyle}" value="${escapeHtml(row.lon === "" ? "" : String(row.lon))}">
-          </label>
-          <label>
-            ${propertyFieldLabel(options, t("properties.field.latitude"))}
-            <input type="text" inputmode="decimal" data-property-field="lat" style="${numericStyle}" value="${escapeHtml(row.lat === "" ? "" : String(row.lat))}">
-          </label>
-        </div>
+        <section class="annotation-property-section">
+          <h3>${escapeHtml(t("properties.field.anchor"))}</h3>
+          ${segmented("anchor", anchor, [{ value: "coord", label: t("properties.annotation.coordinates") }, { value: "region", label: t("properties.annotation.region") }])}
+          ${anchor === "region" ? `
+            <label>
+              ${propertyFieldLabel(options, t("properties.field.region"))}
+              <select data-property-field="region">${regionSelectOptions}</select>
+            </label>` : `
+            <div class="properties-inline-grid">
+              <label>
+                ${propertyFieldLabel(options, t("properties.field.longitude"))}
+                <input type="text" inputmode="decimal" data-property-field="lon" style="${numericStyle}" value="${escapeHtml(row.lon === "" ? "" : String(row.lon))}">
+              </label>
+              <label>
+                ${propertyFieldLabel(options, t("properties.field.latitude"))}
+                <input type="text" inputmode="decimal" data-property-field="lat" style="${numericStyle}" value="${escapeHtml(row.lat === "" ? "" : String(row.lat))}">
+              </label>
+            </div>`}
+        </section>
+        <section class="annotation-property-section">
+          <h3>${escapeHtml(t("properties.field.labelStyle"))}</h3>
+          ${segmented("labelStyle", labelStyle, [{ value: "compact", label: t("properties.annotation.compact") }, { value: "rich", label: t("properties.annotation.rich") }])}
+          ${contentEditor}
+        </section>
+        <section class="annotation-property-section">
+          <h3>${escapeHtml(t("properties.field.chart"))}</h3>
+          ${segmented("chart", chart, [{ value: "none", label: t("properties.annotation.chartNone") }, { value: "pie", label: t("properties.annotation.chartPie") }])}
+          ${chartEditor}
+        </section>
+
         <label class="toolbar-check">
           <input type="checkbox" data-property-field="hideLine"${row.hideLine ? " checked" : ""}>
           <span>${propertyFieldLabel(options, t("properties.field.hideLeaderLine"))}</span>
@@ -236,7 +348,6 @@
       </div>
     `;
   }
-
   function renderMapPropertyControls(options) {
     const { regionSummaryText = "", selectOptions = {}, escapeHtml } = options || {};
     const t = translator(options);
@@ -392,10 +503,11 @@
   }
 
   function renderRegionPropertyControls(options) {
-    const { region, pluralize, escapeHtml } = options || {};
+    const { region, pluralize, escapeHtml, statusOptions = [] } = options || {};
     const t = translator(options);
     const pointLabel = region.count === 1 ? t("properties.region.projectPoint") : t("properties.region.projectPoints");
     const presetLabel = region.colourSource === "auto-by-value" ? t("properties.region.sequential") : t("properties.region.manual");
+    const statusSelect = statusOptions.map(option => `<option value="${escapeHtml(option.value)}"${option.value === region.status ? " selected" : ""}>${escapeHtml(option.label)}</option>`).join("");
     return `
       <div class="properties-form" data-property-kind="region" data-region-id="${escapeHtml(region.id)}">
         <h3>${escapeHtml(t("properties.region.inclusion"))}</h3>
@@ -407,6 +519,8 @@
           </span>
           <input type="checkbox" data-region-property="included"${region.included ? " checked" : ""}>
         </label>
+        <h3>${escapeHtml(t("properties.region.status"))}</h3>
+        <label>${propertyFieldLabel(options, t("properties.region.status"))}<select data-region-property="status">${statusSelect}</select></label>
         <h3>${escapeHtml(t("properties.region.colour"))}</h3>
         <div class="properties-inline-grid">
           <label>${propertyFieldLabel(options, t("properties.region.order"))}<input type="number" step="any" data-region-property="value" value="${escapeHtml(region.value === "" ? "" : String(region.value))}"></label>
