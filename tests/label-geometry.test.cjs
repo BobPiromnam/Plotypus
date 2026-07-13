@@ -9,6 +9,7 @@ function loadApi() {
   const geometrySource = fs.readFileSync(path.join(__dirname, "..", "geometry.js"), "utf8");
   const labelLayoutSource = fs.readFileSync(path.join(__dirname, "..", "label-layout.js"), "utf8");
   const projectIoSource = fs.readFileSync(path.join(__dirname, "..", "project-io.js"), "utf8");
+  const regionMatchingSource = fs.readFileSync(path.join(__dirname, "..", "region-matching.js"), "utf8");
   const workspaceSource = fs.readFileSync(path.join(__dirname, "..", "workspace.js"), "utf8");
   const propertiesSource = fs.readFileSync(path.join(__dirname, "..", "properties.js"), "utf8");
   const projectFileSource = fs.readFileSync(path.join(__dirname, "..", "project-file.js"), "utf8");
@@ -47,6 +48,8 @@ function loadApi() {
   vm.runInNewContext(geometrySource, context, { filename: "geometry.js" });
   vm.runInNewContext(labelLayoutSource, context, { filename: "label-layout.js" });
   vm.runInNewContext(projectIoSource, context, { filename: "project-io.js" });
+  vm.runInNewContext(regionMatchingSource, context, { filename: "region-matching.js" });
+  windowStub.PLOTYPUS_REGION_MATCHING = context.PLOTYPUS_REGION_MATCHING;
   vm.runInNewContext(workspaceSource, context, { filename: "workspace.js" });
   vm.runInNewContext(propertiesSource, context, { filename: "properties.js" });
   vm.runInNewContext(projectFileSource, context, { filename: "project-file.js" });
@@ -99,7 +102,7 @@ function makeMapBounds() {
   return { x0: 80, y0: 60, x1: 220, y1: 160 };
 }
 
-test("project snapshots preserve unified annotation content and chart metadata", () => {
+test("project snapshots preserve unified annotation content and strip chart metadata", () => {
   const projectIo = loadProjectIo();
   const content = [
     { type: "paragraph", en: "Rich paragraph", fr: "Paragraphe riche" },
@@ -109,10 +112,6 @@ test("project snapshots preserve unified annotation content and chart metadata",
       assetRef: "https://example.com/rich-label.png",
       caption: { en: "Rich label image", fr: "Image d'etiquette enrichie" }
     }
-  ];
-  const chartSlices = [
-    { label: { en: "Federal", fr: "Federal" }, value: 60, color: "#3f6b5e" },
-    { label: { en: "Partner", fr: "Partenaire" }, value: 40, color: "#9f7616" }
   ];
 
   const snapshot = projectIo.createProjectSnapshot({
@@ -127,7 +126,7 @@ test("project snapshots preserve unified annotation content and chart metadata",
       labelStyle: "rich",
       content,
       chart: "pie",
-      chartSlices,
+      chartSlices: [{ label: { en: "Federal", fr: "Federal" }, value: 60, color: "#3f6b5e" }],
       bullets: ["legacy"]
     }],
     categories: [],
@@ -135,8 +134,9 @@ test("project snapshots preserve unified annotation content and chart metadata",
   });
 
   assert.deepEqual(snapshot.rows[0].content, content);
-  assert.equal(snapshot.rows[0].chart, "pie");
-  assert.deepEqual(snapshot.rows[0].chartSlices, chartSlices);
+  assert.equal(snapshot.rows[0].chart, "none");
+  assert.equal(Array.isArray(snapshot.rows[0].chartSlices), true);
+  assert.equal(snapshot.rows[0].chartSlices.length, 0);
   assert.equal(Object.hasOwn(snapshot.rows[0], "labelBlocks"), false);
   assert.equal(Object.hasOwn(snapshot.rows[0], "labelImage"), false);
   assert.equal(Object.hasOwn(snapshot.rows[0], "bullets"), false);

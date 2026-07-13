@@ -62,6 +62,13 @@
     return;
   }
 
+  if (!window.PLOTYPUS_REGION_MATCHING) {
+    const message = startupT("startup.error.module", { module: "region-matching.js" });
+    const statusBox = document.querySelector("#statusBox");
+    if (statusBox) statusBox.innerHTML = `<div class="status-danger">${message}</div>`;
+    return;
+  }
+
   if (!window.PLOTYPUS_PROPERTIES) {
     const message = startupT("startup.error.module", { module: "properties.js" });
     const statusBox = document.querySelector("#statusBox");
@@ -83,6 +90,7 @@
   } = window.PLOTYPUS_GEOMETRY;
   const projectIo = window.PLOTYPUS_PROJECT_IO;
   const workspace = window.PLOTYPUS_WORKSPACE;
+  const regionMatching = window.PLOTYPUS_REGION_MATCHING;
   const properties = window.PLOTYPUS_PROPERTIES;
   const i18n = window.PLOTYPUS_I18N;
 
@@ -157,6 +165,12 @@
     maxDimension: 512,
     allowedTypes: new Set(["image/png", "image/webp"])
   });
+  const richLabelImageRules = Object.freeze({
+    maxBytes: 1024 * 1024,
+    minDimension: 1,
+    maxDimension: 2048,
+    allowedTypes: new Set(["image/png", "image/jpeg", "image/webp"])
+  });
   const boundarySources = appConfig.boundarySources || {};
   const sampleRows = cloneConfigList(appConfig.sampleRows);
   const mapStylePresets = appConfig.mapStylePresets || window.MAP_APP_STYLE_PRESETS || appConfig.fallbackMapStylePresets || {
@@ -173,7 +187,7 @@
   const propertiesDrawerMedia = typeof window.matchMedia === "function"
     ? window.matchMedia("(max-width: 1080px)")
     : { matches: false, addEventListener() {}, addListener() {} };
-  const csvColumnAliases = appConfig.csvColumnAliases || {
+  const defaultCsvColumnAliases = {
     name: ["name", "project", "project name"],
     nameFr: ["name_fr", "nom", "nom du projet", "french name", "fr name", "project fr", "project name fr", "nom_fr"],
     footnote: ["footnote", "footnote marker", "note", "superscript"],
@@ -182,9 +196,13 @@
     priority: ["priority", "label priority", "importance", "rank"],
     lon: ["lon", "longitude", "long"],
     lat: ["lat", "latitude"],
+    region: ["region", "province", "territory", "province territory", "province/territory", "state", "jurisdiction", "city", "location", "place"],
     hideLine: ["hide line", "hide lines", "hideline", "no line", "no leader line"]
   };
-  const translationColumnAliases = appConfig.translationColumnAliases || {
+  const csvColumnAliases = {
+    ...defaultCsvColumnAliases,
+    ...(appConfig.csvColumnAliases || {})
+  };  const translationColumnAliases = appConfig.translationColumnAliases || {
     rowId: ["row id", "rowid", "id", "project id", "plotypus id", "translation id"],
     name: ["name", "project", "project name", "english", "english project name", "source", "source text", "en"],
     nameFr: ["name_fr", "nom", "nom du projet", "french", "french name", "fr name", "project fr", "project name fr", "french project name", "translation", "fr"]
@@ -255,6 +273,7 @@
     projectTableSummary: document.querySelector("#projectTableSummary"),
     projectTableEmptyState: document.querySelector("#projectTableEmptyState"),
     projectTableFilters: Array.from(document.querySelectorAll("[data-project-filter]")),
+    projectLocationModeButtons: Array.from(document.querySelectorAll("[data-project-location-mode]")),
     projectFilterSelect: document.querySelector("#projectFilterSelect"),
     csvImportPreview: document.querySelector("#csvImportPreview"),
     regionTableBody: document.querySelector("#regionTable tbody"),
@@ -367,6 +386,8 @@
     mapDetailsBtn: document.querySelector("#mapDetailsBtn"),
     propertiesToggleBtn: document.querySelector("#propertiesToggleBtn"),
     frMetaWarning: document.querySelector("#frMetaWarning"),
+    startupDialog: document.querySelector("#startupDialog"),
+    startupStartNewBtn: document.querySelector("#startupStartNewBtn"),
     mapDetailsDialog: document.querySelector("#mapDetailsDialog"),
     mapDetailsForm: document.querySelector("#mapDetailsForm"),
     mapTitleEnInput: document.querySelector("#mapTitleEnInput"),
@@ -423,11 +444,19 @@
   let qualityLocateIndex = -1;
   let activeQualityLocateTarget = null;
   let activeProjectFilter = "all";
+  let activeProjectLocationMode = "coordinates";
+  let cachedRegionLookupKey = "";
+  let cachedRegionLookup = null;
   let activeTranslationFilter = "all";
   let activeTranslationEntryId = "";
   let activePointCatalogView = "presets";
+  let startupDialogDismissed = false;
   let selectedPointCatalogPresets = new Set();
-  const selectableProjectCellFields = ["name", "footnote", "type", "priority", "lon", "lat", "status", "hideLine"];
+  const selectableProjectCellFields = ["name", "footnote", "type", "priority", "region", "lon", "lat", "status", "hideLine"];
+
+  function getSelectableProjectCellFields() {
+    return selectableProjectCellFields.filter(field => isRegionLocationMode() ? field !== "lon" && field !== "lat" : field !== "region");
+  }
   const selectedProjectCells = new Set();
   let projectCellSelectionAnchor = null;
   let lastProjectCellPointerSelectionAt = 0;
@@ -501,7 +530,7 @@
     }
 
     const token = previewBusyToken;
-    const minimumVisibleMs = 520;
+    const minimumVisibleMs = 220;
     const elapsedMs = previewBusyStartedAt ? performanceNow() - previewBusyStartedAt : minimumVisibleMs;
     const remainingMs = Math.max(0, minimumVisibleMs - elapsedMs);
     const clearBusy = () => {
@@ -778,6 +807,7 @@
       boundary: currentBoundary,
       mapStyle: currentMapStylePreset,
       mapDetails: clonePlainObject(mapDetails),
+      projectLocationMode: activeProjectLocationMode,
       chromeTranslations: clonePlainObject(chromeTranslations),
       authoringLanguage: activeAuthoringLanguage,
       mapLanguage: currentMapLanguage,
@@ -827,6 +857,7 @@
       applySettings(snapshot.settings || {});
       Object.keys(mapDetails).forEach(key => { mapDetails[key] = String(snapshot.mapDetails && snapshot.mapDetails[key] || ""); });
       restoreChromeTranslations(snapshot.chromeTranslations);
+      activeProjectLocationMode = normalizeProjectLocationMode(snapshot.projectLocationMode || activeProjectLocationMode);
       applyCategorySettings(snapshot.categories || []);
       regionVisibility = clonePlainObject(snapshot.regionVisibility);
       regionFills = normalizeColourMap(snapshot.regionFills || {});
@@ -834,6 +865,7 @@
       regionValues = clonePlainObject(snapshot.regionValues);
       regionStatuses = clonePlainObject(snapshot.regionStatuses || {});
       restoreLanguageLayouts({ languageLayouts: snapshot.languageLayouts || {} }, snapshot.mapLanguage || currentMapLanguage);
+      syncProjectLocationModeUi();
       setRows(snapshot.rows || [], [], { preserveManualPositions: true, render: false, resetProperties: false });
       if (boundaryChanged) await loadGeo();
       renderRegionControls();
@@ -1172,25 +1204,54 @@
     };
   }
 
-  function readImageDimensions(dataUrl) {
+  function readImageDimensions(dataUrl, decodeFailedKey = "status.iconDecodeFailed") {
     return new Promise((resolve, reject) => {
       const image = new Image();
       image.onload = () => resolve({
         width: image.naturalWidth || image.width,
         height: image.naturalHeight || image.height
       });
-      image.onerror = () => reject(new Error(t("status.iconDecodeFailed")));
+      image.onerror = () => reject(new Error(t(decodeFailedKey)));
       image.src = dataUrl;
     });
   }
 
-  function readFileAsDataUrl(file) {
+  function readFileAsDataUrl(file, readFailedKey = "status.iconReadFailed") {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result || ""));
-      reader.onerror = () => reject(new Error(t("status.iconReadFailed")));
+      reader.onerror = () => reject(new Error(t(readFailedKey)));
       reader.readAsDataURL(file);
     });
+  }
+
+  function isSafeRichLabelImageDataUrl(value) {
+    return typeof value === "string" && /^data:image\/(?:png|jpe?g|webp);base64,[a-z0-9+/=]+$/i.test(value);
+  }
+
+  async function validateRichLabelImageFile(file) {
+    if (!file) throw new Error(t("status.richImageMissingFile"));
+    const mimeType = String(file.type || "").toLowerCase();
+    if (!richLabelImageRules.allowedTypes.has(mimeType)) {
+      throw new Error(t("status.richImageUnsupportedType"));
+    }
+    if (file.size > richLabelImageRules.maxBytes) {
+      throw new Error(t("status.richImageMaxFileSize", { size: Math.round(richLabelImageRules.maxBytes / 1024) }));
+    }
+    const dataUrl = await readFileAsDataUrl(file, "status.richImageReadFailed");
+    if (!isSafeRichLabelImageDataUrl(dataUrl)) {
+      throw new Error(t("status.richImageInvalidDataUrl"));
+    }
+    const dimensions = await readImageDimensions(dataUrl, "status.richImageDecodeFailed");
+    if (
+      dimensions.width < richLabelImageRules.minDimension ||
+      dimensions.height < richLabelImageRules.minDimension ||
+      dimensions.width > richLabelImageRules.maxDimension ||
+      dimensions.height > richLabelImageRules.maxDimension
+    ) {
+      throw new Error(t("status.richImageDimensionRange", { min: richLabelImageRules.minDimension, max: richLabelImageRules.maxDimension }));
+    }
+    return dataUrl;
   }
 
   async function validateCustomMarkerIconFile(file) {
@@ -1334,6 +1395,7 @@
   }
 
   function getField(row, aliases) {
+    if (!row || !Array.isArray(aliases) || !aliases.length) return "";
     const directKey = aliases.find(alias => Object.prototype.hasOwnProperty.call(row, alias));
     if (directKey) return row[directKey];
 
@@ -1357,6 +1419,150 @@
 
   function normalizeAnchor(value) {
     return String(value || "").toLowerCase() === "region" ? "region" : "coord";
+  }
+
+  function normalizeProjectLocationMode(value) {
+    const normalized = String(value || "").toLowerCase();
+    return normalized === "region" || normalized === "regions" ? "regions" : "coordinates";
+  }
+
+  function isRegionLocationMode(mode = activeProjectLocationMode) {
+    return normalizeProjectLocationMode(mode) === "regions";
+  }
+
+  function getProjectLocationAnchor(mode = activeProjectLocationMode) {
+    return isRegionLocationMode(mode) ? "region" : "coord";
+  }
+
+  function getActiveTableFields() {
+    if (!isRegionLocationMode()) return tableFields;
+    const fields = tableFields.filter(field => field !== "lon" && field !== "lat" && field !== "region");
+    const insertAt = fields.includes("priority") ? fields.indexOf("priority") + 1 : fields.length;
+    return [...fields.slice(0, insertAt), "region", ...fields.slice(insertAt)];
+  }
+
+  function deriveProjectLocationModeFromRows(rows = []) {
+    const meaningfulRows = (rows || []).filter(row => row && (row.name || row.nameFr || row.region || row.lon !== "" || row.lat !== ""));
+    if (!meaningfulRows.length) return "coordinates";
+    const regionRows = meaningfulRows.filter(row => normalizeAnchor(row.anchor) === "region" || (row.region && row.lon === "" && row.lat === ""));
+    return regionRows.length === meaningfulRows.length ? "regions" : "coordinates";
+  }
+
+  function getRegionLookup() {
+    const rows = getRegionRows();
+    const key = `${currentBoundary}|${rows.map(row => `${row.id}:${row.name}`).join("|")}`;
+    if (!cachedRegionLookup || cachedRegionLookupKey !== key) {
+      cachedRegionLookupKey = key;
+      cachedRegionLookup = regionMatching.buildRegionLookup(rows);
+    }
+    return cachedRegionLookup;
+  }
+
+  function resolveProjectRegionInput(value) {
+    return regionMatching.resolveRegionInput(value, getRegionLookup());
+  }
+
+  function getRegionSelectOptions(selectedRegion = "") {
+    const selected = String(selectedRegion || "");
+    const rows = getRegionRows();
+    const options = [`<option value="">${escapeHtml(t("properties.annotation.chooseRegion"))}</option>`];
+    rows.forEach(region => {
+      options.push(`<option value="${escapeHtml(region.id)}"${region.id === selected ? " selected" : ""}>${escapeHtml(region.name)}</option>`);
+    });
+    return options.join("");
+  }
+
+  function syncProjectRowRegionInput(tr) {
+    const select = tr && tr.querySelector(".region-input");
+    if (!select) return;
+    const value = String(tr.dataset.region || "").trim();
+    select.innerHTML = getRegionSelectOptions(value);
+    select.value = value;
+  }
+
+  function syncAllProjectRegionInputs() {
+    getTableRows().forEach(syncProjectRowRegionInput);
+  }
+
+  function syncProjectLocationModeUi() {
+    const isRegions = isRegionLocationMode();
+    if (els.projectTable) els.projectTable.dataset.locationMode = activeProjectLocationMode;
+    els.projectLocationModeButtons.forEach(button => {
+      const active = normalizeProjectLocationMode(button.dataset.projectLocationMode) === activeProjectLocationMode;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+    if (els.bulkClearCoordinatesBtn) {
+      els.bulkClearCoordinatesBtn.textContent = isRegions ? t("toolbar.selection.clearRegions") : t("toolbar.selection.clearCoordinates");
+    }
+  }
+
+  function setProjectLocationMode(mode, options = {}) {
+    const nextMode = normalizeProjectLocationMode(mode);
+    const changed = nextMode !== activeProjectLocationMode;
+    const nextIsRegionMode = isRegionLocationMode(nextMode);
+    if (changed && options.pushUndo !== false) pushAppUndoHistory("project location mode");
+    if (changed && nextIsRegionMode) {
+      getTableRows().forEach(tr => {
+        const lonValue = tr.querySelector(".lon-input")?.value || "";
+        const latValue = tr.querySelector(".lat-input")?.value || "";
+        if (lonValue) tr.dataset.coordLon = lonValue;
+        if (latValue) tr.dataset.coordLat = latValue;
+      });
+    }
+    activeProjectLocationMode = nextMode;
+    let autoFilled = 0;
+    getTableRows().forEach(tr => {
+      tr.dataset.anchor = getProjectLocationAnchor();
+      if (!nextIsRegionMode) {
+        const lonInput = tr.querySelector(".lon-input");
+        const latInput = tr.querySelector(".lat-input");
+        if (lonInput) lonInput.value = tr.dataset.coordLon || "";
+        if (latInput) latInput.value = tr.dataset.coordLat || "";
+      }
+      if (nextIsRegionMode && !String(tr.dataset.region || "").trim()) {
+        const lonValue = toNumber(tr.dataset.coordLon || tr.querySelector(".lon-input")?.value || "");
+        const latValue = toNumber(tr.dataset.coordLat || tr.querySelector(".lat-input")?.value || "");
+        if (lonValue !== "" && latValue !== "") {
+          const regionId = getRegionIdForPoint(Number(lonValue), Number(latValue));
+          if (regionId) {
+            tr.dataset.region = regionId;
+            autoFilled += 1;
+          }
+        }
+      }
+      syncProjectRowRegionInput(tr);
+      updateRowAnnotationPreview(tr);
+      syncCoordinateClearButtons(tr);
+    });
+    syncProjectLocationModeUi();
+    refreshProjectTableUx();
+    refreshActiveRowProperties();
+    if (options.render !== false) requestPreviewRefresh();
+    if (changed && options.status !== false) {
+      const key = nextIsRegionMode ? "status.locationModeRegions" : "status.locationModeCoordinates";
+      const message = autoFilled > 0 ? t("status.locationModeRegionsAutoFilled", { count: autoFilled }) : t(key);
+      setStatusMessage(message, "ok");
+    }
+  }
+  function normalizeImportedProjectRow(rawRow, index = 0, messages = []) {
+    const row = normalizeRow(rawRow);
+    row.anchor = getProjectLocationAnchor();
+    if (!isRegionLocationMode()) return row;
+    const input = String(rawRow && (rawRow.region || getField(rawRow, csvColumnAliases.region) || "") || "").trim();
+    const resolved = resolveProjectRegionInput(input);
+    row.lon = "";
+    row.lat = "";
+    row.region = resolved.status === "matched" ? resolved.id : "";
+    const rowNumber = index + 2;
+    if (resolved.status === "matched" && resolved.confidence !== "exact") {
+      messages.push(t("status.csvRowRegionMatched", { row: rowNumber, input, region: resolved.label }));
+    } else if (resolved.status === "unmatched") {
+      messages.push(t("status.csvRowRegionUnmatched", { row: rowNumber, input }));
+    } else if (resolved.status === "ambiguous") {
+      messages.push(t("status.csvRowRegionAmbiguous", { row: rowNumber, input }));
+    }
+    return row;
   }
 
   function normalizeLabelStyle(value) {
@@ -1406,22 +1612,12 @@
   }
 
   function normalizeChart(value) {
-    return String(value || "").toLowerCase() === "pie" ? "pie" : "none";
+    return "none";
   }
 
-  const chartSlicePalette = Object.freeze(["#3f6b5e", "#9f7616", "#5b8fa8", "#8f4f6a", "#596b8f", "#7a6f55"]);
 
-  function normalizeChartSlices(value) {
-    return parseArrayField(value).map((slice, index) => {
-      const item = slice && typeof slice === "object" ? slice : {};
-      const numericValue = Number(item.value);
-      const colour = isHexColour(item.color || item.colour) ? String(item.color || item.colour).trim() : chartSlicePalette[index % chartSlicePalette.length];
-      return {
-        label: normalizeLocalizedText(item.label || {}),
-        value: Number.isFinite(numericValue) && numericValue >= 0 ? numericValue : 0,
-        color: colour
-      };
-    });
+  function normalizeChartSlices(_value) {
+    return [];
   }
 
   function normalizeRegionStatus(value) {
@@ -1475,13 +1671,6 @@
     return t("table.label.compact");
   }
 
-  function getChartPreview(row) {
-    if (row && normalizeChart(row.chart) === "pie") {
-      const count = normalizeChartSlices(row.chartSlices).length;
-      return t("table.chart.pie", { count, unit: t(count === 1 ? "table.chart.slice" : "table.chart.slices") });
-    }
-    return t("table.chart.none");
-  }
   function normalizeRow(row) {
     const anchor = normalizeAnchor(row && row.anchor);
     return {
@@ -1495,7 +1684,7 @@
       lon: anchor === "region" ? "" : toNumber(getField(row, csvColumnAliases.lon)),
       lat: anchor === "region" ? "" : toNumber(getField(row, csvColumnAliases.lat)),
       anchor,
-      region: String(row && row.region || "").trim(),
+      region: String(row && row.region || getField(row, csvColumnAliases.region) || "").trim(),
       labelStyle: normalizeLabelStyle(row && row.labelStyle),
       content: normalizeAnnotationContent(row && row.content),
       chart: normalizeChart(row && row.chart),
@@ -1518,6 +1707,7 @@
     const fragment = document.createDocumentFragment();
     rows.forEach(row => {
       const normalized = normalizeRow(row);
+      normalized.anchor = getProjectLocationAnchor();
       if (normalized.typeFr) {
         const category = getCategoryForType(normalized.type);
         if (category && !category.labelFr) category.labelFr = normalized.typeFr;
@@ -1550,7 +1740,7 @@
     tr.dataset.nameEn = row.name || "";
     tr.dataset.nameFr = row.nameFr || "";
     tr.dataset.labelMaxChars = normalizeLabelMaxCharsOverride(row.labelMaxChars);
-    tr.dataset.anchor = normalizeAnchor(row.anchor);
+    tr.dataset.anchor = getProjectLocationAnchor();
     tr.dataset.region = String(row.region || "").trim();
     tr.dataset.labelStyle = normalizeLabelStyle(row.labelStyle);
     tr.dataset.content = annotationArrayToDataset(normalizeAnnotationContent(row.content));
@@ -1568,10 +1758,9 @@
           ${getTypeOptions(row.type)}
         </select>
       </td>
-      <td class="annotation-preview-cell anchor-preview-cell" data-cell-field="anchor" aria-readonly="true"><span class="anchor-preview-text"></span></td>
       <td class="annotation-preview-cell label-preview-cell" data-cell-field="labelStyle" aria-readonly="true"><span class="label-preview-text"></span></td>
-      <td class="annotation-preview-cell chart-preview-cell" data-cell-field="chart" aria-readonly="true"><span class="chart-preview-text"></span></td>
       <td class="bulk-edit-cell priority-cell vcell" data-cell-field="priority"><input class="priority-input" type="number" min="0" max="5" step="1" value="${priority}" aria-label="${escapeHtml(t("properties.field.priority"))}"></td>
+      <td class="bulk-edit-cell region-cell anchor-preview-cell vcell" data-cell-field="region"><select class="region-input" aria-label="${escapeHtml(t("properties.field.region"))}"></select></td>
       <td class="bulk-edit-cell coordinate-cell lon-cell vcell" data-cell-field="lon"><input class="lon-input" type="text" inputmode="decimal" value="${escapeHtml(formatProjectCoordinate(row.lon))}" aria-label="${escapeHtml(t("table.longitude"))}"><button class="clear-coordinate-cell" type="button" data-clear-coordinate="lon" aria-label="${escapeHtml(t("table.clearLongitude"))}" title="${escapeHtml(t("table.clearLongitude"))}" hidden>&times;</button></td>
       <td class="bulk-edit-cell coordinate-cell lat-cell vcell" data-cell-field="lat"><input class="lat-input" type="text" inputmode="decimal" value="${escapeHtml(formatProjectCoordinate(row.lat))}" aria-label="${escapeHtml(t("table.latitude"))}"><button class="clear-coordinate-cell" type="button" data-clear-coordinate="lat" aria-label="${escapeHtml(t("table.clearLatitude"))}" title="${escapeHtml(t("table.clearLatitude"))}" hidden>&times;</button></td>
       <td class="status-cell" data-cell-field="status" aria-readonly="true"><span class="row-status-badge"></span></td>
@@ -1592,12 +1781,16 @@
     tr.querySelectorAll("input,select").forEach(input => {
       if (input.classList.contains("row-select")) return;
       input.addEventListener("focus", () => primeInputUndo(input, "project row edit"));
-      input.addEventListener("change", () => handleRowEdit(input));
+      input.addEventListener("change", () => {
+        if (input.classList.contains("region-input")) tr.dataset.region = input.value;
+        handleRowEdit(input);
+      });
       input.addEventListener("blur", () => clearInputUndoCapture(input));
     });
     tr.querySelectorAll("input[type='text'],input[type='number']").forEach(input => {
       input.addEventListener("input", () => handleRowEdit(input));
     });
+    syncProjectRowRegionInput(tr);
     tr.querySelector(".row-select").addEventListener("change", event => {
       tr.classList.toggle("is-row-selected", event.target.checked);
       updateDeleteButtonState();
@@ -1681,7 +1874,7 @@
   function syncAnchorCoordinateInputs(tr, row = null) {
     if (!tr) return;
     const current = row || readRowElement(tr);
-    const useRegion = current && current.anchor === "region";
+    const useRegion = isRegionLocationMode();
     const lonInput = tr.querySelector(".lon-input");
     const latInput = tr.querySelector(".lat-input");
     if (lonInput) {
@@ -1703,7 +1896,6 @@
     syncAnchorCoordinateInputs(tr, current);
     setPreviewCell(tr, ".anchor-preview-text", getAnchorPreview(current));
     setPreviewCell(tr, ".label-preview-text", getLabelStylePreview(current));
-    setPreviewCell(tr, ".chart-preview-text", getChartPreview(current));
   }
   function getRows() {
     return getTableRows()
@@ -1715,7 +1907,6 @@
         || row.lat !== ""
         || row.region !== ""
         || row.content.length > 0
-        || normalizeChart(row.chart) === "pie"
       ));
   }
 
@@ -1727,17 +1918,19 @@
     const hasAnyCoordinate = Boolean(hasLon || hasLat);
     const hasBothCoordinates = Boolean(hasLon && hasLat);
     const hasRegionAnchor = Boolean(row && row.anchor === "region" && row.region);
+    const isRegionMode = isRegionLocationMode();
     const isBlank = !hasName && !hasAnyCoordinate && !hasRegionAnchor;
-    const isMissingCoordinate = row && row.anchor !== "region" && !isBlank && hasAnyCoordinate && !hasBothCoordinates;
-    const isCallout = row && row.anchor !== "region" && !isBlank && hasName && !hasAnyCoordinate;
-    const isMapped = !isBlank && (hasBothCoordinates || hasRegionAnchor);
+    const isMissingCoordinate = row && !isBlank && (isRegionMode ? !hasRegionAnchor : hasAnyCoordinate && !hasBothCoordinates);
+    const isCallout = row && !isRegionMode && !isBlank && hasName && !hasAnyCoordinate;
+    const isMapped = !isBlank && (isRegionMode ? hasRegionAnchor : hasBothCoordinates);
     return { isBlank, isMapped, isCallout, isMissingCoordinate, row };
   }
 
   function isProjectStatusInput(input) {
     return input.classList.contains("name-input")
       || input.classList.contains("lon-input")
-      || input.classList.contains("lat-input");
+      || input.classList.contains("lat-input")
+      || input.classList.contains("region-input");
   }
 
   function captureInputUndo(input, label) {
@@ -1762,7 +1955,7 @@
   function getCoordinateIssueRows() {
     return getTableRows()
       .map(readRowElement)
-      .filter(row => row && ((row.lon === "") !== (row.lat === "")));
+      .filter(row => row && (isRegionLocationMode() ? row.anchor === "region" && !row.region && (row.name || row.nameFr) : ((row.lon === "") !== (row.lat === ""))));
   }
 
   function updatePreviewState() {
@@ -1808,15 +2001,19 @@
     updateCanvasToolbar();
   }
 
+  function loadSampleData() {
+    pushAppUndoHistory("load sample data");
+    setRows(sampleRows);
+    setDocumentPropertiesContext();
+    setStatusMessage(t("status.sampleLoaded"), "ok");
+  }
+
   function handleEmptyStateAction(event) {
     const button = event.target.closest("[data-empty-action]");
     if (!button) return;
     const action = button.dataset.emptyAction;
     if (action === "load-sample") {
-      pushAppUndoHistory("load sample data");
-      setRows(sampleRows);
-      setDocumentPropertiesContext();
-      setStatusMessage(t("status.sampleLoaded"), "ok");
+      loadSampleData();
       return;
     }
     if (action === "import-csv") {
@@ -1833,7 +2030,8 @@
     tr.scrollIntoView({ block: "center", behavior: "smooth" });
     const lonInput = tr.querySelector(".lon-input");
     const latInput = tr.querySelector(".lat-input");
-    const target = lonInput && lonInput.value === "" ? lonInput : latInput && latInput.value === "" ? latInput : tr.querySelector(".name-input");
+    const regionInput = tr.querySelector(".region-input");
+    const target = isRegionLocationMode() && regionInput && !regionInput.value ? regionInput : lonInput && lonInput.value === "" ? lonInput : latInput && latInput.value === "" ? latInput : tr.querySelector(".name-input");
     if (target) target.focus({ preventScroll: true });
   }
 
@@ -1870,6 +2068,7 @@
       const priorityInput = tr.querySelector(".priority-input");
       const lonInput = tr.querySelector(".lon-input");
       const latInput = tr.querySelector(".lat-input");
+      const regionInput = tr.querySelector(".region-input");
       const hideLineInput = tr.querySelector(".hide-line-input");
       const elbowLeaderInput = tr.querySelector(".elbow-leader-input");
       const selectInput = tr.querySelector(".row-select");
@@ -1884,6 +2083,7 @@
       if (priorityInput) priorityInput.setAttribute("aria-label", t("properties.field.priority"));
       if (lonInput) lonInput.setAttribute("aria-label", t("table.longitude"));
       if (latInput) latInput.setAttribute("aria-label", t("table.latitude"));
+      if (regionInput) regionInput.setAttribute("aria-label", t("properties.field.region"));
       if (hideLineInput) hideLineInput.setAttribute("aria-label", t("properties.field.hideLeaderLine"));
       if (elbowLeaderInput) elbowLeaderInput.setAttribute("aria-label", t("properties.field.useElbowLeader"));
       if (selectInput) selectInput.setAttribute("aria-label", t("table.selectRow"));
@@ -1985,7 +2185,7 @@
       if (button.dataset.projectFilter === "all") {
         button.textContent = t("toolbar.filters.allCount", { count: dataRows });
       } else if (button.dataset.projectFilter === "missing") {
-        button.textContent = t("toolbar.filters.missingCoordinatesCount", { count: missingRows });
+        button.textContent = t(isRegionLocationMode() ? "toolbar.filters.missingRegionsCount" : "toolbar.filters.missingCoordinatesCount", { count: missingRows });
       } else if (button.dataset.projectFilter === "callouts") {
         const wide = button.querySelector(".filter-label-wide");
         const compact = button.querySelector(".filter-label-compact");
@@ -1993,7 +2193,11 @@
         if (compact) compact.textContent = t("toolbar.filters.calloutsCount", { count: calloutRows });
       }
     });
-    if (els.projectFilterSelect) els.projectFilterSelect.value = activeProjectFilter;
+    if (els.projectFilterSelect) {
+      const missingOption = els.projectFilterSelect.querySelector('option[value="missing"]');
+      if (missingOption) missingOption.textContent = t(isRegionLocationMode() ? "toolbar.filters.missingRegions" : "toolbar.filters.missingCoordinates");
+      els.projectFilterSelect.value = activeProjectFilter;
+    }
     updateWorkspaceSummary();
     updateExportLanguageNotice();
     if (activeDataTable === "translate") renderTranslationWorkbench();
@@ -2022,10 +2226,10 @@
       footnote: normalizeFootnote(tr.querySelector(".footnote-input").value),
       type: cleanType(tr.querySelector(".type-input").value),
       priority: toPriority(tr.querySelector(".priority-input").value),
-      lon: normalizeAnchor(tr.dataset.anchor) === "region" ? "" : toNumber(tr.querySelector(".lon-input").value),
-      lat: normalizeAnchor(tr.dataset.anchor) === "region" ? "" : toNumber(tr.querySelector(".lat-input").value),
-      anchor: normalizeAnchor(tr.dataset.anchor),
-      region: String(tr.dataset.region || "").trim(),
+      lon: isRegionLocationMode() ? "" : toNumber(tr.querySelector(".lon-input").value),
+      lat: isRegionLocationMode() ? "" : toNumber(tr.querySelector(".lat-input").value),
+      anchor: getProjectLocationAnchor(),
+      region: String(tr.querySelector(".region-input")?.value || tr.dataset.region || "").trim(),
       labelStyle: normalizeLabelStyle(tr.dataset.labelStyle),
       content: normalizeAnnotationContent(tr.dataset.content),
       chart: normalizeChart(tr.dataset.chart),
@@ -2058,8 +2262,12 @@
       tr.dataset.coordLat = formatProjectCoordinate(value);
       tr.querySelector(".lat-input").value = tr.dataset.coordLat;
     }
-    if (field === "anchor") tr.dataset.anchor = normalizeAnchor(value);
-    if (field === "region") tr.dataset.region = String(value || "").trim();
+    if (field === "anchor") tr.dataset.anchor = getProjectLocationAnchor();
+    if (field === "region") {
+      tr.dataset.region = String(value || "").trim();
+      const regionInput = tr.querySelector(".region-input");
+      if (regionInput) regionInput.value = tr.dataset.region;
+    }
     if (field === "labelStyle") tr.dataset.labelStyle = normalizeLabelStyle(value);
     if (field === "content") tr.dataset.content = annotationArrayToDataset(normalizeAnnotationContent(value));
     if (field === "chart") tr.dataset.chart = normalizeChart(value);
@@ -2069,7 +2277,7 @@
     if (field === "labelMaxChars") tr.dataset.labelMaxChars = normalizeLabelMaxCharsOverride(value);
     updateRowTitles(tr);
     updateRowAnnotationPreview(tr);
-    if (field === "lon" || field === "lat" || field === "anchor") syncCoordinateClearButtons(tr);
+    if (field === "lon" || field === "lat" || field === "anchor" || field === "region") syncCoordinateClearButtons(tr);
     if (["lon", "lat", "anchor", "region", "labelStyle", "content", "chart", "chartSlices"].includes(field) || (field === "name" && activeDataTable !== "translate")) scheduleProjectTableUxRefresh();
     return readRowElement(tr);
   }
@@ -2105,7 +2313,7 @@
 
   function getProjectBulkCellFromTarget(target) {
     const cell = target && target.closest ? target.closest("#projectTable td[data-cell-field]") : null;
-    if (!cell || !selectableProjectCellFields.includes(cell.dataset.cellField)) return null;
+    if (!cell || !getSelectableProjectCellFields().includes(cell.dataset.cellField)) return null;
     const row = cell.closest("tr");
     if (!row || !row.dataset.rowId) return null;
     return { row, cell, rowId: row.dataset.rowId, field: cell.dataset.cellField };
@@ -2116,8 +2324,9 @@
     const rows = getTableRows();
     const startRow = rows.findIndex(row => row.dataset.rowId === String(anchor.rowId));
     const endRow = rows.findIndex(row => row.dataset.rowId === String(target.rowId));
-    const startField = selectableProjectCellFields.indexOf(anchor.field);
-    const endField = selectableProjectCellFields.indexOf(target.field);
+    const activeFields = getSelectableProjectCellFields();
+    const startField = activeFields.indexOf(anchor.field);
+    const endField = activeFields.indexOf(target.field);
     if (startRow < 0 || endRow < 0 || startField < 0 || endField < 0) return [];
     const rowMin = Math.min(startRow, endRow);
     const rowMax = Math.max(startRow, endRow);
@@ -2126,7 +2335,7 @@
     const keys = [];
     for (let rowIndex = rowMin; rowIndex <= rowMax; rowIndex += 1) {
       for (let fieldIndex = fieldMin; fieldIndex <= fieldMax; fieldIndex += 1) {
-        keys.push(getProjectCellKey(rows[rowIndex].dataset.rowId, selectableProjectCellFields[fieldIndex]));
+        keys.push(getProjectCellKey(rows[rowIndex].dataset.rowId, activeFields[fieldIndex]));
       }
     }
     return keys;
@@ -2141,7 +2350,7 @@
     });
     const selectedFields = Array.from(selectedProjectCells).map(key => parseProjectCellKey(key).field);
     const hasPriority = selectedFields.includes("priority");
-    const hasCoordinate = selectedFields.some(field => field === "lon" || field === "lat");
+    const hasCoordinate = selectedFields.some(field => field === "lon" || field === "lat" || field === "region");
     if (els.bulkPriorityInput) {
       els.bulkPriorityInput.disabled = !hasPriority;
       if (!hasPriority) els.bulkPriorityInput.value = "";
@@ -2202,10 +2411,10 @@
   function clearSelectedCoordinateCells() {
     const keys = Array.from(selectedProjectCells).filter(key => {
       const field = parseProjectCellKey(key).field;
-      return field === "lon" || field === "lat";
+      return field === "lon" || field === "lat" || field === "region";
     });
     if (!keys.length) return;
-    pushAppUndoHistory("bulk coordinate clear");
+    pushAppUndoHistory(isRegionLocationMode() ? "bulk region clear" : "bulk coordinate clear");
     keys.forEach(key => {
       const { rowId, field } = parseProjectCellKey(key);
       updateProjectRowField(rowId, field, "");
@@ -3220,7 +3429,7 @@
     const counts = {};
     rows.forEach(row => {
       if (row.lon === "" || row.lat === "") return;
-      const regionId = getRegionIdForPoint(Number(row.lon), Number(row.lat));
+      const regionId = row.anchor === "region" ? row.region : getRegionIdForPoint(Number(row.lon), Number(row.lat));
       if (!regionId) return;
       counts[regionId] = (counts[regionId] || 0) + 1;
     });
@@ -3586,6 +3795,8 @@
     regionStatuses = {};
     regionColourOverrides = {};
     await loadGeo();
+    syncAllProjectRegionInputs();
+    syncProjectLocationModeUi();
     render();
     refreshMapPropertiesIfActive();
   }
@@ -4944,15 +5155,17 @@
   }
 
   function summarizeImportRows(rows) {
-    const mappedCount = rows.filter(row => row.lon !== "" && row.lat !== "").length;
-    const missingCoordinateCount = rows.filter(row => (row.lon === "") !== (row.lat === "")).length;
-    const calloutCount = rows.filter(row => row.lon === "" && row.lat === "").length;
+    const useRegions = isRegionLocationMode();
+    const mappedCount = rows.filter(row => useRegions ? row.anchor === "region" && row.region : row.lon !== "" && row.lat !== "").length;
+    const missingCoordinateCount = rows.filter(row => useRegions ? row.anchor === "region" && !row.region && (row.name || row.nameFr) : (row.lon === "") !== (row.lat === "")).length;
+    const calloutCount = rows.filter(row => useRegions ? false : row.lon === "" && row.lat === "").length;
     const categoryNames = Array.from(new Set(rows.map(row => getCategoryLabel(row.type, currentUiLanguage))));
     return { mappedCount, calloutCount, missingCoordinateCount, categoryNames };
   }
 
   function renderCsvPreviewRows(rows) {
     const previewRows = rows.slice(0, 6);
+    const useRegions = isRegionLocationMode();
     if (!previewRows.length) {
       return `<div class="csv-preview-empty">${escapeHtml(t("dialog.csv.noImportableRows"))}</div>`;
     }
@@ -4963,8 +5176,7 @@
             <tr>
               <th>${escapeHtml(t("dialog.csv.previewProjectName"))}</th>
               <th>${escapeHtml(t("dialog.csv.previewType"))}</th>
-              <th>${escapeHtml(t("dialog.csv.previewLongitude"))}</th>
-              <th>${escapeHtml(t("dialog.csv.previewLatitude"))}</th>
+              ${useRegions ? `<th>${escapeHtml(t("dialog.csv.field.region"))}</th>` : `<th>${escapeHtml(t("dialog.csv.previewLongitude"))}</th><th>${escapeHtml(t("dialog.csv.previewLatitude"))}</th>`}
               <th>${escapeHtml(t("dialog.csv.previewStatus"))}</th>
             </tr>
           </thead>
@@ -4972,14 +5184,14 @@
             ${previewRows.map(row => {
               const hasLon = row.lon !== "";
               const hasLat = row.lat !== "";
-              const statusState = hasLon && hasLat ? "mapped" : hasLon || hasLat ? "coordinate-issue" : "callout";
-              const status = hasLon && hasLat ? t("table.status.mapped") : hasLon || hasLat ? t("project.status.coordinateIssue") : t("table.status.callout");
+              const hasRegion = row.anchor === "region" && row.region;
+              const statusState = useRegions ? hasRegion ? "mapped" : "coordinate-issue" : hasLon && hasLat ? "mapped" : hasLon || hasLat ? "coordinate-issue" : "callout";
+              const status = useRegions ? hasRegion ? t("table.status.mapped") : t("project.status.coordinateIssue") : hasLon && hasLat ? t("table.status.mapped") : hasLon || hasLat ? t("project.status.coordinateIssue") : t("table.status.callout");
               return `
                 <tr>
                   <td>${escapeHtml(row.name || t("dialog.csv.previewBlank"))}</td>
                   <td>${escapeHtml(getCategoryLabel(row.type))}</td>
-                  <td>${escapeHtml(row.lon === "" ? "" : String(row.lon))}</td>
-                  <td>${escapeHtml(row.lat === "" ? "" : String(row.lat))}</td>
+                  ${useRegions ? `<td>${escapeHtml(row.region || "")}</td>` : `<td>${escapeHtml(row.lon === "" ? "" : String(row.lon))}</td><td>${escapeHtml(row.lat === "" ? "" : String(row.lat))}</td>`}
                   <td><span class="csv-preview-badge" data-state="${escapeHtml(statusState)}">${escapeHtml(status)}</span></td>
                 </tr>
               `;
@@ -5248,7 +5460,7 @@
     const hasLon = row.lon !== "";
     const hasLat = row.lat !== "";
     const hasRegionAnchor = row.anchor === "region" && row.region;
-    const status = hasRegionAnchor ? "Mapped to region" : hasLon && hasLat ? t("project.status.mapped") : hasLon || hasLat ? t("project.status.coordinateIssue") : t("project.status.callout");
+    const status = hasRegionAnchor ? t("project.status.mappedRegion") : hasLon && hasLat ? t("project.status.mapped") : hasLon || hasLat ? t("project.status.coordinateIssue") : t("project.status.callout");
     const displayRow = {
       ...row,
       lon: formatProjectCoordinate(row.lon),
@@ -5265,6 +5477,7 @@
       typeOptions: getTypeOptions(row.type),
       status,
       regionOptions: getRegionRows().map(region => ({ value: region.id, label: region.name })),
+      projectLocationMode: activeProjectLocationMode,
       authoringLanguage: activeAuthoringLanguage,
       globalLabelMaxChars: normalizeLabelMaxChars(els.labelCharsInput.value),
       escapeHtml,
@@ -5717,9 +5930,39 @@
     const rowId = form.dataset.rowId;
     if (!rowId) return;
     const currentRow = readRowElement(getRowElementById(rowId));
+
+    if (field === "contentImageUpload") {
+      const file = event.target.files && event.target.files[0];
+      event.target.value = "";
+      if (!file) return;
+      const content = normalizeAnnotationContent(currentRow && currentRow.content);
+      const blockIndex = Number(event.target.dataset.blockIndex);
+      const block = Number.isInteger(blockIndex) ? content[blockIndex] : null;
+      if (!block || block.type !== "image") return;
+      try {
+        const dataUrl = await validateRichLabelImageFile(file);
+        block.assetRef = dataUrl;
+        pushAppUndoHistory("project row edit");
+        const row = updateProjectRowField(rowId, "content", content);
+        if (!row) return;
+        updateWorkspaceSummary();
+        updateExportLanguageNotice();
+        requestPreviewRefresh();
+        setRowPropertiesContext(activePropertiesSelection && activePropertiesSelection.kind || "label", row, {
+          labelKey: form.dataset.labelKey,
+          manual: Boolean(manualLabelPositions[form.dataset.labelKey]),
+          advancedOpen: Boolean(event.target.closest("details")?.open)
+        });
+        setStatusMessage(t("status.richImageUploaded"), "ok");
+      } catch (error) {
+        setStatusMessage(t("status.richImageUploadFailed", { message: translateErrorMessage(error) }), "danger");
+      }
+      return;
+    }
+
     let fieldToUpdate = field;
     let value = ["hideLine", "elbowLeader"].includes(field) ? event.target.checked : event.target.value;
-    if (field === "contentParagraph" || field === "contentImageCaption" || field === "contentImageAssetRef" || field === "contentBulletItem") {
+    if (field === "contentParagraph" || field === "contentImageCaption" || field === "contentBulletItem") {
       const content = normalizeAnnotationContent(currentRow && currentRow.content);
       const blockIndex = Number(event.target.dataset.blockIndex);
       const itemIndex = Number(event.target.dataset.itemIndex);
@@ -5729,8 +5972,6 @@
         block[activeAuthoringLanguage === "fr" ? "fr" : "en"] = String(event.target.value || "").trim();
       } else if (field === "contentImageCaption" && block.type === "image") {
         block.caption[activeAuthoringLanguage === "fr" ? "fr" : "en"] = String(event.target.value || "").trim();
-      } else if (field === "contentImageAssetRef" && block.type === "image") {
-        block.assetRef = String(event.target.value || "").trim();
       } else if (field === "contentBulletItem" && block.type === "bullets" && Number.isInteger(itemIndex) && block.items[itemIndex]) {
         block.items[itemIndex][activeAuthoringLanguage === "fr" ? "fr" : "en"] = String(event.target.value || "").trim();
       } else {
@@ -5738,20 +5979,10 @@
       }
       fieldToUpdate = "content";
       value = content;
-    } else if (field === "chartSliceLabel" || field === "chartSliceValue" || field === "chartSliceColor") {
-      const slices = normalizeChartSlices(currentRow && currentRow.chartSlices);
-      const index = Number(event.target.dataset.sliceIndex);
-      const slice = Number.isInteger(index) ? slices[index] : null;
-      if (!slice) return;
-      if (field === "chartSliceLabel") slice.label[activeAuthoringLanguage === "fr" ? "fr" : "en"] = String(event.target.value || "").trim();
-      if (field === "chartSliceValue") slice.value = Math.max(0, Number(event.target.value) || 0);
-      if (field === "chartSliceColor") slice.color = isHexColour(event.target.value) ? event.target.value : slice.color;
-      fieldToUpdate = "chartSlices";
-      value = slices;
     }    pushAppUndoHistory("project row edit");
     const row = updateProjectRowField(rowId, fieldToUpdate, value);
     if (!row) return;
-    if (fieldToUpdate === "nameFr" || fieldToUpdate === "content" || fieldToUpdate === "chartSlices") {
+    if (fieldToUpdate === "nameFr" || fieldToUpdate === "content") {
       updateWorkspaceSummary();
       updateExportLanguageNotice();
     }
@@ -5770,7 +6001,7 @@
     const action = button.dataset.propertyAction;
 
     const rowForm = button.closest(".properties-form[data-row-id]");
-    if (rowForm && ["add-content-paragraph", "add-content-bullets", "add-content-image", "move-content-block-up", "move-content-block-down", "remove-content-block", "add-content-bullet-item", "remove-content-bullet-item", "add-chart-slice", "remove-chart-slice"].includes(action)) {
+    if (rowForm && ["add-content-paragraph", "add-content-bullets", "add-content-image", "move-content-block-up", "move-content-block-down", "remove-content-block", "clear-content-image", "add-content-bullet-item", "remove-content-bullet-item"].includes(action)) {
       const rowId = rowForm.dataset.rowId;
       const tr = getRowElementById(rowId);
       const row = readRowElement(tr);
@@ -5796,6 +6027,15 @@
       } else if (action === "remove-content-block") {
         const index = Number(button.dataset.blockIndex);
         updateProjectRowField(rowId, "content", row.content.filter((item, itemIndex) => itemIndex !== index));
+      } else if (action === "clear-content-image") {
+        const index = Number(button.dataset.blockIndex);
+        const content = normalizeAnnotationContent(row.content);
+        const block = Number.isInteger(index) ? content[index] : null;
+        if (block && block.type === "image") {
+          block.assetRef = "";
+          updateProjectRowField(rowId, "content", content);
+          setStatusMessage(t("status.richImageCleared"), "ok");
+        }
       } else if (action === "add-content-bullet-item" || action === "remove-content-bullet-item") {
         const blockIndex = Number(button.dataset.blockIndex);
         const itemIndex = Number(button.dataset.itemIndex);
@@ -5806,13 +6046,6 @@
           if (action === "remove-content-bullet-item") block.items = block.items.filter((item, index) => index !== itemIndex);
           updateProjectRowField(rowId, "content", content);
         }
-      } else if (action === "add-chart-slice") {
-        const slices = normalizeChartSlices(row.chartSlices);
-        updateProjectRowField(rowId, "chartSlices", slices.concat([{ label: { en: "", fr: "" }, value: 1, color: chartSlicePalette[slices.length % chartSlicePalette.length] }]));
-        updateProjectRowField(rowId, "chart", "pie");
-      } else if (action === "remove-chart-slice") {
-        const index = Number(button.dataset.sliceIndex);
-        updateProjectRowField(rowId, "chartSlices", row.chartSlices.filter((item, itemIndex) => itemIndex !== index));
       }
       updateWorkspaceSummary();
       updateExportLanguageNotice();
@@ -6971,12 +7204,14 @@
     const tr = active.closest("tr");
     const rowIndex = getTableRows().indexOf(tr);
     let fieldIndex = -1;
-    if (active.classList.contains("name-input")) fieldIndex = tableFields.indexOf("name");
-    if (active.classList.contains("footnote-input")) fieldIndex = tableFields.indexOf("footnote");
-    if (active.classList.contains("type-input")) fieldIndex = tableFields.indexOf("type");
-    if (active.classList.contains("priority-input")) fieldIndex = tableFields.indexOf("priority");
-    if (active.classList.contains("lon-input")) fieldIndex = tableFields.indexOf("lon");
-    if (active.classList.contains("lat-input")) fieldIndex = tableFields.indexOf("lat");
+    const activeFields = getActiveTableFields();
+    if (active.classList.contains("name-input")) fieldIndex = activeFields.indexOf("name");
+    if (active.classList.contains("footnote-input")) fieldIndex = activeFields.indexOf("footnote");
+    if (active.classList.contains("type-input")) fieldIndex = activeFields.indexOf("type");
+    if (active.classList.contains("priority-input")) fieldIndex = activeFields.indexOf("priority");
+    if (active.classList.contains("region-input")) fieldIndex = activeFields.indexOf("region");
+    if (active.classList.contains("lon-input")) fieldIndex = activeFields.indexOf("lon");
+    if (active.classList.contains("lat-input")) fieldIndex = activeFields.indexOf("lat");
 
     if (rowIndex < 0 || fieldIndex < 0) return null;
     return { rowIndex, fieldIndex };
@@ -7068,6 +7303,12 @@
     if (field === "footnote") tr.querySelector(".footnote-input").value = normalizeFootnote(value);
     if (field === "type") tr.querySelector(".type-input").value = cleanType(value);
     if (field === "priority") tr.querySelector(".priority-input").value = toPriority(value);
+    if (field === "region") {
+      const resolved = resolveProjectRegionInput(value);
+      tr.dataset.region = resolved.status === "matched" ? resolved.id : "";
+      const regionInput = tr.querySelector(".region-input");
+      if (regionInput) regionInput.value = tr.dataset.region;
+    }
     if (field === "lon") tr.querySelector(".lon-input").value = formatProjectCoordinate(value);
     if (field === "lat") tr.querySelector(".lat-input").value = formatProjectCoordinate(value);
     if (field === "lon" || field === "lat") syncCoordinateClearButtons(tr);
@@ -7100,7 +7341,7 @@
     pastedRows.forEach((pastedRow, rowOffset) => {
       const tr = tableRows[start.rowIndex + rowOffset];
       pastedRow.forEach((value, colOffset) => {
-        const field = tableFields[start.fieldIndex + colOffset];
+        const field = getActiveTableFields()[start.fieldIndex + colOffset];
         if (field) setTableField(tr, field, value);
       });
     });
@@ -8373,6 +8614,7 @@
   function exportCsv() {
     const csvExport = projectIo.createCsvExport({
       rows: getRows(),
+      projectLocationMode: activeProjectLocationMode,
       getCategoryLabel,
       getCategoryText,
       getCategoryForType
@@ -8383,7 +8625,7 @@
     setStatusMessage(t("status.csvExportStarted"), "ok");
   }
 
-  const currentProjectVersion = 5;
+  const currentProjectVersion = 6;
 
   function validateAndNormalizeProject(rawProject) {
     return projectIo.validateAndNormalizeProject(rawProject, {
@@ -8403,6 +8645,7 @@
       boundary: currentBoundary,
       mapStyle: currentMapStylePreset,
       mapLanguage: currentMapLanguage,
+      projectLocationMode: activeProjectLocationMode,
       settings: getSettings(),
       chromeTranslations,
       mapDetails: { ...mapDetails },
@@ -8461,8 +8704,11 @@
         regionValues = project.regionValues || {};
         regionStatuses = project.regionStatuses || {};
         restoreLanguageLayouts(project, projectLanguage);
+        activeProjectLocationMode = normalizeProjectLocationMode(project.projectLocationMode || deriveProjectLocationModeFromRows(project.rows));
+        syncProjectLocationModeUi();
         setRows(project.rows, [], { preserveManualPositions: true, render: false });
         await loadGeo();
+        syncAllProjectRegionInputs();
         renderRegionControls();
         render();
         setStatusMessage(t("status.projectLoaded", { count: project.rows.length }), "ok");
@@ -8492,6 +8738,57 @@
     if (activeDataTable === "quality") {
       refreshQualityMetricsPanel();
       renderPropertiesForActiveState();
+    }
+  }
+
+  function hasProjectStartupInformation() {
+    return getTableRows().length > 0;
+  }
+
+  function openStartupDialogIfEmpty() {
+    if (startupDialogDismissed || hasProjectStartupInformation()) return;
+    openDialog(els.startupDialog, els.previewTableTab);
+    els.startupStartNewBtn?.focus({ preventScroll: true });
+  }
+
+  function closeStartupDialog() {
+    startupDialogDismissed = true;
+    closeDialog(els.startupDialog);
+  }
+
+  function getDialogByCloseKey(key) {
+    if (key === "startup") return els.startupDialog;
+    if (key === "map-details") return els.mapDetailsDialog;
+    if (key === "point-catalog") return els.pointCatalogDialog;
+    return els.csvMapDialog;
+  }
+
+  function closeDialogByKey(key) {
+    if (key === "startup") closeStartupDialog();
+    else closeDialog(getDialogByCloseKey(key));
+  }
+
+  function handleStartupDialogClick(event) {
+    const button = event.target.closest("[data-startup-action]");
+    if (!button) return;
+    const action = button.dataset.startupAction;
+    closeStartupDialog();
+    if (action === "new") {
+      setActiveDataTab("projects");
+      setStatusMessage(t("status.startupNewProject"), "ok");
+      return;
+    }
+    if (action === "open") {
+      els.projectInput.click();
+      return;
+    }
+    if (action === "sample") {
+      loadSampleData();
+      return;
+    }
+    if (action === "csv") {
+      setActiveDataTab("projects");
+      els.csvInput.click();
     }
   }
 
@@ -8666,6 +8963,13 @@
     { key: "lon", labelKey: "dialog.csv.field.lon", required: true },
     { key: "lat", labelKey: "dialog.csv.field.lat", required: true }
   ];
+  const regionCsvMapTargets = [
+    { key: "name", labelKey: "dialog.csv.field.name", required: true },
+    { key: "nameFr", labelKey: "dialog.csv.field.nameFr", required: false },
+    { key: "type", labelKey: "dialog.csv.field.type", required: true },
+    { key: "priority", labelKey: "dialog.csv.field.priority", required: false },
+    { key: "region", labelKey: "dialog.csv.field.region", required: true }
+  ];
 
   const translationCsvMapTargets = [
     { key: "name", labelKey: "dialog.csv.field.translationName", required: true },
@@ -8678,11 +8982,13 @@
   }
 
   function getCsvMappingTargets(mode = getCsvMappingMode()) {
-    return mode === "translations" ? translationCsvMapTargets : csvMapTargets;
+    if (mode === "translations") return translationCsvMapTargets;
+    return isRegionLocationMode() ? regionCsvMapTargets : csvMapTargets;
   }
 
   function getCsvMappingStorageKey(mode = getCsvMappingMode()) {
-    return mode === "translations" ? "plotypus.translationCsvMapping" : "plotypus.csvMapping";
+    if (mode === "translations") return "plotypus.translationCsvMapping";
+    return isRegionLocationMode() ? "plotypus.regionCsvMapping" : "plotypus.csvMapping";
   }
 
   function findCsvSourceForTarget(fields, target) {
@@ -8953,8 +9259,12 @@
 
     if (!hasColumn(csvColumnAliases.name)) messages.push(t("status.csvMissingNameColumn"));
     if (!hasColumn(csvColumnAliases.type)) messages.push(t("status.csvMissingTypeColumn", { category: getCategoryLabel(getDefaultCategory().id, currentUiLanguage) }));
-    if (!hasColumn(csvColumnAliases.lon)) messages.push(t("status.csvMissingLongitudeColumn"));
-    if (!hasColumn(csvColumnAliases.lat)) messages.push(t("status.csvMissingLatitudeColumn"));
+    if (isRegionLocationMode()) {
+      if (!hasColumn(csvColumnAliases.region)) messages.push(t("status.csvMissingRegionColumn"));
+    } else {
+      if (!hasColumn(csvColumnAliases.lon)) messages.push(t("status.csvMissingLongitudeColumn"));
+      if (!hasColumn(csvColumnAliases.lat)) messages.push(t("status.csvMissingLatitudeColumn"));
+    }
 
     (results.errors || []).forEach(error => {
       const rowNumber = Number.isFinite(error.row) ? error.row + 2 : "unknown";
@@ -8967,10 +9277,11 @@
         messages.push(t("status.csvRowExtraValues", { row: index + 2 }));
       }
 
-      const row = normalizeRow(rawRow);
+      const row = normalizeImportedProjectRow(rawRow, index, messages);
       const hasLon = row.lon !== "";
       const hasLat = row.lat !== "";
-      if (!row.name && !hasLon && !hasLat) return;
+      const hasRegion = row.anchor === "region" && row.region;
+      if (!row.name && !hasLon && !hasLat && !hasRegion) return;
       if (row.footnote && !getRenderableFootnote(row.footnote)) {
         messages.push(t("status.csvRowFootnote", { row: index + 2 }));
       }
@@ -8991,11 +9302,7 @@
   }
 
   function initEvents() {
-    on(els.ribbonLoadSampleBtn, "click", () => {
-      pushAppUndoHistory("load sample data");
-      setRows(sampleRows);
-      setDocumentPropertiesContext();
-    });
+    on(els.ribbonLoadSampleBtn, "click", loadSampleData);
     on(els.ribbonUndoBtn, "click", undoLastManualLayoutChange);
     on(els.ribbonOpenProjectBtn, "click", () => els.projectInput.click());
     on(els.ribbonSaveProjectBtn, "click", saveProject);
@@ -9101,6 +9408,7 @@
     } else {
       propertiesDrawerMedia.addListener(syncResponsivePropertiesState);
     }
+    on(els.startupDialog, "click", handleStartupDialogClick);
     on(els.mapDetailsForm, "submit", saveMapDetails);
     on(els.mapDetailsForm, "input", updateMapDetailsDraftState);
     on(els.confirmCsvMapBtn, "click", confirmCsvMapping);
@@ -9130,7 +9438,7 @@
     document.querySelectorAll("[data-dialog-close]").forEach(control => {
       on(control, "click", () => {
         const key = control.dataset.dialogClose;
-        closeDialog(key === "map-details" ? els.mapDetailsDialog : key === "point-catalog" ? els.pointCatalogDialog : els.csvMapDialog);
+        closeDialogByKey(key);
         if (key === "map-details") updateMapDetailsState();
       });
     });
@@ -9199,6 +9507,9 @@
       on(button, "click", () => setProjectFilter(button.dataset.projectFilter));
     });
     on(els.projectFilterSelect, "change", event => setProjectFilter(event.target.value));
+    els.projectLocationModeButtons.forEach(button => {
+      on(button, "click", () => setProjectLocationMode(button.dataset.projectLocationMode));
+    });
     on(els.projectTable, "paste", pasteIntoTable);
     on(els.projectTable, "click", handleCoordinateCellClear);
     on(els.projectTable, "pointerdown", handleProjectCellSelection);
@@ -9212,11 +9523,12 @@
     on(els.bulkClearCoordinatesBtn, "click", clearSelectedCoordinateCells);
     document.addEventListener("keydown", handleGlobalKeyboardShortcuts);
     document.addEventListener("keydown", event => {
-      const openDialogElement = [els.csvMapDialog, els.pointCatalogDialog, els.mapDetailsDialog].find(dialog => dialog && !dialog.hidden);
+      const openDialogElement = [els.startupDialog, els.csvMapDialog, els.pointCatalogDialog, els.mapDetailsDialog].find(dialog => dialog && !dialog.hidden);
       if (!openDialogElement) return;
       if (event.key === "Escape") {
         event.preventDefault();
-        closeDialog(openDialogElement);
+        if (openDialogElement === els.startupDialog) closeStartupDialog();
+        else closeDialog(openDialogElement);
         return;
       }
       if (event.key === "Tab") {
@@ -9494,6 +9806,7 @@
     await loadGeo();
     render();
     setActiveDataTab("preview");
+    openStartupDialogIfEmpty();
   }
 
   function createTestApi() {
@@ -9546,14 +9859,3 @@
 
   init();
 })();
-
-
-
-
-
-
-
-
-
-
-

@@ -73,6 +73,16 @@
     const defaultBoundary = options.defaultBoundary || Object.keys(boundarySources)[0] || "canada";
     const defaultMapStyle = options.defaultMapStyle || Object.keys(mapStylePresets)[0] || "";
     const normalizeLanguage = options.normalizeLanguage || (value => value === "fr" ? "fr" : "en");
+    const normalizeProjectLocationMode = value => {
+      const normalized = String(value || "").toLowerCase();
+      return normalized === "region" || normalized === "regions" ? "regions" : "coordinates";
+    };
+    const deriveProjectLocationMode = rows => {
+      const meaningfulRows = (rows || []).filter(row => row && (row.name || row.nameFr || row.region || row.lon !== "" || row.lat !== ""));
+      if (!meaningfulRows.length) return "coordinates";
+      const regionRows = meaningfulRows.filter(row => String(row.anchor || "").toLowerCase() === "region" || (row.region && row.lon === "" && row.lat === ""));
+      return regionRows.length === meaningfulRows.length ? "regions" : "coordinates";
+    };
 
     if (!isPlainObject(rawProject)) throw validationError("Project file must contain a JSON object.", "project.error.jsonObject");
     const version = rawProject.version === undefined ? 1 : Number(rawProject.version);
@@ -133,6 +143,7 @@
       boundary: Object.prototype.hasOwnProperty.call(boundarySources, rawProject.boundary) ? rawProject.boundary : defaultBoundary,
       mapStyle: Object.prototype.hasOwnProperty.call(mapStylePresets, rawProject.mapStyle) ? rawProject.mapStyle : defaultMapStyle,
       mapLanguage: normalizeLanguage(rawProject.mapLanguage || rawProject.settings && rawProject.settings.mapLanguage),
+      projectLocationMode: rawProject.projectLocationMode === undefined ? deriveProjectLocationMode(rawProject.rows) : normalizeProjectLocationMode(rawProject.projectLocationMode),
       settings: rawProject.settings || {},
       categories: rawProject.categories || [],
       rows: rawProject.rows

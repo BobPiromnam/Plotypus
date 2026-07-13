@@ -169,6 +169,7 @@
       status = "",
       globalLabelMaxChars = 24,
       regionOptions = [],
+      projectLocationMode = "coordinates",
       authoringLanguage = "en",
       escapeHtml
     } = options || {};
@@ -179,14 +180,11 @@
       ? globalLabelMaxChars
       : row.labelMaxChars;
     const numericStyle = "font-family: &quot;IBM Plex Mono&quot;, ui-monospace, monospace; text-align: right; font-variant-numeric: tabular-nums;";
-    const anchor = row.anchor === "region" ? "region" : "coord";
+    const anchor = projectLocationMode === "regions" ? "region" : "coord";
     const labelStyle = row.labelStyle === "rich" ? "rich" : "compact";
     const languageKey = authoringLanguage === "fr" ? "fr" : "en";
     const content = Array.isArray(row.content) ? row.content : [];
-    const chart = row.chart === "pie" ? "pie" : "none";
-    const chartSlices = Array.isArray(row.chartSlices) ? row.chartSlices : [];
     const localText = value => value && typeof value === "object" ? String(value[languageKey] || "") : "";
-    const chartPalette = ["#3f6b5e", "#9f7616", "#5b8fa8", "#8f4f6a", "#596b8f", "#7a6f55"];
     const titleLabel = labelStyle === "rich" ? t("properties.annotation.title") : t("properties.field.projectName");
     const titleFrLabel = labelStyle === "rich" ? t("properties.annotation.titleFr") : t("properties.field.projectNameFr");
     const regionSelectOptions = regionOptions.length
@@ -229,13 +227,26 @@
           }
           if (type === "image") {
             const caption = block.caption && typeof block.caption === "object" ? block.caption : {};
+            const assetRef = String(block.assetRef || "").trim();
+            const hasImage = Boolean(assetRef);
             return `
               <div class="annotation-list-row annotation-block" data-content-block-type="image">
                 <div class="annotation-list-row-label"><span>${escapeHtml(t("properties.annotation.image"))}</span>${blockControls(index)}</div>
-                <label>
-                  ${propertyFieldLabel(options, t("properties.annotation.imageUrl"))}
-                  <input type="url" data-property-field="contentImageAssetRef" data-block-index="${index}" value="${escapeHtml(block.assetRef || "")}" placeholder="${escapeHtml(t("properties.annotation.imageUrlPlaceholder"))}">
-                </label>
+                <div class="annotation-image-editor">
+                  ${hasImage ? `
+                    <div class="annotation-image-preview">
+                      <img src="${escapeHtml(assetRef)}" alt="">
+                      <span>${escapeHtml(t("properties.annotation.imageUploaded"))}</span>
+                    </div>` : `<div class="annotation-image-empty">${escapeHtml(t("properties.annotation.imageEmpty"))}</div>`}
+                  <div class="annotation-image-actions">
+                    <label class="annotation-image-upload-button">
+                      <input type="file" accept="image/png,image/jpeg,image/webp" data-property-field="contentImageUpload" data-block-index="${index}">
+                      <span>${escapeHtml(t(hasImage ? "properties.annotation.replaceImage" : "properties.annotation.uploadImage"))}</span>
+                    </label>
+                    <button type="button" data-property-action="clear-content-image" data-block-index="${index}"${hasImage ? "" : " disabled"}>${escapeHtml(t("properties.annotation.clearImage"))}</button>
+                  </div>
+                  <p class="annotation-image-rules">${escapeHtml(t("properties.annotation.imageRules"))}</p>
+                </div>
                 <label>
                   ${propertyFieldLabel(options, t("properties.annotation.caption"))}
                   <textarea rows="2" data-property-field="contentImageCaption" data-block-index="${index}" placeholder="${escapeHtml(t("properties.annotation.captionPlaceholder"))}">${escapeHtml(localText(caption))}</textarea>
@@ -253,21 +264,6 @@
           <button type="button" data-property-action="add-content-bullets">${escapeHtml(t("properties.annotation.addBullets"))}</button>
           <button type="button" data-property-action="add-content-image">${escapeHtml(t("properties.annotation.addImage"))}</button>
         </div>
-      </div>` : "";
-    const chartEditor = chart === "pie" ? `
-      <div class="annotation-chart-editor">
-        ${chartSlices.map((slice, index) => {
-          const label = slice && slice.label && typeof slice.label === "object" ? slice.label : {};
-          const colour = slice && (slice.color || slice.colour) || chartPalette[index % chartPalette.length];
-          return `
-            <div class="chart-slice-row">
-              <input type="color" data-property-field="chartSliceColor" data-slice-index="${index}" value="${escapeHtml(colour)}" aria-label="${escapeHtml(t("properties.annotation.chartSliceColor"))}">
-              <input type="text" data-property-field="chartSliceLabel" data-slice-index="${index}" value="${escapeHtml(localText(label))}" placeholder="${escapeHtml(t("properties.annotation.chartSliceLabel"))}">
-              <input type="number" min="0" step="any" data-property-field="chartSliceValue" data-slice-index="${index}" value="${escapeHtml(String(slice && Number.isFinite(Number(slice.value)) ? slice.value : 0))}" aria-label="${escapeHtml(t("properties.annotation.chartSliceValue"))}">
-              <button type="button" data-property-action="remove-chart-slice" data-slice-index="${index}" aria-label="${escapeHtml(t("properties.annotation.remove"))}">&times;</button>
-            </div>`;
-        }).join("")}
-        <button type="button" data-property-action="add-chart-slice">${escapeHtml(t("properties.annotation.addChartSlice"))}</button>
       </div>` : "";
     return `
       <div class="properties-form" data-property-kind="${escapeHtml(kind)}" data-row-id="${rowId}" data-label-key="${safeLabelKey}">
@@ -291,8 +287,7 @@
           </select>
         </label>
         <section class="annotation-property-section">
-          <h3>${escapeHtml(t("properties.field.anchor"))}</h3>
-          ${segmented("anchor", anchor, [{ value: "coord", label: t("properties.annotation.coordinates") }, { value: "region", label: t("properties.annotation.region") }])}
+          <h3>${escapeHtml(t(anchor === "region" ? "properties.field.region" : "properties.field.coordinates"))}</h3>
           ${anchor === "region" ? `
             <label>
               ${propertyFieldLabel(options, t("properties.field.region"))}
@@ -313,11 +308,6 @@
           <h3>${escapeHtml(t("properties.field.labelStyle"))}</h3>
           ${segmented("labelStyle", labelStyle, [{ value: "compact", label: t("properties.annotation.compact") }, { value: "rich", label: t("properties.annotation.rich") }])}
           ${contentEditor}
-        </section>
-        <section class="annotation-property-section">
-          <h3>${escapeHtml(t("properties.field.chart"))}</h3>
-          ${segmented("chart", chart, [{ value: "none", label: t("properties.annotation.chartNone") }, { value: "pie", label: t("properties.annotation.chartPie") }])}
-          ${chartEditor}
         </section>
 
         <label class="toolbar-check">

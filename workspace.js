@@ -55,6 +55,11 @@
 
   function summarizeProjectRows(rows) {
     return (rows || []).reduce((summary, row) => {
+      if (row && row.anchor === "region") {
+        if (row.region) summary.mapped += 1;
+        else summary.coordinateIssues += 1;
+        return summary;
+      }
       const hasLon = row.lon !== "";
       const hasLat = row.lat !== "";
       if (hasLon && hasLat) summary.mapped += 1;

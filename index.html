@@ -137,6 +137,11 @@
                 <option value="callouts" data-i18n="toolbar.filters.callouts">Callouts</option>
               </select>
             </div>
+            <div class="project-location-mode" role="group" aria-label="Project point location mode" data-i18n-aria-label="toolbar.locationMode.aria">
+              <span class="toolbar-group-label" data-i18n="toolbar.locationMode.label">Location</span>
+              <button type="button" class="is-active" data-project-location-mode="coordinates" aria-pressed="true" data-i18n="toolbar.locationMode.coordinates">Coordinates</button>
+              <button type="button" data-project-location-mode="regions" aria-pressed="false" data-i18n="toolbar.locationMode.regions">Regions</button>
+            </div>
             <div class="authoring-language" role="group" aria-label="Project title authoring language" data-i18n-aria-label="toolbar.authoring.aria">
               <span data-i18n="toolbar.authoring.label">Lang</span>
               <button type="button" class="is-active" data-authoring-language="en" aria-pressed="true">EN</button>
@@ -182,17 +187,16 @@
         </div>
         <div id="csvImportPreview" class="csv-import-preview" hidden></div>
         <div class="table-wrap">
-          <table id="projectTable">
+          <table id="projectTable" data-location-mode="coordinates">
             <thead>
               <tr>
                 <th class="name-col"><span class="editable-col-heading"><span data-i18n="table.projectName">Project name</span> <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
                 <th class="footnote-col" title="Superscript footnote marker" data-i18n-title="table.footnote.title"><span class="editable-col-heading"><span data-i18n="table.footnote">Fnote</span> <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
                 <th class="type-col"><span class="editable-col-heading"><span data-i18n="table.type">Type</span> <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
-                <th class="annotation-preview-col anchor-preview-col"><span data-i18n="table.anchor">Anchor</span> <span class="col-auto-chip" title="Auto" aria-label="Auto" data-i18n-title="table.auto" data-i18n-aria-label="table.auto"><span data-icon="wand" aria-hidden="true"></span></span></th>
                 <th class="annotation-preview-col label-preview-col"><span data-i18n="table.label">Label</span> <span class="col-auto-chip" title="Auto" aria-label="Auto" data-i18n-title="table.auto" data-i18n-aria-label="table.auto"><span data-icon="wand" aria-hidden="true"></span></span></th>
-                <th class="annotation-preview-col chart-preview-col"><span data-i18n="table.chart">Chart</span> <span class="col-auto-chip" title="Auto" aria-label="Auto" data-i18n-title="table.auto" data-i18n-aria-label="table.auto"><span data-icon="wand" aria-hidden="true"></span></span></th>
 
                 <th class="priority-col" title="Priority controls label placement order. Higher numbers are placed earlier when labels compete for space." data-i18n-title="table.priority.title"><span class="editable-col-heading"><span data-i18n="table.priority">Priority</span> <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
+                <th class="coordinate-col region-col anchor-preview-col"><span class="editable-col-heading"><span data-i18n="table.regionColumn">Region</span> <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
                 <th class="coordinate-col lon-col"><span class="editable-col-heading"><span data-i18n="table.longitude">Longitude</span> <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
                 <th class="coordinate-col lat-col"><span class="editable-col-heading"><span data-i18n="table.latitude">Latitude</span> <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
                 <th class="status-col"><span data-i18n="table.status">Status</span> <span class="col-auto-chip" title="Auto" aria-label="Auto" data-i18n-title="table.auto" data-i18n-aria-label="table.auto"><span data-icon="wand" aria-hidden="true"></span></span></th>
@@ -435,6 +439,41 @@
     </aside>
   </main>
 
+  <div id="startupDialog" class="app-dialog startup-dialog" role="dialog" aria-modal="true" aria-labelledby="startupTitle" hidden>
+    <div class="dialog-scrim" data-dialog-close="startup"></div>
+    <div class="dialog-card startup-dialog-card">
+      <header class="dialog-header">
+        <div class="dialog-title-row">
+          <span class="dialog-title-icon" data-icon="map" aria-hidden="true"></span>
+          <div>
+            <h2 id="startupTitle" data-i18n="dialog.startup.title">Start a Plotypus map</h2>
+            <p data-i18n="dialog.startup.subtitle">Choose how to begin. Start blank, open a saved Plotypus file, load the sample, or import CSV data.</p>
+          </div>
+        </div>
+        <button type="button" class="icon-button dialog-close" data-dialog-close="startup" aria-label="Close startup options" data-i18n-aria-label="dialog.startup.close" data-icon="x"></button>
+      </header>
+      <div class="dialog-body startup-dialog-body">
+        <div class="startup-options" role="list">
+          <button id="startupStartNewBtn" type="button" class="startup-option primary-action" data-startup-action="new" data-icon="plus" data-dialog-initial-focus>
+            <strong data-i18n="dialog.startup.newTitle">Start new</strong>
+            <span data-i18n="dialog.startup.newBody">Begin with an empty Project points table.</span>
+          </button>
+          <button id="startupOpenProjectBtn" type="button" class="startup-option" data-startup-action="open" data-icon="folder-open">
+            <strong data-i18n="dialog.startup.openTitle">Open Plotypus file</strong>
+            <span data-i18n="dialog.startup.openBody">Continue from a saved .json project file.</span>
+          </button>
+          <button id="startupLoadSampleBtn" type="button" class="startup-option" data-startup-action="sample" data-icon="table">
+            <strong data-i18n="dialog.startup.sampleTitle">Load sample</strong>
+            <span data-i18n="dialog.startup.sampleBody">Use the included Canada infrastructure sample.</span>
+          </button>
+          <button id="startupImportCsvBtn" type="button" class="startup-option" data-startup-action="csv" data-icon="upload">
+            <strong data-i18n="dialog.startup.csvTitle">Import CSV</strong>
+            <span data-i18n="dialog.startup.csvBody">Map columns from a CSV, TSV, or text file.</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
   <div id="mapDetailsDialog" class="app-dialog" role="dialog" aria-modal="true" aria-labelledby="mapDetailsTitle" hidden>
     <div class="dialog-scrim" data-dialog-close="map-details"></div>
     <form id="mapDetailsForm" class="dialog-card map-details-dialog-card">
@@ -488,7 +527,7 @@
       <div class="catalog-toolbar">
         <div class="catalog-tabs" role="tablist" aria-label="Point source type" data-i18n-aria-label="dialog.pointCatalog.tabs.aria">
           <button id="pointCatalogPresetsTab" class="is-active" type="button" role="tab" aria-selected="true" aria-controls="pointCatalogPresetsPanel" data-catalog-view="presets" data-icon="star" data-dialog-initial-focus data-i18n="dialog.pointCatalog.presets">Presets</button>
-          <button id="pointCatalogSourcesTab" type="button" role="tab" aria-selected="false" aria-controls="pointCatalogSourcesPanel" data-catalog-view="sources" data-icon="database" data-i18n="dialog.pointCatalog.openData">Open data</button>
+          <button id="pointCatalogSourcesTab" type="button" role="tab" aria-selected="false" aria-controls="pointCatalogSourcesPanel" data-catalog-view="sources" data-icon="database" data-i18n="dialog.pointCatalog.openData">Import CSV</button>
         </div>
         <span id="pointCatalogScope" class="catalog-scope" data-i18n="dialog.pointCatalog.scopeStatic">Project points · scoped to included regions · points outside are skipped</span>
       </div>
@@ -604,6 +643,7 @@
   <script src="geometry.js?v=20260622-module-extraction"></script>
   <script src="label-layout.js?v=20260622-module-extraction"></script>
   <script src="project-io.js?v=20260622-module-extraction"></script>
+  <script src="region-matching.js?v=20260712-location-mode"></script>
   <script src="xlsx-lite.js?v=20260711-import-refactor"></script>
   <script src="workspace.js?v=20260622-module-extraction"></script>
   <script src="properties.js?v=20260624-i18n-quality"></script>

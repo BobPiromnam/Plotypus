@@ -14,6 +14,7 @@
       boundary,
       mapStyle,
       mapLanguage,
+      projectLocationMode,
       settings,
       chromeTranslations,
       mapDetails,
@@ -38,6 +39,7 @@
       boundary,
       mapStyle,
       mapLanguage,
+      projectLocationMode: projectLocationMode === "regions" ? "regions" : "coordinates",
       settings,
       chromeTranslations,
       mapDetails: { ...(mapDetails || {}) },
@@ -67,8 +69,8 @@
         region: row.region || "",
         labelStyle: row.labelStyle || "compact",
         content: Array.isArray(row.content) ? row.content : [],
-        chart: row.chart === "pie" ? "pie" : "none",
-        chartSlices: Array.isArray(row.chartSlices) ? row.chartSlices : [],
+        chart: "none",
+        chartSlices: [],
         hideLine: row.hideLine,
         labelMaxChars: row.labelMaxChars || ""
       })),
@@ -90,6 +92,7 @@
   function createCsvExport(options) {
     const {
       rows,
+      projectLocationMode,
       getCategoryLabel,
       getCategoryText,
       getCategoryForType
@@ -106,11 +109,14 @@
       priority: row.priority || "",
       lon: row.lon,
       lat: row.lat,
+      region: row.region || "",
       hideLine: row.hideLine ? "yes" : ""
     }));
     return {
       rows: exportRows,
-      columns: ["name", "name_fr", "footnote", "type", "type_fr", "priority", "lon", "lat", "hideLine"]
+      columns: projectLocationMode === "regions" || (rows || []).some(row => row && row.anchor === "region")
+        ? ["name", "name_fr", "footnote", "type", "type_fr", "priority", "region", "hideLine"]
+        : ["name", "name_fr", "footnote", "type", "type_fr", "priority", "lon", "lat", "hideLine"]
     };
   }
 

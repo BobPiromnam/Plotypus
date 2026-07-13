@@ -59,9 +59,36 @@
       checks.push({ name, pass: Boolean(pass), detail });
     }
 
+    function parseCssRgb(value) {
+      const match = String(value || "").match(/rgba?\(([^)]+)\)/i);
+      if (!match) return null;
+      const channels = match[1].split(",").slice(0, 3).map(part => Number.parseFloat(part.trim()));
+      return channels.length === 3 && channels.every(Number.isFinite) ? channels : null;
+    }
+
+    function relativeLuminanceFromCssColor(value) {
+      const rgb = parseCssRgb(value);
+      if (!rgb) return null;
+      const [r, g, b] = rgb.map(channel => {
+        const normalized = channel / 255;
+        return normalized <= 0.03928 ? normalized / 12.92 : Math.pow((normalized + 0.055) / 1.055, 2.4);
+      });
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    }
+
+    function contrastRatioFromCssColors(foreground, background) {
+      const fg = relativeLuminanceFromCssColor(foreground);
+      const bg = relativeLuminanceFromCssColor(background);
+      if (fg === null || bg === null) return 0;
+      return (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05);
+    }
     const rawUiKeyPattern = /\b(?:app|aria|catalog|csv|dialog|export|map|properties|project|quality|region|settings|status|table|toolbar|translate|workspace)\.[A-Za-z0-9_.-]+/;
     const knownEnglishUiPhrases = [
       /\bNo project points yet\b/i,
+      /\bStart a Plotypus map\b/i,
+      /\bChoose how to begin\b/i,
+      /\bStart new\b/i,
+      /\bOpen Plotypus file\b/i,
       /\bLoad the sample\b/i,
       /\bLoad sample\b/i,
       /\bSave project\b/i,
@@ -87,7 +114,6 @@
       /\bClear table\b/i,
       /\bDelete selected\b/i,
       /\bDelete\b/i,
-      /\bOpen data\b/i,
       /\bChoose preset\b/i,
       /\bSelect all\b/i,
       /\bClear regions\b/i,
@@ -220,11 +246,61 @@
         if (doc.fonts?.load) await doc.fonts.load('12px "IBM Plex Mono"');
         if (doc.fonts?.ready) await doc.fonts.ready;
         assert(checks, "Bundled IBM Plex Mono is available offline", !doc.fonts || doc.fonts.check('12px "IBM Plex Mono"'));
+        const startupDialog = await waitFor(() => {
+          const dialog = doc.querySelector("#startupDialog");
+          return dialog && dialog.hidden === false ? dialog : null;
+        }, 4000);
+        const startupActions = Array.from(startupDialog.querySelectorAll("[data-startup-action]")).map(button => button.dataset.startupAction);
+        assert(checks, "Startup dialog opens for an empty app", startupDialog.getAttribute("role") === "dialog" && startupDialog.getAttribute("aria-modal") === "true" && startupDialog.getAttribute("aria-labelledby") === "startupTitle");
+        assert(checks, "Startup dialog offers new, open, sample, and CSV choices", ["new", "open", "sample", "csv"].every(action => startupActions.includes(action)), startupActions.join(", "));
+        assert(checks, "Startup dialog starts on Start new", doc.activeElement === doc.querySelector("#startupStartNewBtn"));
+        const startupPrimaryOption = doc.querySelector("#startupStartNewBtn");
+        const startupPrimaryStyle = frame.contentWindow.getComputedStyle(startupPrimaryOption);
+        const startupPrimaryTitleStyle = frame.contentWindow.getComputedStyle(startupPrimaryOption.querySelector("strong"));
+        const startupPrimaryBodyStyle = frame.contentWindow.getComputedStyle(startupPrimaryOption.querySelector("span"));
+        const startupPrimaryIconStyle = frame.contentWindow.getComputedStyle(startupPrimaryOption.querySelector("svg"));
+        const startupPrimaryBg = startupPrimaryStyle.backgroundColor;
+        const startupPrimaryTitleRatio = contrastRatioFromCssColors(startupPrimaryTitleStyle.color, startupPrimaryBg);
+        const startupPrimaryBodyRatio = contrastRatioFromCssColors(startupPrimaryBodyStyle.color, startupPrimaryBg);
+        const startupPrimaryIconRatio = contrastRatioFromCssColors(startupPrimaryIconStyle.color, startupPrimaryBg);
+        assert(checks, "Startup primary option meets contrast requirements", startupPrimaryTitleRatio >= 4.5 && startupPrimaryBodyRatio >= 4.5 && startupPrimaryIconRatio >= 3, `title=${startupPrimaryTitleRatio.toFixed(2)}, body=${startupPrimaryBodyRatio.toFixed(2)}, icon=${startupPrimaryIconRatio.toFixed(2)}, bg=${startupPrimaryBg}`);
+
+        if (requestedDialog === "startup") {
+          doc.querySelector("[data-ui-language='fr']")?.click();
+          await waitFor(() => doc.documentElement.lang === "fr" && /Créer une carte Plotypus/.test(doc.querySelector("#startupTitle")?.textContent || ""), 2000);
+          assert(checks, "Top language toggle switches Startup dialog copy to French", /Nouveau projet/.test(startupDialog.textContent || "") && /Ouvrir un fichier Plotypus/.test(startupDialog.textContent || "") && /Charger l'exemple/.test(startupDialog.textContent || "") && /Importer un CSV/.test(startupDialog.textContent || ""), startupDialog.textContent || "");
+          assertNoRawUiKeys(checks, "Startup dialog does not show raw translation keys in French", startupDialog);
+          assertNoKnownEnglishUi(checks, "Startup dialog does not show known English UI phrases in French", [startupDialog]);
+          assertNoRawUiKeysInAttributes(checks, "Startup dialog attributes do not show raw translation keys in French", [startupDialog]);
+          assertNoKnownEnglishUiInAttributes(checks, "Startup dialog attributes do not show known English UI phrases in French", [startupDialog]);
+          doc.querySelector("[data-ui-language='en']")?.click();
+          await waitFor(() => doc.documentElement.lang === "en" && /Start a Plotypus map/.test(doc.querySelector("#startupTitle")?.textContent || ""), 2000);
+          doc.querySelector("#startupStartNewBtn")?.click();
+          await waitFor(() => startupDialog.hidden === true && doc.body.dataset.workspaceView === "projects", 2000);
+          assert(checks, "Startup Start new closes dialog and opens Project points", startupDialog.hidden === true && doc.body.dataset.workspaceView === "projects");
+          const failed = checks.filter(check => !check.pass);
+          result.textContent = JSON.stringify({
+            status: failed.length ? "failed" : "ok",
+            dialog: requestedDialog,
+            viewport: { width: innerWidth, height: innerHeight },
+            checks,
+            failures: failed.length,
+            frameErrors
+          }, null, 2);
+          return;
+        }
+
+        if (!loadSample) {
+          doc.querySelector("#startupStartNewBtn")?.click();
+          await waitFor(() => startupDialog.hidden === true, 2000);
+        }
 
         if (loadSample) {
           const samplesBeforeLoad = frame.contentWindow.PLOTYPUS_RENDER_PERFORMANCE?.snapshot().samples.length || 0;
-          doc.querySelector("#ribbonLoadSampleBtn").click();
+          const sampleButton = startupDialog.hidden === false ? doc.querySelector("#startupLoadSampleBtn") : doc.querySelector("#ribbonLoadSampleBtn");
+          sampleButton.click();
           assert(checks, "Loading animation appears during sample render", doc.querySelector("#mapHost")?.classList.contains("is-rendering"));
+          await waitFor(() => startupDialog.hidden === true, 2000);
           await waitFor(() => doc.querySelectorAll("#projectTable tbody tr").length > 0, 12000);
           const sampleLoadSnapshot = await waitFor(() => {
             const snapshot = frame.contentWindow.PLOTYPUS_RENDER_PERFORMANCE?.snapshot();
@@ -354,10 +430,12 @@
             assert(checks, "Point catalog opens", !dialog.hidden);
             assert(checks, "Point catalog exposes modal semantics", dialog.getAttribute("role") === "dialog" && dialog.getAttribute("aria-modal") === "true" && dialog.getAttribute("aria-labelledby") === "pointCatalogTitle");
             assert(checks, "Point catalog starts on Presets", doc.activeElement === presetsTab && presetsTab.getAttribute("aria-selected") === "true" && !doc.querySelector("#pointCatalogPresetsPanel").hidden);
+            assert(checks, "Point catalog source tab is labelled Import CSV", sourcesTab.textContent.trim() === "Import CSV", sourcesTab.textContent.trim());
             assert(checks, "Point catalog reports its entry context", /Project points/.test(doc.querySelector("#pointCatalogScope")?.textContent || ""));
             doc.querySelector("[data-ui-language='fr']")?.click();
             await waitFor(() => doc.documentElement.lang === "fr" && /Ajouter des points/.test(doc.querySelector("#pointCatalogTitle")?.textContent || ""), 2000);
             const catalogCountText = Array.from(doc.querySelectorAll(".catalog-card-count")).map(node => node.textContent.trim());
+            assert(checks, "Top language toggle switches Point catalog source tab to Quebec French", sourcesTab.textContent.trim() === "Importer un CSV", sourcesTab.textContent.trim());
             assert(checks, "Top language toggle switches Point catalog copy to French", /Points de projet/.test(doc.querySelector("#pointCatalogScope")?.textContent || "") && /Capitales/.test(doc.querySelector("[data-catalog-preset='capitals'] strong")?.textContent || "") && catalogCountText.every(text => /^\d+ pts$/.test(text)), `${doc.querySelector("#pointCatalogScope")?.textContent || ""} | ${catalogCountText.join(", ")}`);
             assertNoRawUiKeys(checks, "Point catalog dialog does not show raw translation keys in French", dialog);
             assertNoKnownEnglishUi(checks, "Point catalog dialog does not show known English UI phrases in French", [dialog]);
@@ -534,10 +612,39 @@
             const projectToolbarText = `${doc.querySelector("#addRowBtn")?.textContent || ""} ${doc.querySelector("#addPointsBtn")?.textContent || ""} ${doc.querySelector("#clearRowsBtn")?.textContent || ""}`;
             assert(checks, "Top language toggle switches Project toolbar copy to French", /Ligne/.test(projectToolbarText) && /Source/.test(projectToolbarText) && /Vider le tableau/.test(projectToolbarText), projectToolbarText);
             const firstProjectRow = doc.querySelector("#projectTable tbody tr[data-row-id]");
+            const initialProjectTable = doc.querySelector("#projectTable");
+            const initialRegionHeaderDisplay = frame.contentWindow.getComputedStyle(initialProjectTable.querySelector(".region-col")).display;
+            const initialLonHeaderDisplay = frame.contentWindow.getComputedStyle(initialProjectTable.querySelector(".lon-col")).display;
+            const initialLatHeaderDisplay = frame.contentWindow.getComputedStyle(initialProjectTable.querySelector(".lat-col")).display;
+            assert(checks, "Project table loads in Coordinates mode with Region hidden", initialProjectTable.dataset.locationMode === "coordinates" && initialRegionHeaderDisplay === "none" && initialLonHeaderDisplay !== "none" && initialLatHeaderDisplay !== "none", `${initialProjectTable.dataset.locationMode} / region=${initialRegionHeaderDisplay} / lon=${initialLonHeaderDisplay} / lat=${initialLatHeaderDisplay}`);
             firstProjectRow?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
-            await waitFor(() => doc.querySelector("#propertiesSelectionControls input[data-property-field='anchor'][value='region']"), 2000);
-            doc.querySelector("#propertiesSelectionControls input[data-property-field='anchor'][value='region']")?.click();
-            await waitFor(() => doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.anchor === "region", 2000);
+            assert(checks, "Project row Properties labels rich/compact controls as Extra info in French", /Infos supplémentaires/.test(doc.querySelector("#propertiesSelectionControls")?.textContent || ""), doc.querySelector("#propertiesSelectionControls")?.textContent || "");
+            assert(checks, "Project table no longer exposes a Chart column", !doc.querySelector("#projectTable .chart-preview-col") && !doc.querySelector("#projectTable tbody .chart-preview-cell"));
+            assert(checks, "Properties no longer expose per-point anchor radios", !doc.querySelector("#propertiesSelectionControls input[data-property-field='anchor']"));
+            assert(checks, "Properties no longer expose chart controls", !doc.querySelector("#propertiesSelectionControls [data-property-field='chart']") && !doc.querySelector("#propertiesSelectionControls [data-property-action='add-chart-slice']"));
+            doc.querySelector("[data-project-location-mode='regions']")?.click();
+            await waitFor(() => doc.querySelector("#projectTable")?.dataset.locationMode === "regions" && doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.anchor === "region", 2000);
+            const projectTable = doc.querySelector("#projectTable");
+            const lonHeaderDisplay = frame.contentWindow.getComputedStyle(projectTable.querySelector(".lon-col")).display;
+            const latHeaderDisplay = frame.contentWindow.getComputedStyle(projectTable.querySelector(".lat-col")).display;
+            const regionCell = projectTable.querySelector("tbody .region-cell");
+            const regionCellDisplay = frame.contentWindow.getComputedStyle(regionCell).display;
+            assert(checks, "Project table hides both coordinate columns in Regions mode", lonHeaderDisplay === "none" && latHeaderDisplay === "none", lonHeaderDisplay + " / " + latHeaderDisplay);
+            assert(checks, "Project table shows Region where the coordinate columns were", regionCellDisplay !== "none", regionCellDisplay);
+            const priorityRight = projectTable.querySelector("tbody .priority-cell").getBoundingClientRect().right;
+            const regionLeft = regionCell.getBoundingClientRect().left;
+            const statusLeft = projectTable.querySelector("tbody .status-cell").getBoundingClientRect().left;
+            assert(checks, "Region column sits after Priority and before Status", regionLeft >= priorityRight - 1 && regionLeft < statusLeft, `priority=${priorityRight}, region=${regionLeft}, status=${statusLeft}`);
+            const regionInput = regionCell.querySelector(".region-input");
+            const regionInputStyle = frame.contentWindow.getComputedStyle(regionInput);
+            const regionFont = regionInputStyle.fontFamily;
+            const typeFont = frame.contentWindow.getComputedStyle(projectTable.querySelector("tbody .type-input")).fontFamily;
+            assert(checks, "Region select uses the same font as editable table controls", regionFont === typeFont, `${regionFont} / ${typeFont}`);
+            assert(checks, "Region select reserves space for the dropdown arrow", parseFloat(regionInputStyle.paddingRight) >= 30, regionInputStyle.paddingRight);
+            const regionInputRight = regionInput.getBoundingClientRect().right;
+            const regionCellRight = regionCell.getBoundingClientRect().right;
+            assert(checks, "Region select dropdown arrow stays inside the Region column", regionInputStyle.boxSizing === "border-box" && regionInputRight <= regionCellRight + 0.5 && regionInputRight < statusLeft, `input=${regionInputRight}, region=${regionCellRight}, status=${statusLeft}, box=${regionInputStyle.boxSizing}`);
+            firstProjectRow?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
             const regionSelectForAnnotation = await waitFor(() => doc.querySelector("#propertiesSelectionControls select[data-property-field='region']"), 2000);
             const firstAvailableRegion = Array.from(regionSelectForAnnotation.options).find(option => option.value);
             if (firstAvailableRegion) {
@@ -548,7 +655,7 @@
             await waitFor(() => doc.querySelector("#propertiesSelectionControls input[data-property-field='labelStyle'][value='rich']"), 2000);
             doc.querySelector("#propertiesSelectionControls input[data-property-field='labelStyle'][value='rich']")?.click();
             await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-action='add-content-paragraph']"), 2000);
-            assert(checks, "Rich annotation Properties expose paragraph, bullets, image, and chart options", Boolean(doc.querySelector("[data-property-action='add-content-paragraph']") && doc.querySelector("[data-property-action='add-content-bullets']") && doc.querySelector("[data-property-action='add-content-image']") && doc.querySelector("input[data-property-field='chart'][value='pie']")));
+            assert(checks, "Rich annotation Properties expose paragraph, bullets, and image options", Boolean(doc.querySelector("[data-property-action='add-content-paragraph']") && doc.querySelector("[data-property-action='add-content-bullets']") && doc.querySelector("[data-property-action='add-content-image']")));
             const richTitleLabel = doc.querySelector("#propertiesSelectionControls [data-property-field='name']")?.closest("label")?.textContent || "";
             assert(checks, "Rich annotation Properties labels the heading field as title", /Title|Titre/.test(richTitleLabel), richTitleLabel);
             doc.querySelector("[data-property-action='add-content-paragraph']")?.click();
@@ -556,7 +663,7 @@
             doc.querySelector("[data-property-action='add-content-bullets']")?.click();
             await waitFor(() => doc.querySelector("[data-property-field='contentBulletItem'][data-block-index='1']"), 2000);
             doc.querySelector("[data-property-action='add-content-image']")?.click();
-            await waitFor(() => doc.querySelector("[data-property-field='contentImageAssetRef'][data-block-index='2']"), 2000);
+            await waitFor(() => doc.querySelector("[data-property-field='contentImageUpload'][data-block-index='2']"), 2000);
             let paragraphInput = doc.querySelector("[data-property-field='contentParagraph'][data-block-index='0']");
             paragraphInput.value = "Paragraphe riche";
             paragraphInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
@@ -565,10 +672,15 @@
             bulletInput.value = "Puce riche";
             bulletInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
             await waitFor(() => /Puce riche/.test(doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.content || ""), 2000);
-            let imageSrcInput = doc.querySelector("[data-property-field='contentImageAssetRef'][data-block-index='2']");
-            imageSrcInput.value = "https://example.com/rich-label.png";
-            imageSrcInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
-            await waitFor(() => /rich-label\.png/.test(doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.content || ""), 2000);
+            assert(checks, "Rich annotation image editor uses upload instead of URL entry", Boolean(doc.querySelector("[data-property-field='contentImageUpload'][data-block-index='2']") && !doc.querySelector("[data-property-field='contentImageAssetRef']")));
+            let imageUploadInput = doc.querySelector("[data-property-field='contentImageUpload'][data-block-index='2']");
+            const richImageBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
+            const richImageBytes = Uint8Array.from(frame.contentWindow.atob(richImageBase64), character => character.charCodeAt(0));
+            const richImageTransfer = new frame.contentWindow.DataTransfer();
+            richImageTransfer.items.add(new frame.contentWindow.File([richImageBytes], "rich-label.png", { type: "image/png" }));
+            Object.defineProperty(imageUploadInput, "files", { value: richImageTransfer.files, configurable: true });
+            imageUploadInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+            await waitFor(() => /data:image\/png;base64/.test(doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.content || "") && doc.querySelector(".annotation-image-preview img"), 3000);
             let imageCaptionInput = doc.querySelector("[data-property-field='contentImageCaption'][data-block-index='2']");
             imageCaptionInput.value = "Image riche";
             imageCaptionInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
@@ -593,26 +705,10 @@
               const content = JSON.parse(doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.content || "[]");
               return content.length === 3 && content[0]?.en === "Paragraphe riche" && content[1]?.items?.[0]?.en === "Puce riche" && content[2]?.caption?.en === "Image riche";
             })());
-            doc.querySelector("input[data-property-field='chart'][value='pie']")?.click();
-            await waitFor(() => doc.querySelector("[data-property-action='add-chart-slice']"), 2000);
-            doc.querySelector("[data-property-action='add-chart-slice']")?.click();
-            await waitFor(() => doc.querySelector("[data-property-field='chartSliceLabel'][data-slice-index='0']"), 2000);
-            let chartLabelInput = doc.querySelector("[data-property-field='chartSliceLabel'][data-slice-index='0']");
-            chartLabelInput.value = "Financement";
-            chartLabelInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
-            let chartValueInput = doc.querySelector("[data-property-field='chartSliceValue'][data-slice-index='0']");
-            chartValueInput.value = "75";
-            chartValueInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
-            let chartColorInput = doc.querySelector("[data-property-field='chartSliceColor'][data-slice-index='0']");
-            chartColorInput.value = "#5b8fa8";
-            chartColorInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
-            await waitFor(() => /Financement/.test(doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.chartSlices || ""), 2000);
-            const chartPreviewText = doc.querySelector("#projectTable tbody tr[data-row-id] .chart-preview-text")?.textContent || "";
-            assert(checks, "Project table shows the chart preview for pie annotations", /Pie|Secteurs/.test(chartPreviewText), chartPreviewText);
             doc.querySelector("#previewTableTab")?.click();
             await waitFor(() => doc.body.dataset.workspaceView === "preview", 4000);
-            await waitFor(() => doc.querySelector("#mapSvg .annotation-chart-slice"), 4000);
-            assert(checks, "Pie chart annotation renders on the map SVG", Boolean(doc.querySelector("#mapSvg .annotation-chart") && doc.querySelector("#mapSvg .annotation-chart-slice")));
+            await waitFor(() => doc.querySelector("#mapSvg .rich-label-image image"), 4000);
+            assert(checks, "Uploaded rich annotation image renders on the map SVG", Boolean(doc.querySelector("#mapSvg .rich-label-image image")));
             assert(checks, "Rich annotation renders title and content line roles on the map SVG", Boolean(doc.querySelector("#mapSvg .map-label .label-title") && doc.querySelector("#mapSvg .map-label .label-bullet")));
             if (firstAvailableRegion?.value) {
               const selectedRegionId = firstAvailableRegion.value;
@@ -638,15 +734,13 @@
             doc.querySelector("#projectTableTab")?.click();
             await waitFor(() => doc.body.dataset.workspaceView === "projects", 4000);
             firstProjectRow?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
-            await waitFor(() => doc.querySelector("#propertiesSelectionControls input[data-property-field='chart'][value='none']"), 2000);
             const firstRowDataset = doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset || {};
-            assert(checks, "Unified annotation edits preserve anchor, rich content, and chart data together", firstRowDataset.anchor === "region" && firstRowDataset.labelStyle === "rich" && firstRowDataset.chart === "pie" && /Paragraphe riche/.test(firstRowDataset.content || "") && /Puce riche/.test(firstRowDataset.content || "") && /Image riche/.test(firstRowDataset.content || "") && /Financement/.test(firstRowDataset.chartSlices || ""), `${firstRowDataset.anchor || ""} ${firstRowDataset.labelStyle || ""} ${firstRowDataset.chart || ""} ${firstRowDataset.content || ""} ${firstRowDataset.chartSlices || ""}`);
-            doc.querySelector("input[data-property-field='anchor'][value='coord']")?.click();
-            await waitFor(() => doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.anchor === "coord", 2000);
+            assert(checks, "Unified annotation edits preserve anchor and rich content together", firstRowDataset.anchor === "region" && firstRowDataset.labelStyle === "rich" && /Paragraphe riche/.test(firstRowDataset.content || "") && /Puce riche/.test(firstRowDataset.content || "") && /Image riche/.test(firstRowDataset.content || "") && /data:image\/png;base64/.test(firstRowDataset.content || ""), [firstRowDataset.anchor || "", firstRowDataset.labelStyle || "", firstRowDataset.content || ""].join(" "));
+            doc.querySelector("[data-project-location-mode='coordinates']")?.click();
+            await waitFor(() => doc.querySelector("#projectTable")?.dataset.locationMode === "coordinates" && doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.anchor === "coord", 2000);
+
             doc.querySelector("input[data-property-field='labelStyle'][value='compact']")?.click();
             await waitFor(() => doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.labelStyle === "compact", 2000);
-            doc.querySelector("input[data-property-field='chart'][value='none']")?.click();
-            await waitFor(() => doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.chart === "none", 2000);
             doc.querySelector("#previewTableTab")?.click();
             await waitFor(() => doc.body.dataset.workspaceView === "preview", 4000);
             await waitFor(() => !doc.querySelector("#mapSvg .annotation-chart-slice"), 4000);
@@ -929,11 +1023,12 @@
               .filter(control => frame.contentWindow.getComputedStyle(control).display !== "none");
             const projectToolbarHeights = projectToolbarControls.map(control => Math.round(control.getBoundingClientRect().height));
             assert(checks, "Project toolbar controls share one standard height", new Set(projectToolbarHeights).size === 1, projectToolbarHeights.join(", "));
-            const centeredHeaderClasses = [".priority-col", ".lon-col", ".lat-col", ".status-col"];
+            const centeredHeaderClasses = [".priority-col", ".region-col", ".lon-col", ".lat-col", ".status-col"];
             assert(checks, "Project numeric/status headers are centered", centeredHeaderClasses.every(selector => frame.contentWindow.getComputedStyle(doc.querySelector(`#projectTable ${selector}`)).textAlign === "center"));
+            assert(checks, "Project table labels the rich/compact column as Extra info", doc.querySelector("#projectTable .annotation-preview-col")?.textContent.includes("Extra info"), doc.querySelector("#projectTable .annotation-preview-col")?.textContent || "");
             assert(checks, "Project Priority header explains label placement order", /label placement order/i.test(doc.querySelector("#projectTable .priority-col")?.title || ""));
-            assert(checks, "Project headers show editable or automatic hints", doc.querySelectorAll("#projectTable thead .col-edit-hint[data-icon='pencil']").length === 8 && Boolean(doc.querySelector("#projectTable thead .col-auto-chip [data-icon='wand']")));
-            const projectHeadersWithoutEllipses = [".priority-col", ".lon-col", ".lat-col", ".status-col"].every(selector => {
+            assert(checks, "Project headers show editable or automatic hints", doc.querySelectorAll("#projectTable thead .col-edit-hint[data-icon='pencil']").length === 9 && Boolean(doc.querySelector("#projectTable thead .col-auto-chip [data-icon='wand']")));
+            const projectHeadersWithoutEllipses = [".priority-col", ".region-col", ".lon-col", ".lat-col", ".status-col"].every(selector => {
               const header = doc.querySelector(`#projectTable ${selector}`);
               return header && header.scrollWidth <= header.clientWidth + 1;
             });
@@ -1032,6 +1127,25 @@
             frame.contentWindow.confirm = confirmForAnyColumnDelete;
             await waitFor(() => doc.querySelectorAll("#projectTable tbody tr").length === rowsBeforeAnyColumnDelete - 2, 2000);
             assert(checks, "Delete removes every row that has a selected Project cell", doc.querySelectorAll("#projectTable tbody tr").length === rowsBeforeAnyColumnDelete - 2);
+            doc.querySelector("[data-project-location-mode='regions']")?.click();
+            await waitFor(() => doc.querySelector("#projectTable")?.dataset.locationMode === "regions", 2000);
+            const regionImportInput = doc.querySelector("#csvInput");
+            if (regionImportInput) {
+              const regionTransfer = new frame.contentWindow.DataTransfer();
+              regionTransfer.items.add(new frame.contentWindow.File([
+                "Project,Type,Province\nImported Ontario project,Referred Project,Ontairo"
+              ], "region-import.csv", { type: "text/csv" }));
+              Object.defineProperty(regionImportInput, "files", { configurable: true, value: regionTransfer.files });
+              regionImportInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+              await waitFor(() => doc.querySelector("#csvMapDialog")?.hidden === false && doc.querySelectorAll("#csvMapRows .csv-map-row").length === 5, 4000);
+              const regionMapText = doc.querySelector("#csvMapDialog")?.textContent || "";
+              assert(checks, "Region CSV import reuses the mapping dialog with a region field", /Region/.test(regionMapText) && !/Longitude|Latitude/.test(regionMapText), regionMapText);
+              assert(checks, "Region CSV import required mappings are auto-matched", doc.querySelector("#confirmCsvMapBtn")?.disabled === false);
+              doc.querySelector("#confirmCsvMapBtn")?.click();
+              await waitFor(() => doc.querySelectorAll("#projectTable tbody tr[data-row-id]").length === 1 && doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.region === "Ontario", 4000);
+              const importedRegionRow = doc.querySelector("#projectTable tbody tr[data-row-id]");
+              assert(checks, "Region CSV import resolves misspelled province values to region anchors", importedRegionRow?.dataset.anchor === "region" && importedRegionRow?.dataset.region === "Ontario" && !importedRegionRow?.querySelector(".lon-input")?.value && !importedRegionRow?.querySelector(".lat-input")?.value, `${importedRegionRow?.dataset.anchor || ""}/${importedRegionRow?.dataset.region || ""}`);
+            }
           }
           if (requestedWorkspace === "categories") {
             const cards = doc.querySelectorAll("#categoryList .category-editor");
@@ -1368,7 +1482,7 @@
             const firstLocatedLabelId = getLocatedLabelId();
             const locateTotalMatch = getLocatedStatus().match(/Located quality item 1 of (\d+)/);
             const locateTotal = locateTotalMatch ? Number(locateTotalMatch[1]) : 0;
-            assert(checks, "Quality Locate next selects and highlights a map label from the visible map pill", doc.body.dataset.workspaceView === "preview" && Boolean(firstLocatedLabelId) && locateTotal > 0 && /Label|Étiquette/.test(doc.querySelector("#propertiesTitle")?.textContent || ""), doc.querySelector("#propertiesTitle")?.textContent || "");
+            assert(checks, "Quality Locate next selects and highlights a map label from the visible map pill", doc.body.dataset.workspaceView === "preview" && Boolean(firstLocatedLabelId) && locateTotal > 0 && /Extra info|Infos supplémentaires/.test(doc.querySelector("#propertiesTitle")?.textContent || ""), doc.querySelector("#propertiesTitle")?.textContent || "");
             for (let locateIndex = 2; locateIndex <= locateTotal; locateIndex += 1) {
               clickVisibleLocateNext();
               await waitFor(() => new RegExp(`Located quality item ${locateIndex} of ${locateTotal}`).test(getLocatedStatus()), 4000);
