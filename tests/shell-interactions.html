@@ -31,8 +31,6 @@
     } catch (_error) {
       // Storage may be unavailable in a locked-down browser profile.
     }
-    frame.src = frame.dataset.src;
-
     function waitFor(predicate, timeout = 8000) {
       const started = performance.now();
       return new Promise((resolve, reject) => {
@@ -82,7 +80,7 @@
       if (fg === null || bg === null) return 0;
       return (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05);
     }
-    const rawUiKeyPattern = /\b(?:app|aria|catalog|csv|dialog|export|map|properties|project|quality|region|settings|status|table|toolbar|translate|workspace)\.[A-Za-z0-9_.-]+/;
+    const rawUiKeyPattern = /\b(?:action|app|aria|canvas|catalog|csv|dialog|export|fieldOrigin|keyboard|language|loading|map|performance|properties|project|quality|region|settings|status|summary|table|toolbar|translate|workspace)\.[A-Za-z0-9_.-]+/;
     const knownEnglishUiPhrases = [
       /\bNo project points yet\b/i,
       /\bStart a Plotypus map\b/i,
@@ -278,6 +276,7 @@
           doc.querySelector("#startupStartNewBtn")?.click();
           await waitFor(() => startupDialog.hidden === true && doc.body.dataset.workspaceView === "projects", 2000);
           assert(checks, "Startup Start new closes dialog and opens Project points", startupDialog.hidden === true && doc.body.dataset.workspaceView === "projects");
+          assert(checks, "Empty Project points prioritizes Add data", doc.querySelector("#projectFilterControl")?.hidden === true && doc.querySelector("#projectSelectionActions")?.hidden === true && doc.querySelector("#clearRowsBtn")?.disabled === true && Boolean(doc.querySelector("#projectAddMenuBtn")));
           const failed = checks.filter(check => !check.pass);
           result.textContent = JSON.stringify({
             status: failed.length ? "failed" : "ok",
@@ -388,20 +387,47 @@
             const input = doc.querySelector("#csvInput");
             const transfer = new frame.contentWindow.DataTransfer();
             transfer.items.add(new frame.contentWindow.File([
-              "Project,Project FR,Type,Priority,Longitude,Latitude\nTest project,Projet test,Referred Project,2,-75.7,45.4"
+              "Project,Project FR,Type,Type FR,Priority,Longitude,Latitude\nTest project,Projet test,Referred Project,Projets soumis,2,-75.7,45.4"
             ], "mapped-sample.csv", { type: "text/csv" }));
             Object.defineProperty(input, "files", { configurable: true, value: transfer.files });
             input.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
-            await waitFor(() => doc.querySelector(dialogSelector)?.hidden === false && doc.querySelectorAll("#csvMapRows .csv-map-row").length === 6, 8000);
+            await waitFor(() => doc.querySelector(dialogSelector)?.hidden === false && doc.querySelectorAll("#csvMapRows .csv-map-row").length === 7, 8000);
             const dialog = doc.querySelector(dialogSelector);
             const mappings = Array.from(dialog.querySelectorAll("#csvMapRows select"));
             assert(checks, "CSV mapping dialog opens", !dialog.hidden);
             assert(checks, "CSV mapping exposes modal semantics", dialog.getAttribute("role") === "dialog" && dialog.getAttribute("aria-modal") === "true" && dialog.getAttribute("aria-labelledby") === "csvMapTitle");
             assert(checks, "CSV mapping starts on the English-name mapping", doc.activeElement === dialog.querySelector("[data-csv-target='name'] select"), `${doc.activeElement?.tagName || "none"}#${doc.activeElement?.id || ""}`);
-            assert(checks, "All supported Plotypus fields are shown", mappings.length === 6);
+            assert(checks, "All supported Plotypus fields are shown", mappings.length === 7);
             assert(checks, "Detected columns are auto-matched", mappings.every(select => Boolean(select.value)));
             assert(checks, "Required mappings enable import", doc.querySelector("#confirmCsvMapBtn")?.disabled === false);
             assert(checks, "Source samples are visible", Array.from(dialog.querySelectorAll(".csv-map-sample")).some(sample => /Test project/.test(sample.textContent || "")));
+            const coordinateImportMode = doc.querySelector("[data-csv-location-mode='coordinates']");
+            const regionImportMode = doc.querySelector("[data-csv-location-mode='regions']");
+            assert(checks, "CSV mapping dialog exposes coordinate and region location modes", Boolean(coordinateImportMode && regionImportMode && coordinateImportMode.getAttribute("aria-pressed") === "true"));
+            regionImportMode?.click();
+            await waitFor(() => doc.querySelectorAll("#csvMapRows .csv-map-row").length === 6 && doc.querySelector("#csvMapRows [data-csv-target='region']"), 2000);
+            assert(checks, "Switching the dialog to Regions replaces coordinate mappings without changing the workspace yet", !doc.querySelector("#csvMapRows [data-csv-target='lon'], #csvMapRows [data-csv-target='lat']") && doc.querySelector("#projectTable")?.dataset.locationMode === "coordinates" && doc.querySelector("#confirmCsvMapBtn")?.disabled === true);
+            coordinateImportMode?.click();
+            await waitFor(() => doc.querySelectorAll("#csvMapRows .csv-map-row").length === 7 && doc.querySelector("#csvMapRows [data-csv-target='lon'] select")?.value === "Longitude" && doc.querySelector("#csvMapRows [data-csv-target='lat'] select")?.value === "Latitude", 2000);
+            assert(checks, "Switching back to Coordinates restores its detected mappings", coordinateImportMode?.getAttribute("aria-pressed") === "true" && doc.querySelector("#confirmCsvMapBtn")?.disabled === false);
+            const composerToggle = doc.querySelector("#csvRichLabelEnabled");
+            composerToggle.click();
+            await waitFor(() => doc.querySelector("#csvRichLabelComposer")?.hidden === false);
+            assert(checks, "Rich-label composer is available during import", !doc.querySelector("#importComposerPanel")?.hidden && doc.querySelectorAll(".labelElementCard").length === 1);
+            assert(checks, "Rich-label composer exposes stable element hooks", Boolean(doc.querySelector(".elementTypeSelect") && doc.querySelector(".elementTemplateInput") && doc.querySelector(".tokenChip")));
+            assert(checks, "Rich-label composer uses the mapped project title as its only heading", !doc.querySelector(".elementTypeSelect option[value='heading']") && /Test project/.test(doc.querySelector("#csvRichLabelPreview")?.textContent || ""));
+            doc.querySelector("#csvAddLabelElementBtn")?.click();
+            await waitFor(() => doc.querySelectorAll(".labelElementCard").length === 2);
+            const addedCard = Array.from(doc.querySelectorAll(".labelElementCard")).at(-1);
+            const addedTemplate = addedCard.querySelector(".elementTemplateInput");
+            addedTemplate.value = "{Type} | ";
+            addedTemplate.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
+            addedTemplate.setSelectionRange(addedTemplate.value.length, addedTemplate.value.length);
+            addedCard.querySelector('[data-label-token="Priority"]')?.click();
+            const composedCard = Array.from(doc.querySelectorAll(".labelElementCard")).at(-1);
+            assert(checks, "Column tokens compose a multi-field label element", composedCard.querySelector(".elementTemplateInput")?.value === "{Type} | {Priority}" && /Referred Project\s*\|\s*2/.test(doc.querySelector("#csvRichLabelPreview")?.textContent || ""));
+            composedCard.querySelector('[data-label-element-action="remove"]')?.click();
+            assert(checks, "Label elements can be deleted before import", doc.querySelectorAll(".labelElementCard").length === 1);
             doc.querySelector("[data-ui-language='fr']")?.click();
             await waitFor(() => doc.documentElement.lang === "fr" && /Associer les colonnes CSV/.test(doc.querySelector("#csvMapTitle")?.textContent || ""), 2000);
             assert(checks, "Top language toggle switches CSV mapping dialog copy to French", /Champ Plotypus/.test(dialog.textContent || "") && /Colonne du CSV/.test(dialog.textContent || "") && /Nom anglais du projet/.test(dialog.textContent || "") && /Requis/.test(dialog.textContent || "") && /Non associé/.test(dialog.textContent || "") && /Importer les lignes associées/.test(dialog.textContent || ""), dialog.textContent || "");
@@ -415,6 +441,31 @@
             assert(checks, "Escape closes CSV mapping", dialog.hidden);
             input.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
             await waitFor(() => dialog.hidden === false);
+            doc.querySelector("#csvRichLabelEnabled")?.click();
+            doc.querySelector("#csvAddLabelElementBtn")?.click();
+            const importTextCard = Array.from(doc.querySelectorAll(".labelElementCard")).at(-1);
+            const importTextTemplate = importTextCard.querySelector(".elementTemplateInput");
+            importTextTemplate.value = "{Type} | {Priority}";
+            importTextTemplate.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
+            doc.querySelector("#confirmCsvMapBtn")?.click();
+            await waitFor(() => dialog.hidden && doc.querySelectorAll("#projectTable tbody tr[data-row-id]").length === 1, 4000);
+            const importedRow = doc.querySelector("#projectTable tbody tr[data-row-id]");
+            const importedContent = JSON.parse(importedRow.dataset.content || "[]");
+            assert(checks, "Composed elements import below the project title as ordinary rich-label content", importedRow.dataset.labelStyle === "rich" && importedContent.length === 1 && importedContent[0].type === "text");
+            importedRow.click();
+            await waitFor(() => doc.querySelectorAll("#propertiesSelectionControls .annotation-composed-block").length === 1);
+            const propertiesPanel = doc.querySelector("#propertiesPanel")?.closest(".properties-panel");
+            const addElementButtons = Array.from(doc.querySelectorAll("#propertiesSelectionControls .annotation-add-button"));
+            assert(checks, "Rich-label add controls fit inside the Properties drawer", propertiesPanel && propertiesPanel.scrollWidth <= propertiesPanel.clientWidth + 1, `${propertiesPanel?.scrollWidth || 0}/${propertiesPanel?.clientWidth || 0}`);
+            assert(checks, "Rich-label add controls use text, bullet-list, and image icons without a heading action", addElementButtons.length === 3 && addElementButtons.every(button => button.querySelector("svg") && button.getAttribute("aria-label")) && !doc.querySelector("#propertiesSelectionControls [data-property-action='add-content-heading'], #propertiesSelectionControls [data-property-action='add-content-paragraph'], #propertiesSelectionControls [data-property-action='add-content-bullet']"));
+            const importedValue = doc.querySelector("#propertiesSelectionControls [data-property-field='contentElementValue']");
+            importedValue.value = "Edited details";
+            importedValue.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+            await waitFor(() => JSON.parse(importedRow.dataset.content || "[]")[0]?.value?.en === "Edited details");
+            assert(checks, "Imported label elements are editable in Properties", JSON.parse(importedRow.dataset.content || "[]")[0]?.value?.en === "Edited details");
+            doc.querySelector("#propertiesSelectionControls [data-property-action='remove-content-block'][data-block-index='0']")?.click();
+            await waitFor(() => JSON.parse(importedRow.dataset.content || "[]").length === 0);
+            assert(checks, "Imported label elements can be deleted in Properties", JSON.parse(importedRow.dataset.content || "[]").length === 0);
           }
           if (requestedDialog === "point-catalog") {
             doc.querySelector("#projectTableTab").click();
@@ -448,7 +499,7 @@
             assert(checks, "Browsing catalog sources does not re-plot", (doc.querySelector("#mapSvg")?.innerHTML || "") === mapBeforeCatalog);
             dispatchKey(doc, "Escape");
             assert(checks, "Escape closes Point catalog", dialog.hidden);
-            assert(checks, "Point catalog restores trigger focus", doc.activeElement === trigger);
+            assert(checks, "Point catalog restores focus to Add data", doc.activeElement === doc.querySelector("#projectAddMenuBtn"));
             trigger.click();
             await waitFor(() => dialog.hidden === false);
             const initialProjectRows = doc.querySelectorAll("#projectTable tbody tr[data-row-id]").length;
@@ -492,10 +543,10 @@
             await waitFor(() => doc.querySelector(dialogSelector)?.hidden === false);
             const menu = doc.querySelector(dialogSelector);
             assert(checks, "Export menu opens", !menu.hidden && trigger.getAttribute("aria-expanded") === "true");
-            assert(checks, "Export menu exposes menu semantics", menu.getAttribute("role") === "menu" && Array.from(menu.querySelectorAll("[role='menuitem']")).length === 2);
+            assert(checks, "Export menu exposes map and data commands", menu.getAttribute("role") === "menu" && Array.from(menu.querySelectorAll("[role='menuitem']")).length === 3 && Boolean(doc.querySelector("#ribbonExportCsvBtn")));
             doc.querySelector("[data-ui-language='fr']")?.click();
-            await waitFor(() => doc.documentElement.lang === "fr" && /Exporter PNG/.test(menu.textContent || ""), 2000);
-            assert(checks, "Top language toggle switches Export menu copy to French", /Image matricielle pour les documents/.test(menu.textContent || "") && /Illustration vectorielle modifiable/.test(menu.textContent || ""), menu.textContent || "");
+            await waitFor(() => doc.documentElement.lang === "fr" && /Exporter en PNG/.test(menu.textContent || ""), 2000);
+            assert(checks, "Top language toggle switches Export menu copy to French", /Sorties cartographiques/.test(menu.textContent || "") && /Image matricielle pour les documents/.test(menu.textContent || "") && /Illustration vectorielle modifiable/.test(menu.textContent || "") && /Données modifiables des points de projet/.test(menu.textContent || ""), menu.textContent || "");
             assertNoRawUiKeys(checks, "Export menu does not show raw translation keys in French", menu);
             assertNoKnownEnglishUi(checks, "Export menu does not show known English UI phrases in French", [menu]);
             assertNoRawUiKeysInAttributes(checks, "Export menu attributes do not show raw translation keys in French", [menu]);
@@ -654,17 +705,21 @@
             }
             await waitFor(() => doc.querySelector("#propertiesSelectionControls input[data-property-field='labelStyle'][value='rich']"), 2000);
             doc.querySelector("#propertiesSelectionControls input[data-property-field='labelStyle'][value='rich']")?.click();
-            await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-action='add-content-paragraph']"), 2000);
-            assert(checks, "Rich annotation Properties expose paragraph, bullets, and image options", Boolean(doc.querySelector("[data-property-action='add-content-paragraph']") && doc.querySelector("[data-property-action='add-content-bullets']") && doc.querySelector("[data-property-action='add-content-image']")));
+            await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-action='add-content-text']"), 2000);
+            assert(checks, "Rich annotation Properties expose text, bullets, and image options", Boolean(doc.querySelector("[data-property-action='add-content-text']") && doc.querySelector("[data-property-action='add-content-bullets']") && doc.querySelector("[data-property-action='add-content-image']")));
             const richTitleLabel = doc.querySelector("#propertiesSelectionControls [data-property-field='name']")?.closest("label")?.textContent || "";
             assert(checks, "Rich annotation Properties labels the heading field as title", /Title|Titre/.test(richTitleLabel), richTitleLabel);
-            doc.querySelector("[data-property-action='add-content-paragraph']")?.click();
-            await waitFor(() => doc.querySelector("[data-property-field='contentParagraph'][data-block-index='0']"), 2000);
+            const labelBorderInput = doc.querySelector("#propertiesSelectionControls [data-property-field='labelBorder']");
+            labelBorderInput?.click();
+            await waitFor(() => doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.labelBorder === "true", 2000);
+            assert(checks, "Rich annotation Properties expose a per-label border option", Boolean(labelBorderInput?.checked));
+            doc.querySelector("[data-property-action='add-content-text']")?.click();
+            await waitFor(() => doc.querySelector("[data-property-field='contentElementValue'][data-block-index='0']"), 2000);
             doc.querySelector("[data-property-action='add-content-bullets']")?.click();
             await waitFor(() => doc.querySelector("[data-property-field='contentBulletItem'][data-block-index='1']"), 2000);
             doc.querySelector("[data-property-action='add-content-image']")?.click();
             await waitFor(() => doc.querySelector("[data-property-field='contentImageUpload'][data-block-index='2']"), 2000);
-            let paragraphInput = doc.querySelector("[data-property-field='contentParagraph'][data-block-index='0']");
+            let paragraphInput = doc.querySelector("[data-property-field='contentElementValue'][data-block-index='0']");
             paragraphInput.value = "Paragraphe riche";
             paragraphInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
             await waitFor(() => /Paragraphe riche/.test(doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.content || ""), 2000);
@@ -680,36 +735,85 @@
             richImageTransfer.items.add(new frame.contentWindow.File([richImageBytes], "rich-label.png", { type: "image/png" }));
             Object.defineProperty(imageUploadInput, "files", { value: richImageTransfer.files, configurable: true });
             imageUploadInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
-            await waitFor(() => /data:image\/png;base64/.test(doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.content || "") && doc.querySelector(".annotation-image-preview img"), 3000);
+            await waitFor(() => {
+              const block = JSON.parse(doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.content || "[]")[2];
+              return block?.assetRef?.startsWith("data:image/png;base64") && doc.querySelector(".annotation-image-preview img");
+            }, 3000);
+            const imagePreviewStyle = frame.contentWindow.getComputedStyle(doc.querySelector(".annotation-image-preview img"));
+            assert(checks, "Rich annotation image preview preserves the image without a thumbnail frame or crop", imagePreviewStyle.objectFit === "contain" && parseFloat(imagePreviewStyle.borderTopWidth) === 0, `${imagePreviewStyle.objectFit} / ${imagePreviewStyle.borderTopWidth}`);
+            let imageSizeInput = doc.querySelector("[data-property-field='contentImageSize'][data-block-index='2']");
+            assert(checks, "Rich annotation image editor exposes an aspect-locked image size control", Boolean(imageSizeInput && /proportions|proportions d'origine/i.test(imageSizeInput.closest("label")?.textContent || "")));
+            imageSizeInput.value = "144";
+            imageSizeInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+            await waitFor(() => {
+              const content = JSON.parse(doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.content || "[]");
+              return content[2]?.displaySize === 144 && content[2]?.naturalWidth === 1 && content[2]?.naturalHeight === 1;
+            }, 2000);
             let imageCaptionInput = doc.querySelector("[data-property-field='contentImageCaption'][data-block-index='2']");
             imageCaptionInput.value = "Image riche";
             imageCaptionInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
             await waitFor(() => /Image riche/.test(doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.content || ""), 2000);
-            doc.querySelector("[data-property-action='add-content-paragraph']")?.click();
-            await waitFor(() => doc.querySelector("[data-property-field='contentParagraph'][data-block-index='3']"), 2000);
-            let temporaryParagraphInput = doc.querySelector("[data-property-field='contentParagraph'][data-block-index='3']");
+            doc.querySelector("[data-property-action='add-content-text']")?.click();
+            await waitFor(() => doc.querySelector("[data-property-field='contentElementValue'][data-block-index='3']"), 2000);
+            let temporaryParagraphInput = doc.querySelector("[data-property-field='contentElementValue'][data-block-index='3']");
             temporaryParagraphInput.value = "Bloc temporaire";
             temporaryParagraphInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
             await waitFor(() => /Bloc temporaire/.test(doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.content || ""), 2000);
             doc.querySelector("[data-property-action='move-content-block-up'][data-block-index='3']")?.click();
             await waitFor(() => {
               const content = JSON.parse(doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.content || "[]");
-              return content[2]?.type === "paragraph" && content[2]?.en === "Bloc temporaire" && content[3]?.type === "image";
+              return content[2]?.type === "text" && content[2]?.value?.en === "Bloc temporaire" && content[3]?.type === "image";
             }, 2000);
             doc.querySelector("[data-property-action='remove-content-block'][data-block-index='2']")?.click();
             await waitFor(() => {
               const content = JSON.parse(doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.content || "[]");
-              return content.length === 3 && content[0]?.type === "paragraph" && content[1]?.type === "bullets" && content[2]?.type === "image" && !/Bloc temporaire/.test(JSON.stringify(content));
+              return content.length === 3 && content[0]?.type === "text" && content[1]?.type === "bullets" && content[2]?.type === "image" && !/Bloc temporaire/.test(JSON.stringify(content));
             }, 2000);
             assert(checks, "Rich annotation blocks can be reordered and removed without corrupting mixed content", (() => {
               const content = JSON.parse(doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.content || "[]");
-              return content.length === 3 && content[0]?.en === "Paragraphe riche" && content[1]?.items?.[0]?.en === "Puce riche" && content[2]?.caption?.en === "Image riche";
+              return content.length === 3 && content[0]?.value?.en === "Paragraphe riche" && content[1]?.items?.[0]?.en === "Puce riche" && content[2]?.caption?.en === "Image riche" && content[2]?.displaySize === 144;
             })());
             doc.querySelector("#previewTableTab")?.click();
             await waitFor(() => doc.body.dataset.workspaceView === "preview", 4000);
             await waitFor(() => doc.querySelector("#mapSvg .rich-label-image image"), 4000);
-            assert(checks, "Uploaded rich annotation image renders on the map SVG", Boolean(doc.querySelector("#mapSvg .rich-label-image image")));
+            const renderedRichImage = doc.querySelector("#mapSvg .rich-label-image > image");
+            const borderedRichLabel = doc.querySelector("#mapSvg .map-label-background.has-label-border");
+            const borderedRichLabelStyle = borderedRichLabel ? frame.contentWindow.getComputedStyle(borderedRichLabel) : null;
+            assert(checks, "Enabled rich-label border renders around the complete label", Boolean(borderedRichLabel && borderedRichLabelStyle?.stroke !== "none" && parseFloat(borderedRichLabelStyle?.strokeWidth || "0") > 0));
+            assert(checks, "Uploaded rich annotation image renders at its saved aspect-locked size", Number(renderedRichImage?.getAttribute("width")) === 144 && Number(renderedRichImage?.getAttribute("height")) === 144 && renderedRichImage?.getAttribute("preserveAspectRatio") === "xMidYMid meet", `${renderedRichImage?.getAttribute("width")} x ${renderedRichImage?.getAttribute("height")}`);
+            assert(checks, "Rich annotation image renders without a card, border, or inset frame", !doc.querySelector("#mapSvg .rich-label-image > rect"));
+            const richImageGroup = renderedRichImage?.closest(".rich-label-image");
+            const richLabelDatum = doc.querySelector(`#mapSvg .map-label[data-layout-id='${richImageGroup?.dataset.layoutId || ""}']`)?.__data__;
+            const richImageLine = richLabelDatum?.lines?.find(line => line.role === "image");
+            const richLabelFontSize = richLabelDatum ? richLabelDatum.lineHeight / 1.2 : 0;
+            const richLabelVisualHeight = richLabelDatum ? richLabelDatum.textHeight - richLabelDatum.lineHeight + richLabelFontSize : 0;
+            const richImageBottom = richImageLine ? richImageLine.baselineOffset - richLabelFontSize + richImageLine.imageHeight : Infinity;
+            assert(checks, "Resized rich image contributes its real dimensions to label collision geometry", Boolean(richLabelDatum && richImageLine && richLabelDatum.textWidth >= 144 && richLabelVisualHeight >= richImageBottom + richLabelFontSize));
             assert(checks, "Rich annotation renders title and content line roles on the map SVG", Boolean(doc.querySelector("#mapSvg .map-label .label-title") && doc.querySelector("#mapSvg .map-label .label-bullet")));
+            const richMapLabel = doc.querySelector("#mapSvg .map-label:has(.label-title)");
+            richMapLabel?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
+            const openedPropertiesForLiveEdit = Boolean(propertiesPanel?.inert);
+            if (openedPropertiesForLiveEdit) {
+              propertiesToggle?.click();
+              await waitFor(() => !propertiesPanel.inert, 2000);
+            }
+            const liveRichTitleInput = await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-field='nameFr']"), 2000);
+            const originalRichTitle = liveRichTitleInput.value;
+            const renderSamplesBeforeLiveEdit = frame.contentWindow.PLOTYPUS_RENDER_PERFORMANCE?.snapshot().samples.length || 0;
+            liveRichTitleInput.focus();
+            liveRichTitleInput.value = `${originalRichTitle} live`;
+            liveRichTitleInput.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
+            assert(checks, "Rich-label live editing starts the map loading animation", doc.querySelector("#mapHost")?.classList.contains("is-rendering"));
+            await waitFor(() => Array.from(doc.querySelectorAll("#mapSvg .label-title")).some(node => / live$/.test(node.textContent || "")), 2000);
+            assert(checks, "Rich-label live editing keeps keyboard focus in the editor", doc.activeElement === liveRichTitleInput);
+            const renderSamplesAfterLiveEdit = frame.contentWindow.PLOTYPUS_RENDER_PERFORMANCE?.snapshot().samples.length || 0;
+            assert(checks, "Rich-label live editing patches its SVG without a full map render", renderSamplesAfterLiveEdit === renderSamplesBeforeLiveEdit, `${renderSamplesBeforeLiveEdit} / ${renderSamplesAfterLiveEdit}`);
+            liveRichTitleInput.value = originalRichTitle;
+            liveRichTitleInput.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
+            liveRichTitleInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+            await new Promise(resolve => frame.contentWindow.requestAnimationFrame(() => resolve()));
+            if (openedPropertiesForLiveEdit) propertiesToggle?.click();
+            doc.querySelector("#mapSvg")?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
             if (firstAvailableRegion?.value) {
               const selectedRegionId = firstAvailableRegion.value;
               let regionLeaderPair = null;
@@ -735,7 +839,7 @@
             await waitFor(() => doc.body.dataset.workspaceView === "projects", 4000);
             firstProjectRow?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
             const firstRowDataset = doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset || {};
-            assert(checks, "Unified annotation edits preserve anchor and rich content together", firstRowDataset.anchor === "region" && firstRowDataset.labelStyle === "rich" && /Paragraphe riche/.test(firstRowDataset.content || "") && /Puce riche/.test(firstRowDataset.content || "") && /Image riche/.test(firstRowDataset.content || "") && /data:image\/png;base64/.test(firstRowDataset.content || ""), [firstRowDataset.anchor || "", firstRowDataset.labelStyle || "", firstRowDataset.content || ""].join(" "));
+            assert(checks, "Unified annotation edits preserve anchor and rich image content together", firstRowDataset.anchor === "region" && firstRowDataset.labelStyle === "rich" && /Paragraphe riche/.test(firstRowDataset.content || "") && /Puce riche/.test(firstRowDataset.content || "") && /Image riche/.test(firstRowDataset.content || "") && /data:image\/png;base64/.test(firstRowDataset.content || ""), [firstRowDataset.anchor || "", firstRowDataset.labelStyle || "", firstRowDataset.content || ""].join(" "));
             doc.querySelector("[data-project-location-mode='coordinates']")?.click();
             await waitFor(() => doc.querySelector("#projectTable")?.dataset.locationMode === "coordinates" && doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.anchor === "coord", 2000);
 
@@ -765,7 +869,7 @@
           }
           if (requestedWorkspace === "quality") {
             const qualityText = `${doc.querySelector("#qualitySummaryBanner")?.textContent || ""} ${doc.querySelector("#statusBox")?.textContent || ""}`;
-            assert(checks, "Top language toggle switches Map quality copy to French", /problèmes à réviser|Éléments à corriger|Localiser le premier/.test(qualityText), qualityText);
+            assert(checks, "Top language toggle switches Map quality copy to French", /problèmes à réviser|Éléments à corriger|Localiser le premier|Vérification de la disposition mise à jour/.test(qualityText), qualityText);
           }
           const rawPropertiesKeyPattern = /\b(?:properties|toolbar|dialog|region|quality|translate|status|project|table|settings|categories)\.[A-Za-z0-9_.-]+/;
           const frenchPropertiesText = doc.querySelector("#propertiesPanel")?.textContent || "";
@@ -803,9 +907,9 @@
               doc.querySelector("#addRowBtn")?.click();
               await waitFor(() => doc.querySelectorAll("#projectTable tbody tr").length === 1, 2000);
               doc.querySelector("#ribbonUndoBtn")?.click();
-              await waitFor(() => /ajout de ligne de projet annulé/i.test(doc.querySelector("#statusBox")?.textContent || ""), 2000);
+              await waitFor(() => /Action annulée\s*:\s*ajout de ligne de projet/i.test(doc.querySelector("#statusBox")?.textContent || ""), 2000);
               const undoStatusText = doc.querySelector("#statusBox")?.textContent || "";
-              assert(checks, "French undo status translates dynamic action labels", /ajout de ligne de projet annulé/i.test(undoStatusText), undoStatusText);
+              assert(checks, "French undo status translates dynamic action labels", /Action annulée\s*:\s*ajout de ligne de projet/i.test(undoStatusText), undoStatusText);
               assertNoRawUiKeys(checks, "French undo status does not show raw translation keys", doc.querySelector("#statusBox"));
               assertNoKnownEnglishUi(checks, "French undo status does not show known English UI phrases", [doc.querySelector("#statusBox")]);
             }
@@ -861,7 +965,7 @@
           await waitFor(() => doc.documentElement.lang === "en" && doc.querySelector("#previewTableTab")?.textContent.trim() === "Map", 2000);
           assert(checks, "Top language toggle switches app chrome back to English", doc.documentElement.lang === "en" && doc.querySelector("#mapDetailsBtn")?.textContent.includes("Map details") && doc.querySelector("#exportMenuBtn")?.textContent.trim() === "Export" && doc.querySelector("#mapLanguageInput")?.value === "en");
           const currentSummaryChips = Array.from(doc.querySelectorAll("#workspaceSummaryMetrics .workspace-summary-chip"));
-          const currentVisibleSummaryChips = currentSummaryChips.filter(chip => frame.contentWindow.getComputedStyle(chip).display !== "none");
+          const currentVisibleSummaryChips = currentSummaryChips.filter(chip => chip.getBoundingClientRect().height > 0);
           const currentRegionSummaryLabel = doc.querySelector("#workspaceSummaryMetrics [data-summary-key='regions'] span");
           if (appWidth > 1280) {
             assert(checks, "Properties uses the 320px desktop dock", Math.round(parseFloat(propertiesStyle.width)) === 320, propertiesStyle.width);
@@ -884,7 +988,7 @@
           } else {
             assert(checks, "Properties becomes a fixed slide-over", propertiesStyle.position === "fixed" && propertiesStyle.right === "0px");
             assert(checks, "Narrow shell exposes the Properties trigger", frame.contentWindow.getComputedStyle(propertiesToggle).display !== "none");
-            assert(checks, "Narrow readiness collapses to one review control", currentVisibleSummaryChips.length === 1 && currentVisibleSummaryChips[0].dataset.summaryKey === "to-review");
+            assert(checks, "Narrow readiness collapses to one review control", currentVisibleSummaryChips.length === 1 && currentVisibleSummaryChips[0].dataset.summaryKey === "to-review", currentSummaryChips.map(chip => `${chip.dataset.summaryKey}:${Math.round(chip.getBoundingClientRect().height)}/${frame.contentWindow.getComputedStyle(chip).display}`).join(", "));
             assert(checks, "Icon-only workspace tabs retain tooltips", workspaceTabs.every(tab => frame.contentWindow.getComputedStyle(tab).fontSize === "0px" && Boolean(tab.title)));
             assert(checks, "Narrow command groups hide button labels", frame.contentWindow.getComputedStyle(doc.querySelector("#ribbonOpenProjectBtn")).fontSize === "0px");
             assert(checks, "Closed Properties cannot receive offscreen focus", propertiesPanel.inert && propertiesPanel.getAttribute("aria-hidden") === "true");
@@ -966,13 +1070,18 @@
             label?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
             const labelKind = doc.querySelector("#propertiesSelectionControls .properties-form")?.dataset.propertyKind || "";
             const labelSectionsHidden = previewSections.every(section => section.hidden);
+            const selectedLayoutId = label?.dataset.layoutId || "";
+            const selectedLabelParts = Array.from(doc.querySelectorAll("#mapSvg .is-properties-selected"));
+            const selectedLabelBackground = doc.querySelector(`#mapSvg .map-label-background[data-layout-id="${selectedLayoutId}"]`);
             const svgSnapshot = Array.from(doc.querySelector("#mapSvg")?.children || []).slice(0, 8).map(node => `${node.tagName}.${node.getAttribute("class") || ""}`).join("|");
             assert(checks, "Selecting a label shows only label Properties", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='label']")) && labelSectionsHidden, `target=${Boolean(label)} kind=${labelKind} sectionsHidden=${labelSectionsHidden} svg=${svgSnapshot}`);
+            assert(checks, "Selecting label Properties highlights that label on the map", Boolean(label?.classList.contains("is-properties-selected")) && Boolean(selectedLabelBackground?.classList.contains("is-properties-selected")) && selectedLabelParts.every(node => node.dataset.layoutId === selectedLayoutId), `layout=${selectedLayoutId} highlighted=${selectedLabelParts.length}`);
             const legend = doc.querySelector("#mapSvg .legend-layer");
             legend?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
             const legendKind = doc.querySelector("#propertiesSelectionControls .properties-form")?.dataset.propertyKind || "";
             const legendSectionsHidden = previewSections.every(section => section.hidden);
             assert(checks, "Selecting the legend shows only furniture Properties", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='furniture']")) && legendSectionsHidden, `target=${Boolean(legend)} kind=${legendKind} sectionsHidden=${legendSectionsHidden}`);
+            assert(checks, "Moving Properties away from a label clears its map highlight", !doc.querySelector("#mapSvg .is-properties-selected"));
             uiFrenchButton?.click();
             await waitFor(() => doc.documentElement.lang === "fr", 2000);
             doc.querySelector("#mapSvg .legend-layer")?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
@@ -995,10 +1104,10 @@
             assert(checks, "Map selections do not re-plot the map", (doc.querySelector("#mapSvg")?.innerHTML || "") === mapBeforePreviewSelection);
           }
           if (requestedWorkspace === "projects") {
-            const filters = doc.querySelectorAll("[data-project-filter]");
+            const filterOptions = doc.querySelectorAll("#projectFilterSelect option");
             const firstNameInput = doc.querySelector("#projectTable .name-input");
             const inputStyle = firstNameInput ? frame.contentWindow.getComputedStyle(firstNameInput) : null;
-            assert(checks, "Project filters remain available", filters.length === 3);
+            assert(checks, "Project filters use one compact counted selector", filterOptions.length === 3 && /All rows \(\d+\)/.test(filterOptions[0]?.textContent || "") && /Missing coordinates \(\d+\)/.test(filterOptions[1]?.textContent || "") && /No-coordinate callouts \(\d+\)/.test(filterOptions[2]?.textContent || ""));
             assert(checks, "Project authoring language remains available", doc.querySelectorAll("[data-authoring-language]").length === 2);
             const firstTypeInput = doc.querySelector("#projectTable .type-input");
             const firstLonForLanguage = Array.from(doc.querySelectorAll("#projectTable .lon-input")).find(input => input.value.trim());
@@ -1013,16 +1122,26 @@
             englishAuthoringButton?.click();
             assert(checks, "Project type switches back to English with the authoring language", /Referred Project|Transformative Strategy/.test(firstTypeInput?.selectedOptions[0]?.textContent || ""));
             assert(checks, "Project coordinates use dot decimals in English", /\./.test(firstLonForLanguage?.value || ""));
-            const addActions = doc.querySelector(".add-actions");
-            assert(checks, "Project add actions are grouped", addActions?.querySelector(".toolbar-group-label")?.textContent.trim() === "Add" && doc.querySelector("#addRowBtn")?.textContent.trim() === "Row" && doc.querySelector("#addPointsBtn")?.textContent.trim() === "From source");
+            const addMenuButton = doc.querySelector("#projectAddMenuBtn");
+            const addMenu = doc.querySelector("#projectAddMenu");
+            assert(checks, "Project add actions are grouped in Add data", addMenuButton?.textContent.trim() === "Add data" && Boolean(addMenuButton?.querySelector("svg")) && addMenu?.contains(doc.querySelector("#addRowBtn")) && addMenu?.contains(doc.querySelector("#addPointsBtn")) && addMenu?.contains(doc.querySelector("#ribbonImportCsvBtn")) && Array.from(addMenu?.querySelectorAll("[role='menuitem']") || []).every(item => Boolean(item.querySelector("svg"))) && doc.querySelector("#addRowBtn")?.textContent.trim() === "Blank row" && doc.querySelector("#addPointsBtn")?.textContent.trim() === "From source");
+            addMenuButton?.click();
+            assert(checks, "Add data opens an accessible menu", addMenu?.hidden === false && addMenuButton?.getAttribute("aria-expanded") === "true" && addMenu?.querySelectorAll("[role='menuitem']").length === 3);
+            dispatchKey(addMenuButton, "Escape");
+            assert(checks, "Escape closes Add data and restores focus", addMenu?.hidden === true && doc.activeElement === addMenuButton);
             const selectionActions = doc.querySelector(".selection-actions");
             assert(checks, "Project selection actions are grouped", selectionActions && selectionActions.contains(doc.querySelector("#bulkPriorityInput")) && selectionActions.contains(doc.querySelector("#bulkClearCoordinatesBtn")) && selectionActions.contains(doc.querySelector("#deleteSelectedBtn")));
-            assert(checks, "Project selection action group is labelled", selectionActions?.querySelector(".toolbar-group-label")?.textContent.trim() === "Multi select" && doc.querySelector("#deleteSelectedBtn")?.textContent.trim() === "Delete");
+            assert(checks, "Project selection actions stay hidden until selection", selectionActions?.hidden === true && selectionActions?.querySelector(".toolbar-group-label")?.textContent.trim() === "Selected" && doc.querySelector("#deleteSelectedBtn")?.textContent.trim() === "Delete");
+            const moreMenuButton = doc.querySelector("#projectMoreMenuBtn");
+            const moreMenu = doc.querySelector("#projectMoreMenu");
+            moreMenuButton?.click();
+            assert(checks, "Rare destructive actions live under More", moreMenu?.hidden === false && moreMenu?.contains(doc.querySelector("#clearRowsBtn")));
+            dispatchKey(moreMenuButton, "Escape");
             assert(checks, "Project field guide is removed from the toolbar", !doc.querySelector(".project-field-legend"));
-            const projectToolbarControls = Array.from(doc.querySelectorAll("[data-table-actions='projects'] > button, [data-table-actions='projects'] > select, .add-actions > button, .selection-actions > button, .selection-actions > select"))
-              .filter(control => frame.contentWindow.getComputedStyle(control).display !== "none");
+            const projectToolbarControls = Array.from(doc.querySelectorAll("#projectFilterSelect, .project-location-mode > button, .authoring-language > button, .project-toolbar-menu-button, .selection-actions > button, .selection-actions > select"))
+              .filter(control => control.getBoundingClientRect().height > 0);
             const projectToolbarHeights = projectToolbarControls.map(control => Math.round(control.getBoundingClientRect().height));
-            assert(checks, "Project toolbar controls share one standard height", new Set(projectToolbarHeights).size === 1, projectToolbarHeights.join(", "));
+            assert(checks, "Project toolbar controls use compact standard heights", projectToolbarHeights.every(height => height >= 38 && height <= 46), projectToolbarHeights.join(", "));
             const centeredHeaderClasses = [".priority-col", ".region-col", ".lon-col", ".lat-col", ".status-col"];
             assert(checks, "Project numeric/status headers are centered", centeredHeaderClasses.every(selector => frame.contentWindow.getComputedStyle(doc.querySelector(`#projectTable ${selector}`)).textAlign === "center"));
             assert(checks, "Project table labels the rich/compact column as Extra info", doc.querySelector("#projectTable .annotation-preview-col")?.textContent.includes("Extra info"), doc.querySelector("#projectTable .annotation-preview-col")?.textContent || "");
@@ -1034,10 +1153,8 @@
             });
             assert(checks, "Project compact headers fit their edit hints without ellipses", projectHeadersWithoutEllipses);
             if (appWidth <= 1080) {
-              assert(checks, "Narrow Project filters collapse to a select", frame.contentWindow.getComputedStyle(doc.querySelector("#projectFilterSelect")).display !== "none" && Array.from(filters).every(button => frame.contentWindow.getComputedStyle(button).display === "none"));
+              assert(checks, "Narrow Project filter remains a compact selector", frame.contentWindow.getComputedStyle(doc.querySelector("#projectFilterSelect")).display !== "none");
               assert(checks, "Project table preserves its 760px minimum", parseFloat(frame.contentWindow.getComputedStyle(doc.querySelector("#projectTablePane")).minWidth) >= 760);
-            } else if (appWidth <= 1280) {
-              assert(checks, "Working-width Callouts label is shortened", frame.contentWindow.getComputedStyle(doc.querySelector(".filter-label-wide")).display === "none" && frame.contentWindow.getComputedStyle(doc.querySelector(".filter-label-compact")).display !== "none");
             }
             assert(checks, "Project cells use quiet editing chrome", inputStyle?.borderTopColor === "rgba(0, 0, 0, 0)" || inputStyle?.borderTopColor === "transparent");
             const statusCell = doc.querySelector("#projectTable .status-cell");
@@ -1049,6 +1166,8 @@
             assert(checks, "Project status badge is centered in the status column", Math.abs(statusCellCenter - statusBadgeCenter) <= 3, `cell=${Math.round(statusCellCenter)}, badge=${Math.round(statusBadgeCenter)}`);
             firstNameInput?.click();
             await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='row']"));
+            assert(checks, "Project selection actions appear contextually", selectionActions?.hidden === false);
+            assert(checks, "Project toolbar does not create page-level horizontal overflow", doc.documentElement.scrollWidth <= doc.documentElement.clientWidth + 1, `${doc.documentElement.scrollWidth}/${doc.documentElement.clientWidth}`);
             assert(checks, "Selecting a project row opens row Properties", doc.querySelector("#propertiesTitle")?.textContent.trim() === "Project data" && doc.querySelector("#propertiesSubtitle")?.textContent.trim() === firstNameInput?.value.trim());
             assert(checks, "Project row Properties mark editable fields and automatic status", doc.querySelectorAll("#propertiesSelectionControls [data-property-kind='row'] .field-origin-icon-edit").length >= 8 && Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='row'] .properties-record-status .field-origin-icon-auto")));
             assert(checks, "Project row Properties expose an elbow leader override", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-field='elbowLeader']")));
@@ -1127,8 +1246,8 @@
             frame.contentWindow.confirm = confirmForAnyColumnDelete;
             await waitFor(() => doc.querySelectorAll("#projectTable tbody tr").length === rowsBeforeAnyColumnDelete - 2, 2000);
             assert(checks, "Delete removes every row that has a selected Project cell", doc.querySelectorAll("#projectTable tbody tr").length === rowsBeforeAnyColumnDelete - 2);
-            doc.querySelector("[data-project-location-mode='regions']")?.click();
-            await waitFor(() => doc.querySelector("#projectTable")?.dataset.locationMode === "regions", 2000);
+            doc.querySelector("[data-project-location-mode='coordinates']")?.click();
+            await waitFor(() => doc.querySelector("#projectTable")?.dataset.locationMode === "coordinates", 2000);
             const regionImportInput = doc.querySelector("#csvInput");
             if (regionImportInput) {
               const regionTransfer = new frame.contentWindow.DataTransfer();
@@ -1137,12 +1256,14 @@
               ], "region-import.csv", { type: "text/csv" }));
               Object.defineProperty(regionImportInput, "files", { configurable: true, value: regionTransfer.files });
               regionImportInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
-              await waitFor(() => doc.querySelector("#csvMapDialog")?.hidden === false && doc.querySelectorAll("#csvMapRows .csv-map-row").length === 5, 4000);
+              await waitFor(() => doc.querySelector("#csvMapDialog")?.hidden === false && doc.querySelectorAll("#csvMapRows .csv-map-row").length === 7, 4000);
+              doc.querySelector("[data-csv-location-mode='regions']")?.click();
+              await waitFor(() => doc.querySelectorAll("#csvMapRows .csv-map-row").length === 6 && doc.querySelector("#csvMapRows [data-csv-target='region'] select")?.value === "Province", 2000);
               const regionMapText = doc.querySelector("#csvMapDialog")?.textContent || "";
-              assert(checks, "Region CSV import reuses the mapping dialog with a region field", /Region/.test(regionMapText) && !/Longitude|Latitude/.test(regionMapText), regionMapText);
+              assert(checks, "Region CSV import can switch location mode inside the mapping dialog", /Region/.test(regionMapText) && !/Longitude|Latitude/.test(regionMapText) && doc.querySelector("#projectTable")?.dataset.locationMode === "coordinates", regionMapText);
               assert(checks, "Region CSV import required mappings are auto-matched", doc.querySelector("#confirmCsvMapBtn")?.disabled === false);
               doc.querySelector("#confirmCsvMapBtn")?.click();
-              await waitFor(() => doc.querySelectorAll("#projectTable tbody tr[data-row-id]").length === 1 && doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.region === "Ontario", 4000);
+              await waitFor(() => doc.querySelector("#projectTable")?.dataset.locationMode === "regions" && doc.querySelectorAll("#projectTable tbody tr[data-row-id]").length === 1 && doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.region === "Ontario", 4000);
               const importedRegionRow = doc.querySelector("#projectTable tbody tr[data-row-id]");
               assert(checks, "Region CSV import resolves misspelled province values to region anchors", importedRegionRow?.dataset.anchor === "region" && importedRegionRow?.dataset.region === "Ontario" && !importedRegionRow?.querySelector(".lon-input")?.value && !importedRegionRow?.querySelector(".lat-input")?.value, `${importedRegionRow?.dataset.anchor || ""}/${importedRegionRow?.dataset.region || ""}`);
             }
@@ -1193,6 +1314,17 @@
               doc.querySelector("#categoryList .remove-category-btn")?.getAttribute("aria-label") || ""
             ].join(" | ");
             assert(checks, "Category action accessibility labels switch to French category names", /Modifier/.test(categoryAriaText) && /Projets soumis/.test(categoryAriaText), categoryAriaText);
+            const categoryCountBeforeAdd = doc.querySelectorAll("#categoryList .category-editor").length;
+            doc.querySelector("#addCategoryBtn")?.click();
+            await waitFor(() => doc.querySelectorAll("#categoryList .category-editor").length === categoryCountBeforeAdd + 1, 2000);
+            const frenchCreatedCategory = Array.from(doc.querySelectorAll("#categoryList .category-editor")).at(-1);
+            assert(
+              checks,
+              "Categories created in French UI keep separate English and French defaults",
+              /^Catégorie \d+$/.test(frenchCreatedCategory?.querySelector(".category-title-block strong")?.textContent.trim() || "")
+                && /^Category \d+$/.test(frenchCreatedCategory?.querySelector(".category-label-input")?.value || ""),
+              `${frenchCreatedCategory?.querySelector(".category-title-block strong")?.textContent || ""} | ${frenchCreatedCategory?.querySelector(".category-label-input")?.value || ""}`
+            );
             const frenchUploadInput = doc.querySelector("#propertiesSelectionControls [data-category-icon-upload]");
             if (!visualCapture && frenchUploadInput && frame.contentWindow.DataTransfer) {
               const canvas = doc.createElement("canvas");
@@ -1209,7 +1341,7 @@
               await waitFor(() => Array.from(doc.querySelectorAll("#categoryList .category-editor small")).some(node => /icône personnalisée/i.test(node.textContent || "")), 4000);
               assert(checks, "Category custom icon upload status switches to French", /utilise maintenant une icône de repère personnalisée/i.test(doc.querySelector("#statusBox")?.textContent || ""), doc.querySelector("#statusBox")?.textContent || "");
               doc.querySelector("#propertiesSelectionControls [data-property-action='remove-category-icon']")?.click();
-              assert(checks, "Category custom icon removal status switches to French", /est revenu au repère/i.test(doc.querySelector("#statusBox")?.textContent || ""), doc.querySelector("#statusBox")?.textContent || "");
+              assert(checks, "Category custom icon removal status switches to French", /Forme de repère rétablie/i.test(doc.querySelector("#statusBox")?.textContent || ""), doc.querySelector("#statusBox")?.textContent || "");
             }
             uiEnglishButton?.click();
             await waitFor(() => doc.documentElement.lang === "en" && /Categories/.test(doc.querySelector("#categoriesTableTab")?.textContent || ""), 2000);
@@ -1335,6 +1467,8 @@
               await waitFor(() => doc.documentElement.lang === "fr" && /Fond de carte/.test(doc.querySelector("#regionTableTab")?.textContent || ""), 2000);
               const worldPresetOptions = Array.from(doc.querySelector("#regionPresetInput")?.options || []).map(option => option.textContent.trim()).join(" | ");
               assert(checks, "World baselayer preset options switch to French", /Choisir un continent/.test(worldPresetOptions) && /Tous les pays/.test(worldPresetOptions) && /Amérique du Nord/.test(worldPresetOptions), worldPresetOptions);
+              await waitFor(() => /Allemagne/.test(doc.querySelector("#regionTable tbody")?.textContent || ""), 4000);
+              assert(checks, "World country names switch to French", /Allemagne/.test(doc.querySelector("#regionTable tbody")?.textContent || ""), doc.querySelector("#regionTable tbody")?.textContent || "");
               uiEnglishButton?.click();
               await waitFor(() => doc.documentElement.lang === "en" && /Map baselayer/.test(doc.querySelector("#regionTableTab")?.textContent || ""), 2000);
             }
@@ -1466,8 +1600,176 @@
             assert(checks, "Detailed checklist remains available", Boolean(doc.querySelector(".quality-detail-checklist #statusBox")));
             assert(checks, "Quality Properties are contextual", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='quality']")));
             assert(checks, "Quality workspace shows render timing telemetry", doc.querySelectorAll("#performanceTelemetryMetrics .performance-metric").length === 5 && ["ok", "warning"].includes(doc.querySelector("#performanceTelemetryStatus")?.dataset.state));
+            const overlapCountFromLabels = labelNodes => {
+              const rects = labelNodes.map(node => {
+                const datum = node.__data__;
+                const fontSize = datum.lineHeight / 1.2;
+                const x = datum.labelSide === "left" ? datum.labelX - datum.textWidth : datum.labelX;
+                const y = datum.labelY - fontSize;
+                const height = datum.textHeight - datum.lineHeight + fontSize;
+                return {
+                  x0: x - 10,
+                  y0: y - 10,
+                  x1: x + datum.textWidth + 10,
+                  y1: y + height + 10,
+                  centerX: x + datum.textWidth / 2,
+                  centerY: y + height / 2
+                };
+              });
+              let overlaps = 0;
+              for (let i = 0; i < rects.length; i += 1) {
+                for (let j = i + 1; j < rects.length; j += 1) {
+                  if (frame.contentWindow.PLOTYPUS_GEOMETRY.rectsOverlap(rects[i], rects[j])) overlaps += 1;
+                }
+              }
+              return { overlaps, rects };
+            };
+            const getOverlapCardValue = () => {
+              const card = Array.from(doc.querySelectorAll("#qualityMetricsPanel .quality-card"))
+                .find(node => /Label overlaps|Chevauchements d'étiquettes/i.test(node.querySelector("h3")?.textContent || ""));
+              return Number(card?.querySelector("header > strong")?.textContent || NaN);
+            };
+            const initialOverlapValue = getOverlapCardValue();
             doc.querySelector("#previewTableTab")?.click();
             await waitFor(() => doc.body.dataset.workspaceView === "preview" && !doc.querySelector("#canvasQualityPill")?.hidden, 4000);
+            const movableLabels = Array.from(doc.querySelectorAll("#mapSvg .map-label")).filter(node => node.__data__);
+            const initialGeometry = overlapCountFromLabels(movableLabels);
+            const isolatedIndex = initialGeometry.rects.findIndex((rect, index) => initialGeometry.rects.every((other, otherIndex) => (
+              index === otherIndex || !frame.contentWindow.PLOTYPUS_GEOMETRY.rectsOverlap(rect, other)
+            )));
+            const targetIndex = movableLabels.findIndex((_, index) => index !== isolatedIndex);
+            assert(checks, "Quality refresh regression has movable non-overlapping labels", movableLabels.length >= 2 && isolatedIndex >= 0 && targetIndex >= 0);
+            if (isolatedIndex >= 0 && targetIndex >= 0) {
+              const svgNode = doc.querySelector("#mapSvg");
+              const toScreenPoint = rect => {
+                const point = svgNode.createSVGPoint();
+                point.x = rect.centerX;
+                point.y = rect.centerY;
+                return point.matrixTransform(svgNode.getScreenCTM());
+              };
+              const sourcePoint = toScreenPoint(initialGeometry.rects[isolatedIndex]);
+              const targetPoint = toScreenPoint(initialGeometry.rects[targetIndex]);
+              const sourceLabel = movableLabels[isolatedIndex];
+              const qualityAnalysisBefore = frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot();
+              sourceLabel.dispatchEvent(new frame.contentWindow.MouseEvent("mousedown", {
+                bubbles: true,
+                cancelable: true,
+                button: 0,
+                buttons: 1,
+                clientX: sourcePoint.x,
+                clientY: sourcePoint.y,
+                view: frame.contentWindow
+              }));
+              frame.contentWindow.dispatchEvent(new frame.contentWindow.MouseEvent("mousemove", {
+                bubbles: true,
+                cancelable: true,
+                buttons: 1,
+                clientX: targetPoint.x,
+                clientY: targetPoint.y,
+                view: frame.contentWindow
+              }));
+              frame.contentWindow.dispatchEvent(new frame.contentWindow.MouseEvent("mouseup", {
+                bubbles: true,
+                cancelable: true,
+                button: 0,
+                clientX: targetPoint.x,
+                clientY: targetPoint.y,
+                view: frame.contentWindow
+              }));
+              const movedOverlapValue = overlapCountFromLabels(movableLabels).overlaps;
+              const mapBeforeQualityRefresh = doc.querySelector("#mapSvg")?.innerHTML || "";
+              const renderSamplesBeforeQualityRefresh = performanceApi?.snapshot().samples.length || 0;
+              // D3 suppresses the click in the same task as drag-end; a real tab click arrives in the next task.
+              await new Promise(resolve => setTimeout(resolve, 0));
+              const qualityOpenStartedAt = performance.now();
+              doc.querySelector("#qualityTableTab")?.click();
+              const qualityOpenDuration = performance.now() - qualityOpenStartedAt;
+              const qualityAnalysisAtOpen = frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot();
+              const qualityFinishedBeforeOpen = Boolean(
+                qualityAnalysisBefore
+                && qualityAnalysisAtOpen
+                && qualityAnalysisAtOpen.pending === false
+                && qualityAnalysisAtOpen.completed > qualityAnalysisBefore.completed
+              );
+              assert(
+                checks,
+                "Opening Map quality remains responsive while analysis is pending or already complete",
+                qualityOpenDuration < 120
+                  && doc.body.dataset.workspaceView === "quality"
+                  && (doc.querySelector("#qualityTablePane")?.getAttribute("aria-busy") === "true" || qualityFinishedBeforeOpen),
+                JSON.stringify({
+                  durationMs: Number(qualityOpenDuration.toFixed(1)),
+                  workspace: doc.body.dataset.workspaceView,
+                  ariaBusy: doc.querySelector("#qualityTablePane")?.getAttribute("aria-busy"),
+                  analysis: qualityAnalysisAtOpen
+                })
+              );
+              await waitFor(() => (
+                doc.body.dataset.workspaceView === "quality"
+                && getOverlapCardValue() === movedOverlapValue
+                && Number(doc.querySelector("#canvasQualityPill .canvas-quality-metric strong")?.textContent || NaN) === movedOverlapValue
+                && frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot().pending === false
+              ), 4000);
+              const qualityAnalysisAfter = frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot();
+              const overlapChecklist = Array.from(doc.querySelectorAll("#statusBox .checklist-item"))
+                .find(node => /Label overlaps|Chevauchements d'étiquettes/i.test(node.querySelector("strong")?.textContent || ""));
+              const qualityVerdict = doc.querySelector("#propertiesSelectionControls .quality-properties-verdict")?.textContent || "";
+              const qualityRequestDelta = qualityAnalysisAfter.requests - qualityAnalysisBefore.requests;
+              const qualityStartedDelta = qualityAnalysisAfter.started - qualityAnalysisBefore.started;
+              const qualityCompletedDelta = qualityAnalysisAfter.completed - qualityAnalysisBefore.completed;
+              const qualityCoalescedDelta = qualityAnalysisAfter.coalesced - qualityAnalysisBefore.coalesced;
+              const overlappedRequests = qualityRequestDelta === 2 && qualityCoalescedDelta >= 1;
+              const reusedCompletedRequest = qualityRequestDelta === 1 && qualityFinishedBeforeOpen;
+              assert(checks, "Moving a label refreshes the map quality pill in the background", movedOverlapValue > initialGeometry.overlaps && movedOverlapValue > initialOverlapValue, `${initialOverlapValue} -> ${movedOverlapValue}`);
+              assert(checks, "Opening Map quality recomputes moved-label metrics", getOverlapCardValue() === movedOverlapValue && overlapChecklist?.textContent.includes(String(movedOverlapValue)) && qualityVerdict.includes(String(movedOverlapValue)), `${getOverlapCardValue()} / ${overlapChecklist?.textContent || ""} / ${qualityVerdict}`);
+              assert(checks, "Map quality coalesces overlapping requests or reuses a completed background analysis", Boolean(qualityAnalysisBefore && qualityAnalysisAfter) && qualityStartedDelta === 1 && qualityCompletedDelta === 1 && (overlappedRequests || reusedCompletedRequest), JSON.stringify({ before: qualityAnalysisBefore, atOpen: qualityAnalysisAtOpen, after: qualityAnalysisAfter }));
+              assert(checks, "Quality refresh does not re-plot the map", (doc.querySelector("#mapSvg")?.innerHTML || "") === mapBeforeQualityRefresh);
+              assert(checks, "Quality refresh records no render timing", (performanceApi?.snapshot().samples.length || 0) === renderSamplesBeforeQualityRefresh);
+              doc.querySelector("#previewTableTab")?.click();
+              await waitFor(() => doc.body.dataset.workspaceView === "preview", 2000);
+
+              const currentSourcePoint = toScreenPoint(overlapCountFromLabels(movableLabels).rects[isolatedIndex]);
+              const previewAnalysisBefore = frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot();
+              sourceLabel.dispatchEvent(new frame.contentWindow.MouseEvent("mousedown", {
+                bubbles: true,
+                cancelable: true,
+                button: 0,
+                buttons: 1,
+                clientX: currentSourcePoint.x,
+                clientY: currentSourcePoint.y,
+                view: frame.contentWindow
+              }));
+              frame.contentWindow.dispatchEvent(new frame.contentWindow.MouseEvent("mousemove", {
+                bubbles: true,
+                cancelable: true,
+                buttons: 1,
+                clientX: sourcePoint.x,
+                clientY: sourcePoint.y,
+                view: frame.contentWindow
+              }));
+              frame.contentWindow.dispatchEvent(new frame.contentWindow.MouseEvent("mouseup", {
+                bubbles: true,
+                cancelable: true,
+                button: 0,
+                clientX: sourcePoint.x,
+                clientY: sourcePoint.y,
+                view: frame.contentWindow
+              }));
+              const previewCompletedOverlapValue = overlapCountFromLabels(movableLabels).overlaps;
+              assert(checks, "A second label move starts quality analysis while Preview remains active", frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot().pending === true);
+              await waitFor(() => (
+                doc.body.dataset.workspaceView === "preview"
+                && frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot().pending === false
+                && frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot().completed > previewAnalysisBefore.completed
+              ), 4000);
+              doc.querySelector("#qualityTableTab")?.click();
+              await waitFor(() => doc.body.dataset.workspaceView === "quality" && doc.querySelector("#qualityTablePane")?.getAttribute("aria-busy") === "false", 2000);
+              const previewCompletedChecklist = Array.from(doc.querySelectorAll("#statusBox .checklist-item"))
+                .find(node => /Label overlaps|Chevauchements d'étiquettes/i.test(node.querySelector("strong")?.textContent || ""));
+              assert(checks, "Map quality publishes a background result completed before the tab opens", getOverlapCardValue() === previewCompletedOverlapValue && previewCompletedChecklist?.textContent.includes(String(previewCompletedOverlapValue)), `${getOverlapCardValue()} / ${previewCompletedChecklist?.textContent || ""}`);
+              doc.querySelector("#previewTableTab")?.click();
+              await waitFor(() => doc.body.dataset.workspaceView === "preview", 2000);
+            }
             const locateNextAction = doc.querySelector("#canvasQualityPill [data-property-action='open-map']");
             const locateNextRect = locateNextAction?.getBoundingClientRect();
             assert(checks, "Quality Locate next action is available on the visible map pill", Boolean(locateNextAction && locateNextRect && locateNextRect.width > 0 && locateNextRect.height > 0));
@@ -1565,6 +1867,7 @@
         result.textContent = JSON.stringify({ status: "error", message: error.message, checks, frameErrors }, null, 2);
       }
     });
+    frame.src = frame.dataset.src;
   </script>
 </body>
 </html>

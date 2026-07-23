@@ -9,7 +9,7 @@
   <link rel="preload" href="assets/fonts/lato/lato-4.woff2" as="font" type="font/woff2" />
   <link rel="stylesheet" href="assets/fonts/lato/lato.css?v=20260612-file-fonts" />
   <link rel="stylesheet" href="assets/fonts/ibm-plex-mono/ibm-plex-mono.css?v=20260622-offline-fonts" />
-  <link rel="stylesheet" href="style.css?v=20260623-project-toolbar-state" />
+  <link rel="stylesheet" href="style.css?v=20260722-compact-project-toolbar-2" />
   <link id="themeStylesheet" rel="stylesheet" href="themes/goc-green.css?v=20260612-map-only" />
 </head>
 <body>
@@ -29,11 +29,9 @@
           <button id="ribbonSaveProjectBtn" class="ribbon-button" type="button" data-icon="save" title="Save project" data-i18n="action.save" data-i18n-title="action.save.title">Save</button>
         </div>
       </div>
-      <div class="ribbon-group command-compact" aria-label="Project data actions" data-i18n-aria-label="aria.projectDataActions">
+      <div class="ribbon-group command-compact ribbon-sample" aria-label="Sample data action" data-i18n-aria-label="aria.sampleDataAction">
         <div class="ribbon-actions">
           <button id="ribbonLoadSampleBtn" class="ribbon-button" type="button" data-icon="table" title="Load sample" data-i18n="action.sample" data-i18n-title="action.sample.title">Sample</button>
-          <button id="ribbonImportCsvBtn" class="ribbon-button" type="button" data-icon="upload" title="Import CSV" data-i18n="action.importCsv" data-i18n-title="action.importCsv.title">Import CSV</button>
-          <button id="ribbonExportCsvBtn" class="ribbon-button" type="button" data-icon="download" title="Export CSV" data-i18n="action.exportCsv" data-i18n-title="action.exportCsv.title">Export CSV</button>
         </div>
       </div>
       <div class="ribbon-group ribbon-appearance" aria-label="Map appearance actions" data-i18n-aria-label="aria.mapAppearanceActions">
@@ -63,11 +61,17 @@
         <div class="export-menu-wrap">
           <button id="exportMenuBtn" class="ribbon-button primary-action" type="button" data-icon="download" aria-haspopup="menu" aria-expanded="false" aria-controls="exportMenu" data-i18n="action.export">Export</button>
           <div id="exportMenu" class="export-menu" role="menu" aria-labelledby="exportMenuBtn" hidden>
+            <div class="export-menu-section-label" role="presentation" data-i18n="export.section.map">Map outputs</div>
             <button id="ribbonExportPngBtn" class="export-menu-item" type="button" role="menuitem" data-icon="image">
               <span><strong data-i18n="export.png.title">Export PNG</strong><small data-i18n="export.png.description">Raster image for documents</small></span>
             </button>
             <button id="ribbonExportSvgBtn" class="export-menu-item" type="button" role="menuitem" data-icon="svg-file">
               <span><strong data-i18n="export.svg.title">Export SVG</strong><small data-i18n="export.svg.description">Editable vector artwork</small></span>
+            </button>
+            <div class="export-menu-divider" role="separator"></div>
+            <div class="export-menu-section-label" role="presentation" data-i18n="export.section.data">Data</div>
+            <button id="ribbonExportCsvBtn" class="export-menu-item" type="button" role="menuitem" data-icon="table">
+              <span><strong data-i18n="export.csv.title">Export CSV</strong><small data-i18n="export.csv.description">Editable project point data</small></span>
             </button>
             <div id="exportLanguageNotice" class="export-language-notice" hidden></div>
           </div>
@@ -85,7 +89,7 @@
       </nav>
       <div id="workspaceSummary" class="workspace-summary status-spine" aria-live="polite">
         <div class="workspace-summary-title" hidden>
-          <span id="workspaceSummaryMode">Map</span>
+          <span id="workspaceSummaryMode" data-i18n="summary.map">Map</span>
           <strong id="workspaceSummaryHeadline" data-i18n="summary.headline.preview">Review and refine before export</strong>
         </div>
         <div id="workspaceSummaryMetrics" class="workspace-summary-metrics"></div>
@@ -95,7 +99,7 @@
 
   <main class="app-shell">
     <div class="layout-state-controls" hidden aria-hidden="true">
-      <input id="csvInput" type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values" />
+      <input id="csvInput" type="file" accept=".csv,.tsv,.txt,.xlsx,text/csv,text/tab-separated-values,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
       <input id="translationImportInput" type="file" accept=".csv,.tsv,.txt,.xlsx,text/csv,text/tab-separated-values,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
       <input id="projectInput" type="file" accept=".json,application/json" />
         <select id="fontFamilyInput">
@@ -124,36 +128,29 @@
       <div class="table-panel">
         <div class="table-toolbar workspace-rail">
           <div class="table-toolbar-main workspace-heading">
-            <strong id="tablePanelTitle">Map</strong>
+            <strong id="tablePanelTitle" data-i18n="tab.map">Map</strong>
           </div>
           <div class="button-row table-actions workspace-rail-actions" data-table-actions="projects">
-            <div class="project-table-filters" aria-label="Project point filters" data-i18n-aria-label="toolbar.filters.projects">
-              <button type="button" class="is-active" data-project-filter="all" data-i18n="toolbar.filters.all">All</button>
-              <button type="button" data-project-filter="missing" data-i18n="toolbar.filters.missingCoordinates">Missing coordinates</button>
-              <button type="button" data-project-filter="callouts"><span class="filter-label-wide" data-i18n="toolbar.filters.noCoordinateCallouts">No-coordinate callouts</span><span class="filter-label-compact" data-i18n="toolbar.filters.callouts">Callouts</span></button>
+            <label id="projectFilterControl" class="project-filter-control">
+              <span class="toolbar-group-label" data-i18n="toolbar.filters.show">Show</span>
               <select id="projectFilterSelect" aria-label="Filter project points" data-i18n-aria-label="toolbar.filters.projects">
                 <option value="all" data-i18n="toolbar.filters.allRows">All rows</option>
                 <option value="missing" data-i18n="toolbar.filters.missingCoordinates">Missing coordinates</option>
                 <option value="callouts" data-i18n="toolbar.filters.callouts">Callouts</option>
               </select>
-            </div>
+            </label>
             <div class="project-location-mode" role="group" aria-label="Project point location mode" data-i18n-aria-label="toolbar.locationMode.aria">
               <span class="toolbar-group-label" data-i18n="toolbar.locationMode.label">Location</span>
               <button type="button" class="is-active" data-project-location-mode="coordinates" aria-pressed="true" data-i18n="toolbar.locationMode.coordinates">Coordinates</button>
               <button type="button" data-project-location-mode="regions" aria-pressed="false" data-i18n="toolbar.locationMode.regions">Regions</button>
             </div>
             <div class="authoring-language" role="group" aria-label="Project title authoring language" data-i18n-aria-label="toolbar.authoring.aria">
-              <span data-i18n="toolbar.authoring.label">Lang</span>
+              <span data-i18n="toolbar.authoring.label">Edit titles</span>
               <button type="button" class="is-active" data-authoring-language="en" aria-pressed="true">EN</button>
               <button type="button" data-authoring-language="fr" aria-pressed="false">FR</button>
             </div>
-            <div class="add-actions" aria-label="Add project points" data-i18n-aria-label="toolbar.add.aria">
-              <span class="toolbar-group-label" data-i18n="toolbar.add.label">Add</span>
-              <button id="addRowBtn" type="button" data-icon="plus" data-i18n="toolbar.add.row">Row</button>
-              <button id="addPointsBtn" type="button" data-icon="map-pin" data-i18n="toolbar.add.fromSource">From source</button>
-            </div>
-            <div class="selection-actions" aria-label="Actions for selected rows and cells" data-i18n-aria-label="toolbar.selection.aria">
-              <span class="toolbar-group-label" data-i18n="toolbar.selection.label">Multi select</span>
+            <div id="projectSelectionActions" class="selection-actions" aria-label="Actions for selected rows and cells" data-i18n-aria-label="toolbar.selection.aria" hidden>
+              <span class="toolbar-group-label" data-i18n="toolbar.selection.selected">Selected</span>
               <select id="bulkPriorityInput" aria-label="Set selected priority cells" data-i18n-aria-label="properties.field.priority" disabled>
                 <option value="" data-i18n="toolbar.selection.priority">Priority</option>
                 <option value="0" data-i18n="toolbar.selection.priorityValue" data-i18n-params='{"value":"0"}'>Priority 0</option>
@@ -163,11 +160,24 @@
                 <option value="4" data-i18n="toolbar.selection.priorityValue" data-i18n-params='{"value":"4"}'>Priority 4</option>
                 <option value="5" data-i18n="toolbar.selection.priorityValue" data-i18n-params='{"value":"5"}'>Priority 5</option>
               </select>
-              <button id="bulkClearCoordinatesBtn" type="button" data-icon="eraser" data-i18n="toolbar.selection.clearCoordinates" disabled>Clear coordinates</button>
-              <button id="deleteSelectedBtn" class="is-danger project-danger-action" type="button" data-icon="trash" title="Delete selected rows" data-i18n="toolbar.selection.delete" data-i18n-title="toolbar.selection.delete.title" disabled>Delete</button>
+              <button id="bulkClearCoordinatesBtn" type="button" data-icon="eraser" disabled><span data-i18n="toolbar.selection.clearCoordinates">Clear coordinates</span></button>
+              <button id="deleteSelectedBtn" class="is-danger project-danger-action" type="button" data-icon="trash" title="Delete selected rows" data-i18n-title="toolbar.selection.delete.title" disabled><span data-i18n="toolbar.selection.delete">Delete</span></button>
             </div>
-            <button id="projectImportCsvBtn" type="button" data-icon="upload" data-i18n="toolbar.project.importCsv">Import CSV</button>
-            <button id="clearRowsBtn" class="is-danger project-danger-action" type="button" data-icon="eraser" title="Clear project table" data-i18n="toolbar.project.clearTable" data-i18n-title="toolbar.project.clearTable.title">Clear table</button>
+            <span class="project-toolbar-spacer" aria-hidden="true"></span>
+            <div class="project-menu-wrap">
+              <button id="projectAddMenuBtn" class="project-toolbar-menu-button" type="button" data-icon="plus" aria-haspopup="menu" aria-expanded="false" aria-controls="projectAddMenu"><span data-i18n="toolbar.add.data">Add data</span></button>
+              <div id="projectAddMenu" class="project-toolbar-menu" role="menu" aria-labelledby="projectAddMenuBtn" hidden>
+                <button id="addRowBtn" class="project-toolbar-menu-item" type="button" role="menuitem" data-icon="plus"><span data-i18n="toolbar.add.blankRow">Blank row</span></button>
+                <button id="addPointsBtn" class="project-toolbar-menu-item" type="button" role="menuitem" data-icon="map-pin"><span data-i18n="toolbar.add.fromSource">From source</span></button>
+                <button id="ribbonImportCsvBtn" class="project-toolbar-menu-item" type="button" role="menuitem" data-icon="upload"><span data-i18n="toolbar.project.importCsv">Import CSV</span></button>
+              </div>
+            </div>
+            <div class="project-menu-wrap">
+              <button id="projectMoreMenuBtn" class="project-toolbar-menu-button project-toolbar-more-button" type="button" data-icon="more-horizontal" aria-haspopup="menu" aria-expanded="false" aria-controls="projectMoreMenu" aria-label="More project actions" data-i18n-aria-label="toolbar.more.aria"></button>
+              <div id="projectMoreMenu" class="project-toolbar-menu project-toolbar-menu-right" role="menu" aria-labelledby="projectMoreMenuBtn" hidden>
+                <button id="clearRowsBtn" class="project-toolbar-menu-item is-danger" type="button" role="menuitem" data-icon="eraser" title="Clear project table" data-i18n-title="toolbar.project.clearTable.title"><span data-i18n="toolbar.project.clearTable">Clear table</span></button>
+              </div>
+            </div>
             <span id="projectTableSummary" class="visually-hidden" aria-live="polite" data-i18n="project.summary.empty">No project rows.</span>
           </div>
           <div class="table-actions preview-actions workspace-rail-actions is-active" data-table-actions="preview" hidden>
@@ -279,7 +289,7 @@
                 <span data-i18n="translate.focus">Focus</span>
                 <button type="button" class="is-active" data-translation-direction="en-fr">EN</button>
                 <button type="button" data-translation-direction="fr-en">FR</button>
-                <output id="translationDirectionText" class="visually-hidden">EN → FR</output>
+                <output id="translationDirectionText" class="visually-hidden" data-i18n="translate.direction.enFr">EN → FR</output>
               </div>
               <div class="translate-filters" aria-label="Translation filters" data-i18n-aria-label="translate.filters.aria">
                 <button type="button" class="is-active" data-translation-filter="all" data-i18n="translate.filters.all">All</button>
@@ -334,7 +344,7 @@
               <div id="canvasToolbar" class="canvas-toolbar" aria-label="Canvas controls" data-i18n-aria-label="aria.canvasControls">
                 <div class="canvas-zoom-group" role="group" aria-label="Map scale" data-i18n-aria-label="aria.mapScale">
                   <button id="canvasZoomOutBtn" type="button" aria-label="Decrease map scale" data-i18n-aria-label="canvas.zoomOut">&minus;</button>
-                  <output id="canvasZoomReadout" for="mapScaleInput">Map 100%</output>
+                  <output id="canvasZoomReadout" for="mapScaleInput" data-i18n="canvas.mapScaleReadout" data-i18n-params='{"value":"100%"}'>Map 100%</output>
                   <button id="canvasZoomInBtn" type="button" aria-label="Increase map scale" data-i18n-aria-label="canvas.zoomIn">+</button>
                 </div>
                 <div class="canvas-auto-place-group" role="group" aria-labelledby="canvasAutoPlaceLabel">
@@ -603,9 +613,39 @@
           <span id="csvMapGuidance" data-i18n="dialog.csv.guidance">Match each Plotypus field to a column from your file. Recognized headings are matched automatically.</span>
           <strong id="csvMapRequired" data-i18n="dialog.csv.required">Required fields must be mapped to import.</strong>
         </div>
-        <label class="toolbar-check csv-header-toggle"><input id="csvFirstRowHeadersInput" type="checkbox" checked /><span data-i18n="dialog.csv.firstRowHeaders">First row contains column headers</span></label>
+        <div class="csv-import-controls">
+          <label class="toolbar-check csv-header-toggle"><input id="csvFirstRowHeadersInput" type="checkbox" checked /><span data-i18n="dialog.csv.firstRowHeaders">First row contains column headers</span></label>
+          <div id="csvLocationModeSection" class="csv-location-mode-block">
+            <div class="project-location-mode csv-location-mode" role="group" aria-label="Locate imported markers by" data-i18n-aria-label="dialog.csv.locationMode.aria">
+              <span data-i18n="dialog.csv.locationMode.label">Locate markers by</span>
+              <button type="button" class="is-active" data-csv-location-mode="coordinates" aria-pressed="true" data-i18n="toolbar.locationMode.coordinates">Coordinates</button>
+              <button type="button" data-csv-location-mode="regions" aria-pressed="false" data-i18n="toolbar.locationMode.regions">Regions</button>
+            </div>
+            <small id="csvLocationModeHint" data-i18n="dialog.csv.locationMode.coordinatesHint">Map longitude and latitude columns from this file.</small>
+          </div>
+        </div>
         <div class="csv-map-heading" aria-hidden="true"><span data-i18n="dialog.csv.plotypusField">Plotypus field</span><span data-i18n="dialog.csv.yourColumn">Your CSV column</span><span data-i18n="dialog.csv.sampleValue">Sample value</span></div>
         <div id="csvMapRows" class="csv-map-rows"></div>
+        <section id="importComposerPanel" class="import-composer-panel" aria-labelledby="importComposerTitle">
+          <div class="import-composer-heading">
+            <div>
+              <h3 id="importComposerTitle" data-i18n="dialog.csv.composer.title">Format a rich label</h3>
+              <p data-i18n="dialog.csv.composer.body">The mapped project title is always the heading. Add ordered text or bullet elements from any source columns.</p>
+            </div>
+            <label class="toolbar-check"><input id="csvRichLabelEnabled" type="checkbox"><span data-i18n="dialog.csv.composer.enable">Compose a rich label</span></label>
+          </div>
+          <div id="csvRichLabelComposer" class="rich-label-composer" hidden>
+            <div class="rich-label-composer-main">
+              <div id="csvLabelElements" class="label-element-list"></div>
+              <button id="csvAddLabelElementBtn" type="button" class="secondary-action" data-i18n="dialog.csv.composer.addElement">+ Add label element</button>
+            </div>
+            <aside class="rich-label-import-preview" aria-live="polite">
+              <strong data-i18n="dialog.csv.composer.preview">Live preview · row 1</strong>
+              <div id="csvRichLabelPreview" class="rich-label-preview-card"></div>
+              <div id="csvRichLabelSources" class="rich-label-preview-sources"></div>
+            </aside>
+          </div>
+        </section>
         <label class="toolbar-check"><input id="csvSavePresetInput" type="checkbox" /><span data-i18n="dialog.csv.savePreset">Save this mapping as a browser preset</span></label>
       </div>
       <footer class="dialog-footer">
@@ -634,25 +674,17 @@
 
   <script src="assets/vendor/d3-7.9.0.min.js"></script>
   <script src="assets/vendor/papaparse-5.4.1.min.js"></script>
-  <script src="presets.js?v=20260612-brand-ui-only"></script>
-  <script src="config.js?v=20260623-drift-fixes"></script>
-  <script src="icons.js?v=20260613-refactor-icons"></script>
-  <script src="assets/canada-regions.js?v=20260620-boundary-global"></script>
-  <script src="assets/world-countries.js?v=20260620-boundary-global"></script>
-  <script src="project-file.js?v=20260623-drift-fixes"></script>
+  <script src="presets.js?v=20260714-bilingual-audit"></script>
+  <script src="config.js?v=20260714-bilingual-audit"></script>
+  <script src="icons.js?v=20260722-compact-project-toolbar"></script>
+  <script src="project-file.js?v=20260714-portable-projects"></script>
   <script src="geometry.js?v=20260622-module-extraction"></script>
   <script src="label-layout.js?v=20260622-module-extraction"></script>
-  <script src="project-io.js?v=20260622-module-extraction"></script>
+  <script src="project-io.js?v=20260722-rich-label-border"></script>
   <script src="region-matching.js?v=20260712-location-mode"></script>
-  <script src="xlsx-lite.js?v=20260711-import-refactor"></script>
   <script src="workspace.js?v=20260622-module-extraction"></script>
-  <script src="properties.js?v=20260624-i18n-quality"></script>
-  <script src="i18n.js?v=20260624-i18n-quality"></script>
-  <script src="app.js?v=20260624-i18n-quality"></script>
+  <script src="properties.js?v=20260722-rich-label-border"></script>
+  <script src="i18n.js?v=20260722-compact-project-toolbar"></script>
+  <script src="app.js?v=20260722-compact-project-toolbar-2"></script>
 </body>
 </html>
-
-
-
-
-

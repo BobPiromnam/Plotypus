@@ -102,6 +102,129 @@ function makeMapBounds() {
   return { x0: 80, y0: 60, x1: 220, y1: 160 };
 }
 
+test("localized config fallbacks prefer the requested language", () => {
+  const api = loadApi();
+  const item = { label: "Custom style", labelFr: "Style personnalisé" };
+  assert.equal(api.getLocalizedConfigLabel(item, "en"), "Custom style");
+  assert.equal(api.getLocalizedConfigLabel(item, "fr"), "Style personnalisé");
+  assert.equal(api.getLocalizedConfigLabel({ label: "English fallback" }, "fr"), "English fallback");
+});
+
+test("world region names resolve in French without changing stable English IDs", () => {
+  const api = loadApi();
+  const world = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "assets", "world-countries.geojson"), "utf8"));
+  const unresolved = world.features.filter(feature => !api.getFrenchWorldRegionName(feature.properties));
+  assert.deepEqual(unresolved.map(feature => feature.properties.name), []);
+
+  const germany = world.features.find(feature => feature.properties.name === "Germany");
+  assert.equal(api.getRegionDisplayName(germany, 0, "en"), "Germany");
+  assert.equal(api.getRegionDisplayName(germany, 0, "fr"), "Allemagne");
+  assert.equal(api.getFrenchWorldRegionName({ adm0_a3: "CYN", iso_a2: "-99" }), "Chypre du Nord");
+});
+
+test("CSV parser diagnostics use bilingual message keys instead of library prose", () => {
+  const api = loadApi();
+  assert.equal(api.getCsvParserErrorMessage({ code: "MissingQuotes" }), "dialog.csv.error.missingQuotes");
+  assert.equal(api.getCsvParserErrorMessage({ code: "TooFewFields" }), "dialog.csv.error.tooFewFields");
+  assert.equal(api.getCsvParserErrorMessage({ code: "UnknownLibraryCode", message: "English-only message" }), "dialog.csv.error.parse");
+});
+
+test("malformed project JSON exposes a structured bilingual error key", () => {
+  const projectIo = loadProjectIo();
+  assert.throws(
+    () => projectIo.parseProjectJson('{"rows": ['),
+    error => {
+      assert.equal(error.i18nKey, "project.error.invalidJson");
+      assert.equal(Object.keys(error.i18nParams).length, 0);
+      assert.equal(error.cause && error.cause.name, "SyntaxError");
+      return true;
+    }
+  );
+});
+
+test("rich-label import composes typed, editable blocks from multiple source columns", () => {
+  const projectIo = loadProjectIo();
+  const source = {
+    Jurisdiction: "Vaughan, Ontario",
+    "Federal Funding": "$59 million",
+    "New Homes Over 10 Years": "43,999"
+  };
+  const rows = projectIo.composeRichLabelRows(
+    [{ name: source.Jurisdiction, lon: "", lat: "" }],
+    [source],
+    [
+      { type: "text", template: "{Federal Funding} | {New Homes Over 10 Years} homes", numberFormat: "abbrev" }
+    ]
+  );
+
+  assert.equal(rows[0].labelStyle, "rich");
+  assert.deepEqual(JSON.parse(JSON.stringify(rows[0].content.map(block => block.type))), ["text"]);
+  assert.deepEqual(JSON.parse(JSON.stringify(rows[0].content[0].sources)), ["Federal Funding", "New Homes Over 10 Years"]);
+  assert.equal(rows[0].content[0].numberFormat, "abbrev");
+  assert.equal(rows[0].content[0].value.en, "$59M | 43,999 homes");
+  assert.equal(rows[0].content[0].value.fr.replace(/[\u00a0\u202f]/g, " "), "59 M$ | 43 999 logements");
+});
+
+test("the row title stays the rich-label heading and legacy headings remain as text", () => {
+  const api = loadApi();
+  const content = api.normalizeAnnotationContent([
+    { type: "heading", template: "{Place}", sources: ["Place"], numberFormat: "full", value: { en: "Vaughan", fr: "Vaughan" } },
+    { type: "text", template: "{Funding}", sources: ["Funding"], numberFormat: "abbrev", value: { en: "$59M", fr: "59 M$" } },
+    { type: "bullet", template: "Housing", sources: [], numberFormat: "full", value: { en: "Housing", fr: "Logement" } }
+  ]);
+  content[1].value.en = "$60M";
+  const row = { name: "Metadata name", nameFr: "Nom de données", labelStyle: "rich", content };
+  const lines = api.getLabelLines(row, makeSettings({ mapLanguage: "en", labelMaxChars: 100 }));
+  assert.deepEqual(JSON.parse(JSON.stringify(lines.map(line => [line.role, line.text]))), [
+    ["title", "Metadata name"],
+    ["paragraph", "Vaughan"],
+    ["paragraph", "$60M"],
+    ["bullet", "- Housing"]
+  ]);
+
+  row.content = row.content.slice(1);
+  const afterDelete = api.getLabelLines(row, makeSettings({ mapLanguage: "en", labelMaxChars: 100 }));
+  assert.deepEqual(JSON.parse(JSON.stringify(afterDelete.map(line => line.text))), ["Metadata name", "$60M", "- Housing"]);
+});
+
+test("French CSV values normalize accents, booleans, and category labels", () => {
+  const api = loadApi();
+  assert.equal(api.normalizeHeader("  CATÉGORIE "), "categorie");
+  assert.equal(api.normalizeHeader("Priorité"), "priorite");
+  assert.equal(api.toBoolean("Oui"), true);
+  assert.equal(api.toBoolean("Masqué"), true);
+  assert.equal(api.toBoolean("sans trait de renvoi"), true);
+  assert.equal(api.cleanType("Projets soumis"), "referred");
+  assert.equal(api.cleanType("Stratégies de transformation"), "strategy");
+});
+
+test("captionless rich images do not become fake translation strings", () => {
+  const api = loadApi();
+  assert.equal(api.getImageCaptionTranslationEntry({
+    type: "image",
+    assetRef: "data:image/png;base64,AAAA",
+    caption: { en: "", fr: "" }
+  }, "row-1", 0), null);
+  const entry = api.getImageCaptionTranslationEntry({ caption: { en: "Map", fr: "Carte" } }, "row-1", 2);
+  assert.equal(entry.ref, "Map");
+  assert.equal(entry.fr, "Carte");
+  assert.equal(entry.id, "content-image:row-1:2");
+});
+
+test("new category defaults populate English and French independently", () => {
+  const api = loadApi();
+  const labels = api.getDefaultCategoryLabels(3, (language, _key, params) => (
+    language === "fr" ? `Catégorie ${params.count}` : `Category ${params.count}`
+  ));
+  assert.deepEqual(JSON.parse(JSON.stringify(labels)), { label: "Category 3", labelFr: "Catégorie 3" });
+});
+
+test("localized decimal formatting uses a comma in French", () => {
+  const api = loadApi();
+  assert.equal(api.formatLocalizedDecimal(1.25, "en", 1), "1.3");
+  assert.equal(api.formatLocalizedDecimal(1.25, "fr", 1), "1,3");
+});
+
 test("project snapshots preserve unified annotation content and strip chart metadata", () => {
   const projectIo = loadProjectIo();
   const content = [
@@ -110,7 +233,10 @@ test("project snapshots preserve unified annotation content and strip chart meta
     {
       type: "image",
       assetRef: "https://example.com/rich-label.png",
-      caption: { en: "Rich label image", fr: "Image d'etiquette enrichie" }
+      caption: { en: "Rich label image", fr: "Image d'etiquette enrichie" },
+      displaySize: 144,
+      naturalWidth: 1200,
+      naturalHeight: 600
     }
   ];
 
@@ -124,6 +250,7 @@ test("project snapshots preserve unified annotation content and strip chart meta
       lon: -75,
       lat: 45,
       labelStyle: "rich",
+      labelBorder: true,
       content,
       chart: "pie",
       chartSlices: [{ label: { en: "Federal", fr: "Federal" }, value: 60, color: "#3f6b5e" }],
@@ -134,6 +261,7 @@ test("project snapshots preserve unified annotation content and strip chart meta
   });
 
   assert.deepEqual(snapshot.rows[0].content, content);
+  assert.equal(snapshot.rows[0].labelBorder, true);
   assert.equal(snapshot.rows[0].chart, "none");
   assert.equal(Array.isArray(snapshot.rows[0].chartSlices), true);
   assert.equal(snapshot.rows[0].chartSlices.length, 0);
@@ -141,6 +269,125 @@ test("project snapshots preserve unified annotation content and strip chart meta
   assert.equal(Object.hasOwn(snapshot.rows[0], "labelImage"), false);
   assert.equal(Object.hasOwn(snapshot.rows[0], "bullets"), false);
 });
+
+test("rich label image sizing stays proportional and expands label geometry", () => {
+  const api = loadApi();
+  assert.equal(api.normalizeRichLabelImageDisplaySize(undefined), 72);
+  assert.equal(api.normalizeRichLabelImageDisplaySize(1), 24);
+  assert.equal(api.normalizeRichLabelImageDisplaySize(999), 300);
+
+  const normalized = api.normalizeAnnotationContent([{
+    type: "image",
+    assetRef: "data:image/png;base64,AA==",
+    caption: { en: "Image caption", fr: "" },
+    displaySize: 144,
+    naturalWidth: 1200,
+    naturalHeight: 600
+  }])[0];
+  const dimensions = api.getRichLabelImageDimensions(normalized);
+  assert.equal(dimensions.width, 144);
+  assert.equal(dimensions.height, 72);
+
+  const box = api.makeLabelBox({
+    name: "Rich label",
+    labelStyle: "rich",
+    content: [normalized],
+    footnote: ""
+  }, "right", makeSettings());
+  const imageLine = box.lines.find(line => line.role === "image");
+  const captionLine = box.lines.find(line => line.role === "caption");
+  const fontSize = box.lineHeight / 1.2;
+  const imageBottom = imageLine.baselineOffset - fontSize + imageLine.imageHeight;
+  const captionTop = captionLine.baselineOffset - fontSize;
+  const visualHeight = box.textHeight - box.lineHeight + fontSize;
+  assert.ok(box.textWidth >= dimensions.width);
+  assert.ok(captionTop >= imageBottom + 4);
+  assert.ok(visualHeight >= imageBottom + fontSize);
+});
+
+test("project snapshots round-trip portable assets, styles, elbow settings, metadata, and layouts", () => {
+  const projectIo = loadProjectIo();
+  const projectFile = require("../project-file.js");
+  const richImageBlock = {
+    type: "image",
+    assetRef: "data:image/png;base64,iVBORw0KGgo=",
+    caption: { en: "Manufacturing", fr: "Fabrication" },
+    displaySize: 96,
+    naturalWidth: 160,
+    naturalHeight: 112
+  };
+  const customIcon = {
+    dataUrl: "data:image/png;base64,iVBORw0KGgo=",
+    mimeType: "image/png",
+    name: "priority-marker.png",
+    width: 24,
+    height: 20,
+    size: 128
+  };
+  const languageLayouts = {
+    en: {
+      manualLabelPositions: { "row:row-elbow": { x: 101.5, y: 202.5, side: "right" } },
+      manualBoxPositions: { legend: { x: 11, y: 12, width: 140, height: 80 } },
+      mapScale: 95
+    },
+    fr: {
+      manualLabelPositions: { "row:row-elbow": { x: 303.5, y: 404.5, side: "left" } },
+      manualBoxPositions: { callouts: { x: 21, y: 22, width: 180, height: 90 } },
+      mapScale: 105
+    }
+  };
+
+  const snapshot = projectIo.createProjectSnapshot({
+    format: "plotypus-project",
+    version: 7,
+    generator: { name: "Plotypus", version: "2026.07.14" },
+    boundary: "canada",
+    mapStyle: "goc-green",
+    categories: [{
+      id: "priority",
+      label: "Priority",
+      shape: "circle",
+      colour: "#123456",
+      stroke: "#abcdef",
+      markerSize: 12,
+      lineWidth: 3,
+      customIcon
+    }],
+    rows: [
+      { rowId: "row-elbow", name: "Elbow", type: "priority", elbowLeader: true, labelStyle: "rich", labelBorder: true, content: [richImageBlock] },
+      { rowId: "row-default", name: "Default routing", type: "priority", elbowLeader: false }
+    ],
+    languageLayouts,
+    manualLabelPositions: { "row:legacy": { x: 1, y: 2, side: "top" } },
+    manualBoxPositions: { legend: { x: 3, y: 4 } },
+    cleanType: value => value
+  });
+  const savedProject = JSON.parse(JSON.stringify(snapshot));
+  const restored = projectFile.validateAndNormalizeProject(savedProject, {
+    currentVersion: 7,
+    projectFormat: "plotypus-project",
+    boundarySources: { canada: {} },
+    mapStylePresets: { "goc-green": {} },
+    defaultBoundary: "canada",
+    defaultMapStyle: "goc-green"
+  });
+
+  assert.equal(restored.format, "plotypus-project");
+  assert.equal(restored.version, 7);
+  assert.deepEqual(restored.generator, { name: "Plotypus", version: "2026.07.14" });
+  assert.equal(new Date(restored.savedAt).toISOString(), restored.savedAt);
+  assert.equal(restored.categories[0].stroke, "#abcdef");
+  assert.deepEqual(restored.categories[0].customIcon, customIcon);
+  assert.equal(restored.rows[0].elbowLeader, true);
+  assert.equal(restored.rows[0].labelBorder, true);
+  assert.deepEqual(restored.rows[0].content, [richImageBlock]);
+  assert.equal(Object.hasOwn(restored.rows[1], "elbowLeader"), true);
+  assert.equal(restored.rows[1].elbowLeader, false);
+  assert.deepEqual(restored.languageLayouts, languageLayouts);
+  assert.deepEqual(restored.manualLabelPositions, { "row:legacy": { x: 1, y: 2, side: "top" } });
+  assert.deepEqual(restored.manualBoxPositions, { legend: { x: 3, y: 4 } });
+});
+
 test("rect overlap detects collisions and computes positive area only", () => {
   const api = loadApi();
   const a = { x0: 0, y0: 0, x1: 10, y1: 10 };
@@ -167,6 +414,87 @@ test("segment crossing and segment-rectangle intersection catch leader conflicts
   assert.equal(api.segmentsCross(diagonalA, diagonalB, parallelC, parallelD), false);
   assert.equal(api.segmentIntersectsRect(diagonalA, diagonalB, rect), true);
   assert.equal(api.segmentIntersectsRect({ x: 0, y: 20 }, { x: 10, y: 20 }, rect), false);
+});
+
+test("quality reports recompute from current moved label positions", () => {
+  const api = loadApi();
+  const layout = {
+    placed: [
+      makeLabel({ rowId: "row-a", labelX: 130, labelY: 100 }),
+      makeLabel({ rowId: "row-b", x: 200, labelX: 210, labelY: 100 })
+    ],
+    settings: makeSettings(),
+    mapBounds: makeMapBounds(),
+    report: {
+      projectedProblems: [{ rowId: "projected" }],
+      hiddenRegionProblems: [{ rowId: "hidden" }]
+    }
+  };
+
+  const initialReport = api.recomputeLayoutQualityReport(layout);
+  assert.equal(initialReport.overlaps, 0);
+
+  layout.placed[1].labelX = layout.placed[0].labelX;
+  layout.placed[1].labelY = layout.placed[0].labelY;
+  layout.placed[1].labelSide = layout.placed[0].labelSide;
+  const movedReport = api.recomputeLayoutQualityReport(layout);
+
+  assert.equal(movedReport.overlaps, 1);
+  assert.deepEqual(movedReport.projectedProblems, [{ rowId: "projected" }]);
+  assert.deepEqual(movedReport.hiddenRegionProblems, [{ rowId: "hidden" }]);
+  assert.equal(layout.report, movedReport);
+});
+
+test("time-sliced quality analysis matches synchronous analysis", () => {
+  const api = loadApi();
+  const placed = [
+    makeLabel({ rowId: "row-a", labelX: 130, labelY: 100 }),
+    makeLabel({ rowId: "row-b", x: 200, labelX: 130, labelY: 100 }),
+    makeLabel({ rowId: "row-c", x: 80, y: 160, labelX: 105, labelY: 160 }),
+    makeLabel({ rowId: "row-d", x: 240, y: 170, labelX: 250, labelY: 170, hideLine: true })
+  ];
+  const settings = makeSettings();
+  const mapBounds = makeMapBounds();
+  const projectedProblems = [{ rowId: "projected" }];
+  const hiddenRegionProblems = [{ rowId: "hidden" }];
+  const synchronousLayout = { placed, settings, mapBounds, report: { projectedProblems, hiddenRegionProblems } };
+  const expected = JSON.parse(JSON.stringify(api.recomputeLayoutQualityReport(synchronousLayout)));
+
+  [1, 3, 1000].forEach(maxOperations => {
+    const analyzer = api.createLayoutQualityAnalyzer(placed, settings, projectedProblems, hiddenRegionProblems, mapBounds);
+    let slices = 0;
+    while (!analyzer.step({ maxOperations })) slices += 1;
+    slices += 1;
+    assert.deepEqual(JSON.parse(JSON.stringify(analyzer.getReport())), expected);
+    if (maxOperations === 1) assert.ok(slices > 1);
+  });
+});
+
+test("timed-out idle quality slices still make wall-clock-budgeted progress", () => {
+  const api = loadApi();
+  const placed = Array.from({ length: 20 }, (_, index) => makeLabel({
+    rowId: `row-${index}`,
+    x: 40 + index * 11,
+    y: 60 + index * 5,
+    labelX: 55 + index * 11,
+    labelY: 60 + index * 5
+  }));
+  const analyzer = api.createLayoutQualityAnalyzer(placed, makeSettings(), [], [], makeMapBounds());
+  let timeRemainingCalls = 0;
+  const complete = analyzer.step({
+    maxOperations: 64,
+    budgetMs: 1000,
+    deadline: {
+      didTimeout: true,
+      timeRemaining() {
+        timeRemainingCalls += 1;
+        return 0;
+      }
+    }
+  });
+
+  assert.equal(complete, false);
+  assert.equal(timeRemainingCalls, 0);
 });
 
 test("per-row elbow leader override routes an elbow even when automatic elbows are off", () => {
@@ -461,12 +789,25 @@ test("project validation migrates legacy files and rejects unsupported versions"
   })));
 
   assert.equal(migrated.version, 1);
+  assert.equal(migrated.format, "plotypus-project");
   assert.equal(migrated.boundary, "canada");
   assert.equal(migrated.mapLanguage, "en");
   assert.deepEqual(migrated.settings, {});
   assert.throws(
     () => api.validateAndNormalizeProject({ version: 999, rows: [] }),
     /supports up to version/
+  );
+  assert.throws(
+    () => api.validateAndNormalizeProject({ version: 7, rows: [] }),
+    /missing its format identifier/
+  );
+  assert.throws(
+    () => api.validateAndNormalizeProject({ format: "another-project-format", version: 7, rows: [] }),
+    /format.*not supported/
+  );
+  assert.throws(
+    () => api.validateAndNormalizeProject({ format: "plotypus-project", generator: "Plotypus", version: 7, rows: [] }),
+    /generator metadata must be an object/
   );
   assert.throws(
     () => api.validateAndNormalizeProject({ version: 5, rows: ["invalid"] }),

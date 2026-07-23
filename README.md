@@ -107,7 +107,9 @@ http://localhost:8000/
 
 ## Project Files
 
-Use **Save project** when you want to preserve the full working state of a map. Project files include rows, regions, colours, categories, manual label positions, legend positions, callouts, and layout settings.
+Use **Save project** when you want to preserve the full working state of a map. The downloaded JSON file is self-contained and can be shared directly; uploaded category icons and rich-label images are embedded in it rather than linked to files on the original computer. Rich-label image sizes and original proportions are saved with each image. Project files include rows, regions, colours, category styles, resolved label positions for each rendered language, legend and callout positions, and layout settings.
+
+Project files identify their Plotypus format version and the app version that saved them. Open a shared project with a Plotypus build that supports that project version; older builds reject newer files instead of opening them and potentially discarding fields when the project is saved again.
 
 Use CSV when you only need to exchange the project-point table with Excel or another data source.
 

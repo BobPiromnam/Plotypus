@@ -2,6 +2,7 @@
   const fallbackRegionColours = ["#c7ded5", "#96c6b4", "#6caf94", "#078c70"];
 
   const defaultConfig = {
+    appVersion: "2026.07.14",
     configPath: "plotypus.config.json",
     defaultFontFamily: "Lato, Segoe UI, Arial, sans-serif",
     defaultMapStylePreset: "goc-green",
@@ -29,6 +30,7 @@
     boundarySources: {
       canada: {
         label: "Canada provinces and territories",
+        labelFr: "Provinces et territoires du Canada",
         url: "https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/georef-canada-province%40public/exports/geojson?lang=en&timezone=America%2FToronto",
         fallbackUrl: "assets/canada-regions.geojson",
         fallbackKey: "canada",
@@ -36,6 +38,7 @@
       },
       world: {
         label: "World countries",
+        labelFr: "Pays du monde",
         url: "https://datahub.io/core/geo-boundaries-world-110m/_r/-/countries.geojson",
         fallbackUrl: "assets/world-countries.geojson",
         fallbackKey: "world",
@@ -69,6 +72,7 @@
     mapStylePresets: {
       "goc-green": {
         label: "GoC green",
+        labelFr: "Vert GC",
         stylesheet: "themes/goc-green.css?v=20260612-map-only",
         regionColours: fallbackRegionColours,
         categoryStyles: [
@@ -79,6 +83,7 @@
       },
       "goc-blue": {
         label: "GoC blue",
+        labelFr: "Bleu GC",
         stylesheet: "themes/goc-blue.css?v=20260612-map-only",
         regionColours: ["#d7e5f5", "#9dbbe0", "#26374a"],
         categoryStyles: [
@@ -89,6 +94,7 @@
       },
       "neutral-print": {
         label: "Neutral print",
+        labelFr: "Impression neutre",
         stylesheet: "themes/neutral-print.css?v=20260612-map-only",
         regionColours: ["#efefef", "#d8d8d8", "#bdbdbd"],
         categoryStyles: [
@@ -99,6 +105,7 @@
       },
       "high-contrast": {
         label: "High contrast",
+        labelFr: "Contraste élevé",
         stylesheet: "themes/high-contrast.css?v=20260612-map-only",
         regionColours: ["#ffffff", "#d8d8d8", "#000000"],
         categoryStyles: [
@@ -135,70 +142,72 @@
     imageSizePresets: {
       letter: {
         label: "8.5 x 11",
+        labelFr: "8,5 x 11",
         sizes: [
-          { value: "full", label: "Full page", width: 612, height: 750 },
-          { value: "two-thirds", label: "2/3 page", width: 612, height: 520 },
-          { value: "half", label: "1/2 page", width: 612, height: 390 },
-          { value: "third", label: "1/3 page", width: 612, height: 260 },
-          { value: "quarter", label: "1/4 page", width: 612, height: 200 }
+          { value: "full", label: "Full page", labelFr: "Page complète", width: 612, height: 750 },
+          { value: "two-thirds", label: "2/3 page", labelFr: "2/3 de page", width: 612, height: 520 },
+          { value: "half", label: "1/2 page", labelFr: "1/2 page", width: 612, height: 390 },
+          { value: "third", label: "1/3 page", labelFr: "1/3 de page", width: 612, height: 260 },
+          { value: "quarter", label: "1/4 page", labelFr: "1/4 de page", width: 612, height: 200 }
         ]
       },
       compact: {
         label: "6.5 x 9.75",
+        labelFr: "6,5 x 9,75",
         sizes: [
-          { value: "full", label: "Full page", width: 468, height: 700 },
-          { value: "two-thirds", label: "2/3 page", width: 468, height: 468 },
-          { value: "half", label: "1/2 page", width: 468, height: 350 },
-          { value: "third", label: "1/3 page", width: 468, height: 235 },
-          { value: "quarter", label: "1/4 page", width: 468, height: 175 }
+          { value: "full", label: "Full page", labelFr: "Page complète", width: 468, height: 700 },
+          { value: "two-thirds", label: "2/3 page", labelFr: "2/3 de page", width: 468, height: 468 },
+          { value: "half", label: "1/2 page", labelFr: "1/2 page", width: 468, height: 350 },
+          { value: "third", label: "1/3 page", labelFr: "1/3 de page", width: 468, height: 235 },
+          { value: "quarter", label: "1/4 page", labelFr: "1/4 de page", width: 468, height: 175 }
         ]
       }
     },
     regionPresetOptions: {
       canada: [
-        { value: "", label: "Choose preset" },
-        { value: "all", label: "All Canada" },
-        { value: "territories", label: "Territories" },
-        { value: "western", label: "Western Canada" },
-        { value: "prairies", label: "Prairies" },
-        { value: "central", label: "Central Canada" },
-        { value: "atlantic", label: "Atlantic Canada" }
+        { value: "", label: "Choose preset", labelFr: "Choisir un préréglage" },
+        { value: "all", label: "All Canada", labelFr: "Tout le Canada" },
+        { value: "territories", label: "Territories", labelFr: "Territoires" },
+        { value: "western", label: "Western Canada", labelFr: "Ouest canadien" },
+        { value: "prairies", label: "Prairies", labelFr: "Prairies" },
+        { value: "central", label: "Central Canada", labelFr: "Centre du Canada" },
+        { value: "atlantic", label: "Atlantic Canada", labelFr: "Canada atlantique" }
       ],
       world: [
-        { value: "", label: "Choose continent" },
-        { value: "all", label: "All countries" },
-        { value: "africa", label: "Africa" },
-        { value: "antarctica", label: "Antarctica" },
-        { value: "asia", label: "Asia" },
-        { value: "europe", label: "Europe" },
-        { value: "north-america", label: "North America" },
-        { value: "oceania", label: "Oceania" },
-        { value: "south-america", label: "South America" }
+        { value: "", label: "Choose continent", labelFr: "Choisir un continent" },
+        { value: "all", label: "All countries", labelFr: "Tous les pays" },
+        { value: "africa", label: "Africa", labelFr: "Afrique" },
+        { value: "antarctica", label: "Antarctica", labelFr: "Antarctique" },
+        { value: "asia", label: "Asia", labelFr: "Asie" },
+        { value: "europe", label: "Europe", labelFr: "Europe" },
+        { value: "north-america", label: "North America", labelFr: "Amérique du Nord" },
+        { value: "oceania", label: "Oceania", labelFr: "Océanie" },
+        { value: "south-america", label: "South America", labelFr: "Amérique du Sud" }
       ]
     },
     markerShapes: [
-      { value: "circle", label: "Circle" },
-      { value: "square", label: "Square" },
-      { value: "diamond", label: "Diamond" },
-      { value: "drop-pin", label: "Drop pin" },
-      { value: "triangle-up", label: "Triangle up" },
-      { value: "triangle-down", label: "Triangle down" },
-      { value: "star", label: "Star" },
-      { value: "plus", label: "Plus" },
-      { value: "cross", label: "Cross" }
+      { value: "circle", label: "Circle", labelFr: "Cercle" },
+      { value: "square", label: "Square", labelFr: "Carré" },
+      { value: "diamond", label: "Diamond", labelFr: "Losange" },
+      { value: "drop-pin", label: "Drop pin", labelFr: "Épingle" },
+      { value: "triangle-up", label: "Triangle up", labelFr: "Triangle vers le haut" },
+      { value: "triangle-down", label: "Triangle down", labelFr: "Triangle vers le bas" },
+      { value: "star", label: "Star", labelFr: "Étoile" },
+      { value: "plus", label: "Plus", labelFr: "Plus" },
+      { value: "cross", label: "Cross", labelFr: "Croix" }
     ],
     categoryColourPresets: [
-      { value: "", label: "Custom" },
-      { value: "#26374a", label: "GoC blue" },
-      { value: "#284162", label: "Deep blue" },
-      { value: "#1c578a", label: "Accessible blue" },
-      { value: "#217346", label: "Excel green" },
-      { value: "#0b6b57", label: "Map green" },
-      { value: "#7834bc", label: "Purple" },
-      { value: "#a05a00", label: "Ochre" },
-      { value: "#d3080c", label: "Alert red" },
-      { value: "#444444", label: "Charcoal" },
-      { value: "#ffffff", label: "White" }
+      { value: "", label: "Custom", labelFr: "Personnalisée" },
+      { value: "#26374a", label: "GoC blue", labelFr: "Bleu GC" },
+      { value: "#284162", label: "Deep blue", labelFr: "Bleu foncé" },
+      { value: "#1c578a", label: "Accessible blue", labelFr: "Bleu accessible" },
+      { value: "#217346", label: "Excel green", labelFr: "Vert Excel" },
+      { value: "#0b6b57", label: "Map green", labelFr: "Vert cartographique" },
+      { value: "#7834bc", label: "Purple", labelFr: "Violet" },
+      { value: "#a05a00", label: "Ochre", labelFr: "Ocre" },
+      { value: "#d3080c", label: "Alert red", labelFr: "Rouge alerte" },
+      { value: "#444444", label: "Charcoal", labelFr: "Anthracite" },
+      { value: "#ffffff", label: "White", labelFr: "Blanc" }
     ],
     categorySettings: [
       {

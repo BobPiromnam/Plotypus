@@ -1,22 +1,22 @@
-name,type,lon,lat
-Grays Bay Road and Port,Referred Project,-108.4,68.5
-Arctic Economic and Security Corridor,Referred Project,-112.5,64.5
-Mackenzie Valley Highway,Referred Project,-124.0,65.5
-Red Chris Mine Expansion,Referred Project,-129.9,57.7
-Ksi Lisims LNG,Referred Project,-130.1,55.1
-North Coast Transmission Line,Referred Project,-128.0,54.9
-LNG Canada Phase 2,Referred Project,-128.65,54.05
-Northwest Critical Conservation Corridor,Transformative Strategy,-130.0,58.2
-Pathways Plus,Transformative Strategy,-111.4,56.7
-McIlvenna Bay Copper Mine,Referred Project,-103.9,54.5
-Crawford Nickel,Referred Project,-81.33,48.47
-Darlington New Nuclear Project,Referred Project,-78.72,43.87
-Nouveau Monde Graphite's Matawinie Mine,Referred Project,-73.92,46.68
-Contrecoeur Terminal Container Project,Transformative Strategy,-73.23,45.85
-Northcliff Resources' Sisson Mine,Referred Project,-67.25,46.35
-Wind West Atlantic Energy,Transformative Strategy,-63.2,45.0
-Iqaluit Hydro,Referred Project,-68.52,63.75
-Port of Churchill Plus,Transformative Strategy,-94.17,58.77
-Taltson Hydro Expansion Project,Referred Project,-111.0,60.5
-"Alto High-Speed Rail, Ontario-Quebec Corridor",Transformative Strategy,-74.5,45.8
-Critical Minerals Strategy,Transformative Strategy,,
+name,name_fr,type,type_fr,lon,lat
+Grays Bay Road and Port,Route et port de Grays Bay,Referred Project,Projets soumis,-108.4,68.5
+Arctic Economic and Security Corridor,Corridor économique et de sécurité pour l'Arctique,Referred Project,Projets soumis,-112.5,64.5
+Mackenzie Valley Highway,Route de la vallée du Mackenzie,Referred Project,Projets soumis,-124.0,65.5
+Red Chris Mine Expansion,Expansion de la mine Red Chris,Referred Project,Projets soumis,-129.9,57.7
+Ksi Lisims LNG,Terminal de gaz naturel liquéfié Ksi Lisims,Referred Project,Projets soumis,-130.1,55.1
+North Coast Transmission Line,Ligne de transport d'électricité de la côte nord,Referred Project,Projets soumis,-128.0,54.9
+LNG Canada Phase 2,LNG Canada – phase 2,Referred Project,Projets soumis,-128.65,54.05
+Northwest Critical Conservation Corridor,Corridor essentiel de conservation du Nord‑Ouest,Transformative Strategy,Stratégies de transformation,-130.0,58.2
+Pathways Plus,Nouvelles voies (Pathways Plus),Transformative Strategy,Stratégies de transformation,-111.4,56.7
+McIlvenna Bay Copper Mine,Mine de cuivre à McIlvenna Bay,Referred Project,Projets soumis,-103.9,54.5
+Crawford Nickel,Projet nickélifère Crawford,Referred Project,Projets soumis,-81.33,48.47
+Darlington New Nuclear Project,Projet de nouvelle centrale nucléaire de Darlington,Referred Project,Projets soumis,-78.72,43.87
+Nouveau Monde Graphite's Matawinie Mine,Mine Matawinie de Nouveau Monde Graphite,Referred Project,Projets soumis,-73.92,46.68
+Contrecoeur Terminal Container Project,Projet de terminal à conteneurs de Contrecœur,Transformative Strategy,Stratégies de transformation,-73.23,45.85
+Northcliff Resources' Sisson Mine,Mine Sisson de Northcliff Resources,Referred Project,Projets soumis,-67.25,46.35
+Wind West Atlantic Energy,Wind West Atlantic Energy,Transformative Strategy,Stratégies de transformation,-63.2,45.0
+Iqaluit Hydro,Projet hydroélectrique à Iqaluit,Referred Project,Projets soumis,-68.52,63.75
+Port of Churchill Plus,Port de Churchill plus,Transformative Strategy,Stratégies de transformation,-94.17,58.77
+Taltson Hydro Expansion Project,Agrandissement de la centrale hydroélectrique Taltson,Referred Project,Projets soumis,-111.0,60.5
+"Alto High-Speed Rail, Ontario-Quebec Corridor","Train à grande vitesse Alto, corridor Ontario‑Québec",Transformative Strategy,Stratégies de transformation,-74.5,45.8
+Critical Minerals Strategy,Stratégie sur les minéraux critiques,Transformative Strategy,Stratégies de transformation,,

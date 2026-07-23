@@ -68,9 +68,32 @@
       '<circle cx="8" cy="10" r="1.5"/>',
       '<path d="m21 16-5-5L5 19"/>'
     ],
+    heading: [
+      '<path d="M5 5v14"/>',
+      '<path d="M19 5v14"/>',
+      '<path d="M5 12h14"/>'
+    ],
+    text: [
+      '<path d="M5 6h14"/>',
+      '<path d="M12 6v13"/>',
+      '<path d="M8 19h8"/>'
+    ],
+    list: [
+      '<circle cx="5" cy="7" r="1"/>',
+      '<circle cx="5" cy="12" r="1"/>',
+      '<circle cx="5" cy="17" r="1"/>',
+      '<path d="M9 7h10"/>',
+      '<path d="M9 12h10"/>',
+      '<path d="M9 17h10"/>'
+    ],
     plus: [
       '<path d="M12 5v14"/>',
       '<path d="M5 12h14"/>'
+    ],
+    "more-horizontal": [
+      '<circle cx="5" cy="12" r="1.5"/>',
+      '<circle cx="12" cy="12" r="1.5"/>',
+      '<circle cx="19" cy="12" r="1.5"/>'
     ],
     trash: [
       '<path d="M4 7h16"/>',

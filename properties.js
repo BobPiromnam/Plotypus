@@ -171,7 +171,8 @@
       regionOptions = [],
       projectLocationMode = "coordinates",
       authoringLanguage = "en",
-      escapeHtml
+      escapeHtml,
+      iconSvg = () => ""
     } = options || {};
     const t = translator(options);
     const rowId = escapeHtml(row.rowId || "");
@@ -184,7 +185,10 @@
     const labelStyle = row.labelStyle === "rich" ? "rich" : "compact";
     const languageKey = authoringLanguage === "fr" ? "fr" : "en";
     const content = Array.isArray(row.content) ? row.content : [];
-    const localText = value => value && typeof value === "object" ? String(value[languageKey] || "") : "";
+    const localText = value => {
+      const pair = value && value.value && typeof value.value === "object" ? value.value : value;
+      return pair && typeof pair === "object" ? String(pair[languageKey] || "") : "";
+    };
     const titleLabel = labelStyle === "rich" ? t("properties.annotation.title") : t("properties.field.projectName");
     const titleFrLabel = labelStyle === "rich" ? t("properties.annotation.titleFr") : t("properties.field.projectNameFr");
     const regionSelectOptions = regionOptions.length
@@ -209,6 +213,24 @@
       <div class="annotation-list-editor">
         ${content.map((block, index) => {
           const type = block && block.type || "paragraph";
+          if (type === "text" || type === "bullet") {
+            const typeLabel = type === "bullet"
+              ? t("properties.annotation.bullet")
+              : t("properties.annotation.text");
+            const template = String(block.template || "").trim();
+            return `
+              <div class="annotation-list-row annotation-block annotation-composed-block" data-content-block-type="${escapeHtml(type)}">
+                <div class="annotation-list-row-label">
+                  <select data-property-field="contentElementType" data-block-index="${index}" aria-label="${escapeHtml(t("properties.annotation.elementType"))}">
+                    <option value="text"${type === "text" ? " selected" : ""}>${escapeHtml(t("properties.annotation.text"))}</option>
+                    <option value="bullet"${type === "bullet" ? " selected" : ""}>${escapeHtml(t("properties.annotation.bullet"))}</option>
+                  </select>
+                  ${blockControls(index)}
+                </div>
+                <textarea rows="2" data-property-field="contentElementValue" data-block-index="${index}" placeholder="${escapeHtml(typeLabel)}">${escapeHtml(localText(block))}</textarea>
+                ${template ? `<small class="annotation-template-source">${escapeHtml(t("properties.annotation.importTemplate", { template }))}</small>` : ""}
+              </div>`;
+          }
           if (type === "bullets") {
             const items = Array.isArray(block.items) ? block.items : [];
             return `
@@ -229,6 +251,8 @@
             const caption = block.caption && typeof block.caption === "object" ? block.caption : {};
             const assetRef = String(block.assetRef || "").trim();
             const hasImage = Boolean(assetRef);
+            const displaySize = Math.max(24, Math.min(300, Math.round(Number(block.displaySize) || 72)));
+            const sizeHintId = `annotation-image-size-hint-${rowId}-${index}`;
             return `
               <div class="annotation-list-row annotation-block" data-content-block-type="image">
                 <div class="annotation-list-row-label"><span>${escapeHtml(t("properties.annotation.image"))}</span>${blockControls(index)}</div>
@@ -247,6 +271,14 @@
                   </div>
                   <p class="annotation-image-rules">${escapeHtml(t("properties.annotation.imageRules"))}</p>
                 </div>
+                <label class="annotation-image-size-field">
+                  ${propertyFieldLabel(options, t("properties.annotation.imageSize"))}
+                  <span class="annotation-image-size-control">
+                    <input type="number" min="24" max="300" step="4" inputmode="numeric" data-property-field="contentImageSize" data-block-index="${index}" aria-describedby="${escapeHtml(sizeHintId)}" style="${numericStyle}" value="${displaySize}">
+                    <span aria-hidden="true">pt</span>
+                  </span>
+                  <small id="${escapeHtml(sizeHintId)}">${escapeHtml(t("properties.annotation.imageSizeHint"))}</small>
+                </label>
                 <label>
                   ${propertyFieldLabel(options, t("properties.annotation.caption"))}
                   <textarea rows="2" data-property-field="contentImageCaption" data-block-index="${index}" placeholder="${escapeHtml(t("properties.annotation.captionPlaceholder"))}">${escapeHtml(localText(caption))}</textarea>
@@ -259,10 +291,10 @@
               <textarea rows="3" data-property-field="contentParagraph" data-block-index="${index}" placeholder="${escapeHtml(t("properties.annotation.paragraphPlaceholder"))}">${escapeHtml(localText(block))}</textarea>
             </div>`;
         }).join("")}
-        <div class="properties-actions annotation-add-actions">
-          <button type="button" data-property-action="add-content-paragraph">${escapeHtml(t("properties.annotation.addParagraph"))}</button>
-          <button type="button" data-property-action="add-content-bullets">${escapeHtml(t("properties.annotation.addBullets"))}</button>
-          <button type="button" data-property-action="add-content-image">${escapeHtml(t("properties.annotation.addImage"))}</button>
+        <div class="properties-actions annotation-add-actions" role="toolbar" aria-label="${escapeHtml(t("properties.annotation.addElement"))}">
+          <button type="button" class="annotation-add-button" data-property-action="add-content-text" aria-label="${escapeHtml(t("properties.annotation.addText"))}" title="${escapeHtml(t("properties.annotation.addText"))}">${iconSvg("text")}<span class="visually-hidden">${escapeHtml(t("properties.annotation.addText"))}</span></button>
+          <button type="button" class="annotation-add-button" data-property-action="add-content-bullets" aria-label="${escapeHtml(t("properties.annotation.addBullets"))}" title="${escapeHtml(t("properties.annotation.addBullets"))}">${iconSvg("list")}<span class="visually-hidden">${escapeHtml(t("properties.annotation.addBullets"))}</span></button>
+          <button type="button" class="annotation-add-button" data-property-action="add-content-image" aria-label="${escapeHtml(t("properties.annotation.addImage"))}" title="${escapeHtml(t("properties.annotation.addImage"))}">${iconSvg("image")}<span class="visually-hidden">${escapeHtml(t("properties.annotation.addImage"))}</span></button>
         </div>
       </div>` : "";
     return `
@@ -307,6 +339,10 @@
         <section class="annotation-property-section">
           <h3>${escapeHtml(t("properties.field.labelStyle"))}</h3>
           ${segmented("labelStyle", labelStyle, [{ value: "compact", label: t("properties.annotation.compact") }, { value: "rich", label: t("properties.annotation.rich") }])}
+          ${labelStyle === "rich" ? `<label class="toolbar-check annotation-label-border-option">
+            <input type="checkbox" data-property-field="labelBorder"${row.labelBorder ? " checked" : ""}>
+            <span>${propertyFieldLabel(options, t("properties.field.labelBorder"))}</span>
+          </label>` : ""}
           ${contentEditor}
         </section>
 
@@ -381,6 +417,8 @@
       regionSummary,
       qualitySummary,
       report,
+      qualityPending = false,
+      qualityError = false,
       translationSummary,
       metadataMissing = 0,
       reviewCount = 0,
@@ -391,20 +429,28 @@
     } = options || {};
     const t = translator(options);
     const overlapCount = report ? Number(report.overlaps || 0) : 0;
+    const qualityUnavailable = qualityPending || qualityError;
+    const qualityVerdict = qualityError
+      ? t("quality.property.failed")
+      : qualityPending
+        ? t("quality.property.checking")
+        : overlapCount
+          ? t("quality.property.overlapsFound", { count: overlapCount })
+          : t("quality.property.noOverlapsFound");
     return `
       <div class="properties-form" data-property-kind="quality">
         <h3>${escapeHtml(t("quality.property.threshold"))}</h3>
         <label>${propertyFieldLabel(options, t("quality.property.warnAbove"), "auto")}<input type="text" value="${escapeHtml(t("quality.property.overlapLimit"))}" readonly></label>
         <p class="properties-muted">${escapeHtml(t("quality.property.help"))}</p>
-        <p class="quality-properties-verdict" data-state="${escapeHtml(verdictState)}">${escapeHtml(overlapCount ? t("quality.property.overlapsFound", { count: overlapCount }) : t("quality.property.noOverlapsFound"))}</p>
+        <p class="quality-properties-verdict" data-state="${escapeHtml(qualityError ? "review" : qualityPending ? "info" : verdictState)}">${escapeHtml(qualityVerdict)}</p>
         <div class="properties-actions">
-          <button type="button" class="primary-action" data-property-action="open-map">${escapeHtml(overlapCount ? t("quality.action.locateFirstOverlap") : t("quality.action.openMap"))}</button>
+          <button type="button" class="primary-action" data-property-action="open-map"${qualityUnavailable ? " disabled" : ""}>${escapeHtml(overlapCount ? t("quality.action.locateFirstOverlap") : t("quality.action.openMap"))}</button>
           ${metadataMissing ? `<button type="button" data-property-action="open-map-details">${escapeHtml(t("quality.action.completeMapDetails"))}</button>` : ""}
           ${rowSummary.coordinateIssues ? `<button type="button" data-property-action="open-project-missing">${escapeHtml(t("quality.action.reviewCoordinateIssues"))}</button>` : ""}
           ${rowSummary.callouts ? `<button type="button" data-property-action="open-project-callouts">${escapeHtml(t("quality.action.reviewCallouts"))}</button>` : ""}
           ${translationSummary.missing ? `<button type="button" data-property-action="open-translations-missing">${escapeHtml(t("quality.action.reviewFrenchStrings"))}</button>` : ""}
           ${regionSummary.state === "warning" ? `<button type="button" data-property-action="open-map-regions">${escapeHtml(t("quality.action.reviewRegions"))}</button>` : ""}
-          ${qualitySummary.issues ? `<button type="button" data-property-action="open-map">${escapeHtml(t("quality.action.reviewMapPlacement"))}</button>` : ""}
+          ${!qualityUnavailable && qualitySummary.issues ? `<button type="button" data-property-action="open-map">${escapeHtml(t("quality.action.reviewMapPlacement"))}</button>` : ""}
         </div>
       </div>
     `;
@@ -448,8 +494,11 @@
     const t = translator(options);
     if (!category) return `<p class="properties-muted">${escapeHtml(t("properties.category.empty"))}</p>`;
     const customIcon = category.customIcon || null;
+    const customIconName = customIcon && customIcon.name && customIcon.name !== "custom-marker"
+      ? customIcon.name
+      : t("properties.category.customMarkerFallback");
     const iconDetails = customIcon
-      ? `${escapeHtml(customIcon.name || "custom-marker")} · ${escapeHtml(String(customIcon.width))} x ${escapeHtml(String(customIcon.height))} px`
+      ? `${escapeHtml(customIconName)} · ${escapeHtml(String(customIcon.width))} x ${escapeHtml(String(customIcon.height))} px`
       : escapeHtml(t("properties.category.iconRules"));
     const shapeOptions = markerShapes.map(shape => `
           <label class="category-shape-option${shape.value === category.shape ? " is-selected" : ""}">

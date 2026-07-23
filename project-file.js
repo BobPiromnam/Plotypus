@@ -68,6 +68,8 @@
 
   function validateAndNormalizeProject(rawProject, options = {}) {
     const currentVersion = Number(options.currentVersion) || 1;
+    const supportedFormat = String(options.projectFormat || "plotypus-project");
+    const formatRequiredVersion = Number(options.formatRequiredVersion) || 7;
     const boundarySources = options.boundarySources || {};
     const mapStylePresets = options.mapStylePresets || {};
     const defaultBoundary = options.defaultBoundary || Object.keys(boundarySources)[0] || "canada";
@@ -93,6 +95,19 @@
         "project.error.versionUnsupported",
         { version, currentVersion }
       );
+    }
+    if (version >= formatRequiredVersion && rawProject.format === undefined) {
+      throw validationError("Project file is missing its format identifier.", "project.error.formatMissing");
+    }
+    if (rawProject.format !== undefined && rawProject.format !== supportedFormat) {
+      throw validationError(
+        `Project format '${rawProject.format}' is not supported.`,
+        "project.error.formatUnsupported",
+        { format: rawProject.format }
+      );
+    }
+    if (rawProject.generator !== undefined && !isPlainObject(rawProject.generator)) {
+      throw validationError("Project generator metadata must be an object.", "project.error.generatorObject");
     }
     if (!Array.isArray(rawProject.rows)) throw validationError("Project file is missing its rows array.", "project.error.rowsMissing");
     if (rawProject.rows.length > 10000) throw validationError("Project file contains more than 10,000 rows and was not loaded.", "project.error.rowsTooMany");
@@ -139,6 +154,7 @@
 
     return {
       ...rawProject,
+      format: rawProject.format || supportedFormat,
       version,
       boundary: Object.prototype.hasOwnProperty.call(boundarySources, rawProject.boundary) ? rawProject.boundary : defaultBoundary,
       mapStyle: Object.prototype.hasOwnProperty.call(mapStylePresets, rawProject.mapStyle) ? rawProject.mapStyle : defaultMapStyle,

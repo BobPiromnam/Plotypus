@@ -68,6 +68,40 @@ function getLiteralJsI18nKeys() {
   return [...keys].sort();
 }
 
+function getAllReferencedJsI18nKeys(i18n) {
+  const files = ["app.js", "properties.js", "workspace.js", "project-io.js", "project-file.js", "xlsx-lite.js"];
+  const namespaces = [...new Set(Object.keys(i18n.dictionaries.en).map(key => key.split(".")[0]))];
+  const pattern = new RegExp(`["'\`]((?:${namespaces.join("|")})\\.[A-Za-z0-9_.-]+)["'\`]`, "g");
+  const keys = new Set();
+  files.forEach(file => {
+    const source = fs.readFileSync(path.join(repoRoot, file), "utf8");
+    let match;
+    while ((match = pattern.exec(source))) {
+      if (!match[1].endsWith(".js")) keys.add(match[1]);
+    }
+  });
+  return [...keys].sort();
+}
+
+function getSourceDictionaryKeys(locale) {
+  const source = fs.readFileSync(path.join(repoRoot, "i18n.js"), "utf8");
+  const marker = `${locale}: Object.freeze({`;
+  const start = source.indexOf(marker);
+  assert.notEqual(start, -1, `Could not find ${locale} source dictionary`);
+  const nextLocale = locale === "en" ? source.indexOf("fr: Object.freeze({", start + marker.length) : -1;
+  const end = nextLocale >= 0 ? nextLocale : source.indexOf("\n    })\n  });", start + marker.length);
+  assert.notEqual(end, -1, `Could not find the end of the ${locale} source dictionary`);
+  const keys = [];
+  const pattern = /^\s*"([^"]+)":/gm;
+  let match;
+  while ((match = pattern.exec(source.slice(start, end)))) keys.push(match[1]);
+  return keys;
+}
+
+function getInterpolationNames(value) {
+  return [...String(value).matchAll(/\{([A-Za-z0-9_]+)\}/g)].map(match => match[1]).sort();
+}
+
 function getUndoHistoryI18nKeys() {
   const source = fs.readFileSync(path.join(repoRoot, "app.js"), "utf8");
   const labels = new Set([
@@ -119,6 +153,7 @@ function getConfigBackedI18nKeys(config) {
     const key = colourKeyByValue[String(preset.value).toLowerCase()];
     if (key) keys.add(`properties.category.colour.${key}`);
   });
+  Object.keys(config.boundarySources || {}).forEach(id => keys.add(`region.boundary.${id}`));
 
   return [...keys].sort();
 }
@@ -157,11 +192,15 @@ test("bundled file-mode defaults match the editable JSON configuration", () => {
   const bundled = loadBundledConfig();
   const external = JSON.parse(fs.readFileSync(path.join(repoRoot, "plotypus.config.json"), "utf8"));
 
+  assert.equal(bundled.appVersion, external.appVersion);
   assert.equal(bundled.defaultFontFamily, external.defaultFontFamily);
   assert.equal(bundled.defaultMapStylePreset, external.defaultMapStylePreset);
   assert.deepEqual(bundled.performanceBudgets, external.performanceBudgets);
   assert.deepEqual(bundled.fontOptions, external.fonts);
+  assert.deepEqual(bundled.boundarySources, external.boundarySources);
   assert.deepEqual(bundled.imageSizePresets, external.bookSizes);
+  assert.deepEqual(bundled.regionPresetOptions, external.regionPresetOptions);
+  assert.deepEqual(bundled.markerShapes, external.markerShapes);
   assert.deepEqual(bundled.categoryColourPresets, external.categoryColourPresets);
   assert.deepEqual(bundled.mapStylePresets, external.mapStyles);
   assert.deepEqual(bundled.categorySettings, external.categories);
@@ -174,6 +213,25 @@ test("bundled file-mode defaults match the editable JSON configuration", () => {
     markerSizeInput: external.defaults.defaultMarkerSize,
     lineWidthInput: external.defaults.defaultLineWidth,
     labelCharsInput: external.defaults.labelMaxChars
+  });
+});
+
+test("config-backed user-facing labels include French fallbacks", () => {
+  const config = loadBundledConfig();
+  const labelledItems = [
+    ...Object.values(config.boundarySources || {}),
+    ...Object.values(config.mapStylePresets || {}),
+    ...Object.values(config.imageSizePresets || {}),
+    ...Object.values(config.imageSizePresets || {}).flatMap(preset => preset.sizes || []),
+    ...Object.values(config.regionPresetOptions || {}).flat(),
+    ...(config.markerShapes || []),
+    ...(config.categoryColourPresets || [])
+  ];
+
+  assert.ok(labelledItems.length > 0);
+  labelledItems.forEach(item => {
+    assert.ok(String(item.label || "").trim(), `Missing English config label for ${item.value || "configured item"}`);
+    assert.ok(String(item.labelFr || "").trim(), `Missing French config label for ${item.value || item.label}`);
   });
 });
 
@@ -228,6 +286,28 @@ test("English and French i18n dictionaries expose the same keys", () => {
   );
 });
 
+test("i18n source dictionaries do not contain duplicate keys", () => {
+  ["en", "fr"].forEach(locale => {
+    const keys = getSourceDictionaryKeys(locale);
+    const duplicates = [...new Set(keys.filter((key, index) => keys.indexOf(key) !== index))];
+    assert.deepEqual(duplicates, [], `${locale} dictionary contains duplicate source keys`);
+  });
+});
+
+test("English and French translations are non-empty and use matching interpolation fields", () => {
+  const i18n = loadBundledI18n();
+  Object.entries(i18n.dictionaries.en).forEach(([key, english]) => {
+    const french = i18n.dictionaries.fr[key];
+    assert.ok(String(english).trim(), `English translation is empty: ${key}`);
+    assert.ok(String(french).trim(), `French translation is empty: ${key}`);
+    assert.deepEqual(
+      getInterpolationNames(french),
+      getInterpolationNames(english),
+      `Interpolation fields differ for ${key}`
+    );
+  });
+});
+
 test("literal JavaScript i18n keys exist in English and French dictionaries", () => {
   const i18n = loadBundledI18n();
   const keys = getLiteralJsI18nKeys();
@@ -243,6 +323,15 @@ test("literal JavaScript i18n keys exist in English and French dictionaries", ()
     [],
     "French dictionary is missing literal JavaScript keys"
   );
+});
+
+test("all namespaced i18n keys referenced by JavaScript exist in both dictionaries", () => {
+  const i18n = loadBundledI18n();
+  const keys = getAllReferencedJsI18nKeys(i18n);
+
+  assert.ok(keys.length > 0);
+  assert.deepEqual(keys.filter(key => !Object.hasOwn(i18n.dictionaries.en, key)), [], "English dictionary is missing referenced keys");
+  assert.deepEqual(keys.filter(key => !Object.hasOwn(i18n.dictionaries.fr, key)), [], "French dictionary is missing referenced keys");
 });
 
 test("undo history labels have English and French dictionary keys", () => {

@@ -14,22 +14,23 @@
   */
 
   window.MAP_APP_CATEGORY_COLOUR_PRESETS = [
-    { value: "", label: "Custom" },
-    { value: "#26374a", label: "GoC blue" },
-    { value: "#284162", label: "Deep blue" },
-    { value: "#1c578a", label: "Accessible blue" },
-    { value: "#217346", label: "Excel green" },
-    { value: "#0b6b57", label: "Map green" },
-    { value: "#7834bc", label: "Purple" },
-    { value: "#a05a00", label: "Ochre" },
-    { value: "#d3080c", label: "Alert red" },
-    { value: "#444444", label: "Charcoal" },
-    { value: "#ffffff", label: "White" }
+    { value: "", label: "Custom", labelFr: "Personnalisée" },
+    { value: "#26374a", label: "GoC blue", labelFr: "Bleu GC" },
+    { value: "#284162", label: "Deep blue", labelFr: "Bleu foncé" },
+    { value: "#1c578a", label: "Accessible blue", labelFr: "Bleu accessible" },
+    { value: "#217346", label: "Excel green", labelFr: "Vert Excel" },
+    { value: "#0b6b57", label: "Map green", labelFr: "Vert cartographique" },
+    { value: "#7834bc", label: "Purple", labelFr: "Violet" },
+    { value: "#a05a00", label: "Ochre", labelFr: "Ocre" },
+    { value: "#d3080c", label: "Alert red", labelFr: "Rouge alerte" },
+    { value: "#444444", label: "Charcoal", labelFr: "Anthracite" },
+    { value: "#ffffff", label: "White", labelFr: "Blanc" }
   ];
 
   window.MAP_APP_STYLE_PRESETS = {
     "goc-green": {
       label: "GoC green",
+      labelFr: "Vert GC",
       stylesheet: "themes/goc-green.css?v=20260612-map-only",
       regionColours: ["#c7ded5", "#96c6b4", "#6caf94", "#078c70"],
       categoryStyles: [
@@ -40,6 +41,7 @@
     },
     "goc-blue": {
       label: "GoC blue",
+      labelFr: "Bleu GC",
       stylesheet: "themes/goc-blue.css?v=20260612-map-only",
       regionColours: ["#d7e5f5", "#9dbbe0", "#26374a"],
       categoryStyles: [
@@ -50,6 +52,7 @@
     },
     "neutral-print": {
       label: "Neutral print",
+      labelFr: "Impression neutre",
       stylesheet: "themes/neutral-print.css?v=20260612-map-only",
       regionColours: ["#efefef", "#d8d8d8", "#bdbdbd"],
       categoryStyles: [
@@ -60,6 +63,7 @@
     },
     "high-contrast": {
       label: "High contrast",
+      labelFr: "Contraste élevé",
       stylesheet: "themes/high-contrast.css?v=20260612-map-only",
       regionColours: ["#ffffff", "#d8d8d8", "#000000"],
       categoryStyles: [
