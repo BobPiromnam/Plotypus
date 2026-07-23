@@ -75,6 +75,7 @@
       + Number(report.crossings || 0)
       + Number(report.longLines || 0)
       + Number(report.labelsNearEdge || 0)
+      + Number(report.offCanvasPoints || 0)
       + (report.projectedProblems ? report.projectedProblems.length : 0)
       + (report.hiddenRegionProblems ? report.hiddenRegionProblems.length : 0);
     return {

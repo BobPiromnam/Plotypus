@@ -271,7 +271,6 @@ State:
 - Authoring language.
 - Selected cell fields.
 - Selected rows.
-- Bulk priority availability.
 - Bulk coordinate clear availability.
 
 Acceptance criteria:
@@ -290,7 +289,6 @@ Components:
 - `ProjectRow`
 - `ProjectNameCell`
 - `TypeCell`
-- `PriorityCell`
 - `CoordinateCell`
 - `StatusCell`
 - `RowSelectCell`
@@ -307,7 +305,6 @@ Required behavior:
 
 - Excel-like multi-cell selection.
 - Ctrl-click and Shift-click selection.
-- Bulk priority changes.
 - Bulk coordinate clearing.
 - Inline coordinate clear buttons.
 - English/French type labels and comma decimals.

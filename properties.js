@@ -113,10 +113,15 @@
             <select data-layout-proxy="imageSizeInput">
               ${selectOptions.imageSize || ""}
             </select>
+            <span class="properties-muted">${escapeHtml(t("properties.helper.documentPreview"))}</span>
           </label>
           <label class="properties-field-group">
             ${propertyFieldLabel(options, t("properties.field.defaultCharactersPerLine"))}
             <input type="number" min="12" max="42" step="1" data-layout-proxy="labelCharsInput" value="${escapeHtml(values.labelChars || "")}">
+          </label>
+          <label class="properties-field-group">
+            ${propertyFieldLabel(options, t("properties.field.defaultMarkerSize"))}
+            <input type="number" min="4" max="20" step="1" data-layout-proxy="markerSizeInput" value="${escapeHtml(values.markerSize || "")}">
           </label>
         </section>
         <section class="document-property-section">
@@ -164,7 +169,6 @@
       labelKey = "",
       manual = false,
       advancedOpen = false,
-      priority = 0,
       typeOptions = "",
       status = "",
       globalLabelMaxChars = 24,
@@ -309,10 +313,6 @@
           <textarea data-property-field="nameFr" rows="2" placeholder="${escapeHtml(titleFrLabel)}">${escapeHtml(row.nameFr || "")}</textarea>
         </label>
         <label>
-          ${propertyFieldLabel(options, t("properties.field.priority"))}
-          <input type="number" min="0" max="5" step="1" data-property-field="priority" style="${numericStyle}" value="${priority}">
-        </label>
-        <label>
           ${propertyFieldLabel(options, t("properties.field.type"))}
           <select data-property-field="type">
             ${typeOptions}
@@ -375,37 +375,17 @@
     `;
   }
   function renderMapPropertyControls(options) {
-    const { regionSummaryText = "", selectOptions = {}, escapeHtml } = options || {};
+    const { mapScale = 100, escapeHtml } = options || {};
     const t = translator(options);
     return `
       <div class="properties-form" data-property-kind="map">
-        <label>
-          ${propertyFieldLabel(options, t("properties.field.mapBoundary"))}
-          <select data-map-proxy="boundaryInput">
-            ${selectOptions.boundary || ""}
-          </select>
-        </label>
-        <label>
-          ${propertyFieldLabel(options, t("properties.field.regionPreset"))}
-          <select data-map-proxy="regionPresetInput">
-            ${selectOptions.regionPreset || ""}
-          </select>
-        </label>
-        <label>
-          ${propertyFieldLabel(options, t("properties.field.pagePreset"))}
-          <select data-layout-proxy="bookSizeInput">
-            ${selectOptions.bookSize || ""}
-          </select>
-        </label>
-        <label>
-          ${propertyFieldLabel(options, t("properties.field.canvasSize"))}
-          <select data-layout-proxy="imageSizeInput">
-            ${selectOptions.imageSize || ""}
-          </select>
-        </label>
-        <label>
-          ${propertyFieldLabel(options, t("properties.field.defaultCharactersPerLine"))}
-          <input type="number" min="12" max="42" step="1" data-layout-proxy="labelCharsInput" value="${escapeHtml(selectOptions.labelMaxChars || "")}">
+        <label class="properties-field-group">
+          ${propertyFieldLabel(options, t("properties.field.baselayerSize"))}
+          <span class="properties-unit-input">
+            <input type="number" min="45" max="115" step="1" inputmode="decimal" data-layout-proxy="mapScaleInput" value="${escapeHtml(String(mapScale))}" aria-describedby="baselayerSizeHint">
+            <span aria-hidden="true">%</span>
+          </span>
+          <span id="baselayerSizeHint" class="properties-muted">${escapeHtml(t("properties.helper.baselayerSize"))}</span>
         </label>
       </div>
     `;
@@ -471,20 +451,6 @@
           <button type="button" data-property-action="open-translations-missing">${escapeHtml(t("properties.translation.showMissing"))}</button>
           <button type="button" data-property-action="paste-translations">${escapeHtml(t("properties.translation.pasteColumn"))}</button>
         </div>
-      </div>
-    `;
-  }
-
-  function renderTranslationEntryPropertyControls(options) {
-    const { entry, escapeHtml } = options || {};
-    const t = translator(options);
-    if (!entry) return `<p class="properties-muted">${escapeHtml(t("properties.translation.empty"))}</p>`;
-    return `
-      <div class="properties-form" data-property-kind="translation-entry" data-entry-id="${escapeHtml(entry.id)}">
-        <h3>${escapeHtml(t("properties.translation.selected"))}</h3>
-        <label>${propertyFieldLabel(options, t("properties.category.english"))}<input data-translation-property="en" type="text" value="${escapeHtml(entry.ref)}"></label>
-        <label>${propertyFieldLabel(options, t("properties.category.french"))}<input data-translation-property="fr" type="text" value="${escapeHtml(entry.fr || "")}" placeholder="-"></label>
-        <p class="properties-muted">${escapeHtml(t("properties.translation.outputNote"))}</p>
       </div>
     `;
   }
@@ -582,7 +548,6 @@
     renderQualityPropertyControls,
     renderRegionPropertyControls,
     renderRowPropertyControls,
-    renderTranslationEntryPropertyControls,
     renderTranslationPropertyControls
   });
 })(window);

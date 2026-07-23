@@ -71,7 +71,6 @@
         nameFr: row.nameFr || "",
         footnote: row.footnote,
         type: cleanType(row.type),
-        priority: row.priority || 0,
         lon: row.lon,
         lat: row.lat,
         anchor: row.anchor || "coord",
@@ -126,7 +125,6 @@
       footnote: row.footnote,
       type: getCategoryLabel(row.type),
       type_fr: getCategoryText(getCategoryForType(row.type), "fr"),
-      priority: row.priority || "",
       lon: row.lon,
       lat: row.lat,
       region: row.region || "",
@@ -135,8 +133,8 @@
     return {
       rows: exportRows,
       columns: projectLocationMode === "regions" || (rows || []).some(row => row && row.anchor === "region")
-        ? ["name", "name_fr", "footnote", "type", "type_fr", "priority", "region", "hideLine"]
-        : ["name", "name_fr", "footnote", "type", "type_fr", "priority", "lon", "lat", "hideLine"]
+        ? ["name", "name_fr", "footnote", "type", "type_fr", "region", "hideLine"]
+        : ["name", "name_fr", "footnote", "type", "type_fr", "lon", "lat", "hideLine"]
     };
   }
 

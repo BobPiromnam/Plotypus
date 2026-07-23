@@ -9,10 +9,10 @@
   <link rel="preload" href="assets/fonts/lato/lato-4.woff2" as="font" type="font/woff2" />
   <link rel="stylesheet" href="assets/fonts/lato/lato.css?v=20260612-file-fonts" />
   <link rel="stylesheet" href="assets/fonts/ibm-plex-mono/ibm-plex-mono.css?v=20260622-offline-fonts" />
-  <link rel="stylesheet" href="style.css?v=20260722-compact-project-toolbar-2" />
+  <link rel="stylesheet" href="style.css?v=20260723-document-bleed" />
   <link id="themeStylesheet" rel="stylesheet" href="themes/goc-green.css?v=20260612-map-only" />
 </head>
-<body>
+<body data-properties-side="left">
   <header class="app-header">
     <div class="app-ribbon command-bar" aria-label="Application actions" data-i18n-aria-label="aria.applicationActions">
       <div class="app-brand" aria-label="Application identity" data-i18n-aria-label="aria.applicationIdentity">
@@ -63,7 +63,7 @@
           <div id="exportMenu" class="export-menu" role="menu" aria-labelledby="exportMenuBtn" hidden>
             <div class="export-menu-section-label" role="presentation" data-i18n="export.section.map">Map outputs</div>
             <button id="ribbonExportPngBtn" class="export-menu-item" type="button" role="menuitem" data-icon="image">
-              <span><strong data-i18n="export.png.title">Export PNG</strong><small data-i18n="export.png.description">Raster image for documents</small></span>
+              <span><strong data-i18n="export.png.title">Export PNG</strong><small data-i18n="export.png.description">Raster image</small></span>
             </button>
             <button id="ribbonExportSvgBtn" class="export-menu-item" type="button" role="menuitem" data-icon="svg-file">
               <span><strong data-i18n="export.svg.title">Export SVG</strong><small data-i18n="export.svg.description">Editable vector artwork</small></span>
@@ -82,7 +82,7 @@
       <nav class="table-tabs workspace-nav" role="tablist" aria-label="Plotypus workspaces" data-i18n-aria-label="aria.workspaces">
         <button id="previewTableTab" class="table-tab is-active" type="button" role="tab" tabindex="0" aria-selected="true" aria-controls="previewTablePane" data-icon="map" title="Map" data-i18n="tab.map" data-i18n-title="tab.map">Map</button>
         <button id="projectTableTab" class="table-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="projectTablePane" data-icon="table" title="Project points" data-i18n="tab.projects" data-i18n-title="tab.projects">Project points</button>
-        <button id="categoriesTableTab" class="table-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="categoriesTablePane" data-icon="layers" title="Categories and markers" data-i18n="tab.categories" data-i18n-title="tab.categories">Categories &amp; markers</button>
+        <button id="categoriesTableTab" class="table-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="categoriesTablePane" data-icon="layers" title="Legend" data-i18n="tab.categories" data-i18n-title="tab.categories">Legend</button>
         <button id="regionTableTab" class="table-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="regionTablePane" data-icon="regions" title="Map baselayer" data-i18n="tab.regions" data-i18n-title="tab.regions">Map baselayer</button>
         <button id="translateTableTab" class="table-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="translateTablePane" data-icon="languages" title="Translate" data-i18n="tab.translate" data-i18n-title="tab.translate">Translate</button>
         <button id="qualityTableTab" class="table-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="qualityTablePane" data-icon="shield-check" title="Map quality" data-i18n="tab.quality" data-i18n-title="tab.quality">Map quality</button>
@@ -118,7 +118,7 @@
         </select>
         <input id="labelSizeInput" type="number" min="12" max="30" step="1" value="12" />
         <input id="mapScaleInput" type="number" min="45" max="115" step="1" value="100" />
-        <input id="markerSizeInput" type="number" min="4" max="20" step="1" value="10" />
+        <input id="markerSizeInput" type="number" min="4" max="20" step="1" value="4" />
         <input id="lineWidthInput" type="number" min="1" max="8" step="0.5" value="2" />
         <input id="labelCharsInput" type="number" min="12" max="42" step="1" value="24" />
       <button id="resetRegionColoursBtn" type="button" data-i18n="region.action.resetColours">Reset colours</button>
@@ -126,6 +126,13 @@
 
     <section class="workspace">
       <div class="table-panel">
+        <header class="workspace-intro project-workspace-intro">
+          <div class="workspace-intro-copy">
+            <span class="workspace-eyebrow" data-i18n="project.intro.eyebrow">Source data</span>
+            <h2 data-i18n="project.intro.title">Project points</h2>
+            <p data-i18n="project.intro.body">Add or import projects, choose how they are located, and edit the fields that drive markers and labels.</p>
+          </div>
+        </header>
         <div class="table-toolbar workspace-rail">
           <div class="table-toolbar-main workspace-heading">
             <strong id="tablePanelTitle" data-i18n="tab.map">Map</strong>
@@ -151,15 +158,6 @@
             </div>
             <div id="projectSelectionActions" class="selection-actions" aria-label="Actions for selected rows and cells" data-i18n-aria-label="toolbar.selection.aria" hidden>
               <span class="toolbar-group-label" data-i18n="toolbar.selection.selected">Selected</span>
-              <select id="bulkPriorityInput" aria-label="Set selected priority cells" data-i18n-aria-label="properties.field.priority" disabled>
-                <option value="" data-i18n="toolbar.selection.priority">Priority</option>
-                <option value="0" data-i18n="toolbar.selection.priorityValue" data-i18n-params='{"value":"0"}'>Priority 0</option>
-                <option value="1" data-i18n="toolbar.selection.priorityValue" data-i18n-params='{"value":"1"}'>Priority 1</option>
-                <option value="2" data-i18n="toolbar.selection.priorityValue" data-i18n-params='{"value":"2"}'>Priority 2</option>
-                <option value="3" data-i18n="toolbar.selection.priorityValue" data-i18n-params='{"value":"3"}'>Priority 3</option>
-                <option value="4" data-i18n="toolbar.selection.priorityValue" data-i18n-params='{"value":"4"}'>Priority 4</option>
-                <option value="5" data-i18n="toolbar.selection.priorityValue" data-i18n-params='{"value":"5"}'>Priority 5</option>
-              </select>
               <button id="bulkClearCoordinatesBtn" type="button" data-icon="eraser" disabled><span data-i18n="toolbar.selection.clearCoordinates">Clear coordinates</span></button>
               <button id="deleteSelectedBtn" class="is-danger project-danger-action" type="button" data-icon="trash" title="Delete selected rows" data-i18n-title="toolbar.selection.delete.title" disabled><span data-i18n="toolbar.selection.delete">Delete</span></button>
             </div>
@@ -181,13 +179,6 @@
             <span id="projectTableSummary" class="visually-hidden" aria-live="polite" data-i18n="project.summary.empty">No project rows.</span>
           </div>
           <div class="table-actions preview-actions workspace-rail-actions is-active" data-table-actions="preview" hidden>
-            <label class="toolbar-check language-toolbar-check">
-              <span data-i18n="aria.mapLanguage">Map language</span>
-              <select id="previewLanguageInput" aria-label="Map language" data-i18n-aria-label="aria.mapLanguage">
-                <option value="en" data-i18n="dialog.mapDetails.english">English</option>
-                <option value="fr" data-i18n="dialog.mapDetails.french">Français</option>
-              </select>
-            </label>
           </div>
         </div>
         <div id="projectTablePane" class="table-pane" role="tabpanel" aria-labelledby="projectTableTab" data-workspace="projects">
@@ -204,8 +195,6 @@
                 <th class="footnote-col" title="Superscript footnote marker" data-i18n-title="table.footnote.title"><span class="editable-col-heading"><span data-i18n="table.footnote">Fnote</span> <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
                 <th class="type-col"><span class="editable-col-heading"><span data-i18n="table.type">Type</span> <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
                 <th class="annotation-preview-col label-preview-col"><span data-i18n="table.label">Label</span> <span class="col-auto-chip" title="Auto" aria-label="Auto" data-i18n-title="table.auto" data-i18n-aria-label="table.auto"><span data-icon="wand" aria-hidden="true"></span></span></th>
-
-                <th class="priority-col" title="Priority controls label placement order. Higher numbers are placed earlier when labels compete for space." data-i18n-title="table.priority.title"><span class="editable-col-heading"><span data-i18n="table.priority">Priority</span> <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
                 <th class="coordinate-col region-col anchor-preview-col"><span class="editable-col-heading"><span data-i18n="table.regionColumn">Region</span> <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
                 <th class="coordinate-col lon-col"><span class="editable-col-heading"><span data-i18n="table.longitude">Longitude</span> <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
                 <th class="coordinate-col lat-col"><span class="editable-col-heading"><span data-i18n="table.latitude">Latitude</span> <span class="col-edit-hint" data-icon="pencil" aria-hidden="true"></span></span></th>
@@ -219,17 +208,26 @@
         </div>
         </div>
         <div id="categoriesTablePane" class="table-pane categories-table-pane" role="tabpanel" aria-labelledby="categoriesTableTab" data-workspace="categories">
-          <div class="categories-workspace-intro">
-            <div>
+          <header class="workspace-intro categories-workspace-intro">
+            <div class="workspace-intro-copy">
               <span class="workspace-eyebrow" data-i18n="categories.intro.eyebrow">Legend structure</span>
               <h2 data-i18n="categories.intro.title">Categories &amp; markers</h2>
               <p data-i18n="categories.intro.body">Define the legend before importing or editing rows. Marker shape &amp; colour belong to map output and never restyle the app chrome.</p>
             </div>
-            <button id="addCategoryBtn" type="button" data-icon="plus" data-i18n="categories.action.add">Add legend marker</button>
-          </div>
+            <div class="workspace-intro-actions">
+              <button id="addCategoryBtn" type="button" data-icon="plus" data-i18n="categories.action.add">Add legend marker</button>
+            </div>
+          </header>
           <div id="categoryList" class="category-workspace-grid"></div>
         </div>
         <div id="regionTablePane" class="table-pane region-management-panel" role="tabpanel" aria-labelledby="regionTableTab" data-workspace="regions">
+          <header class="workspace-intro">
+            <div class="workspace-intro-copy">
+              <span class="workspace-eyebrow" data-i18n="region.intro.eyebrow">Geographic coverage</span>
+              <h2 data-i18n="region.intro.title">Map baselayer</h2>
+              <p data-i18n="region.intro.body">Choose the map boundary and included regions, then set their colour order and fill.</p>
+            </div>
+          </header>
           <div class="region-management-controls workspace-rail">
             <label>
               <span data-i18n="properties.field.mapBoundary">Map boundary</span>
@@ -280,16 +278,16 @@
         </div>
         <div id="translateTablePane" class="table-pane translate-table-pane" role="tabpanel" aria-labelledby="translateTableTab" data-workspace="translate">
           <div class="translate-workbench">
+            <header class="workspace-intro">
+              <div class="workspace-intro-copy">
+                <span class="workspace-eyebrow" data-i18n="translate.intro.eyebrow">Bilingual content</span>
+                <h2 data-i18n="translate.intro.title">Translate</h2>
+                <p data-i18n="translate.intro.body">Review English and French map strings, filter missing translations, or import a completed translation column.</p>
+              </div>
+            </header>
             <div class="translate-header workspace-rail">
               <div>
-                <strong data-i18n="translate.title">Translate</strong>
-                <span id="translationProgressText" data-i18n="translate.progress" data-i18n-params='{"complete":"0","total":"0"}'>0 / 0 bilingual strings complete</span>
-              </div>
-              <div class="translation-direction" aria-label="Translation focus" data-i18n-aria-label="aria.translationFocus">
-                <span data-i18n="translate.focus">Focus</span>
-                <button type="button" class="is-active" data-translation-direction="en-fr">EN</button>
-                <button type="button" data-translation-direction="fr-en">FR</button>
-                <output id="translationDirectionText" class="visually-hidden" data-i18n="translate.direction.enFr">EN → FR</output>
+                <span id="translationProgressText" data-i18n="translate.progress" data-i18n-params='{"complete":"0","total":"0"}'>0 / 0 Translations</span>
               </div>
               <div class="translate-filters" aria-label="Translation filters" data-i18n-aria-label="translate.filters.aria">
                 <button type="button" class="is-active" data-translation-filter="all" data-i18n="translate.filters.all">All</button>
@@ -302,8 +300,8 @@
               </div>
               <div class="translation-column-labels" aria-hidden="true">
                 <span></span>
-                <span><span data-icon="pencil"></span> <span data-i18n="translate.column.english">English - editable source</span></span>
-                <span><span data-icon="pencil"></span> <span data-i18n="translate.column.french">Français - editable translation</span></span>
+                <span><span data-icon="pencil"></span> <span data-i18n="translate.column.english">English</span></span>
+                <span><span data-icon="pencil"></span> <span data-i18n="translate.column.french">Français</span></span>
                 <span><span data-i18n="translate.column.status">Status</span> <span class="col-auto-chip" title="Auto" aria-label="Auto" data-i18n-title="table.auto" data-i18n-aria-label="table.auto"><span data-icon="wand" aria-hidden="true"></span></span></span>
               </div>
               <div class="translation-progress" aria-hidden="true">
@@ -315,6 +313,26 @@
           </div>
         </div>
         <div id="previewTablePane" class="table-pane preview-table-pane is-active" role="tabpanel" aria-labelledby="previewTableTab" data-workspace="preview">
+          <header class="workspace-intro">
+            <div class="workspace-intro-copy">
+              <span class="workspace-eyebrow" data-i18n="preview.intro.eyebrow">Map preview</span>
+              <h2 data-i18n="preview.intro.title">Map</h2>
+              <p data-i18n="preview.intro.body">Preview the map on a document page, zoom the canvas, and select labels or map elements for contextual editing.</p>
+            </div>
+            <div class="workspace-intro-actions">
+              <div class="map-tab-language-control" role="group" aria-label="Map language" data-i18n-aria-label="aria.mapLanguage">
+                <span data-i18n="aria.mapLanguage">Map language</span>
+                <div class="map-tab-language-toggle">
+                  <button type="button" class="is-active" data-map-language="en" aria-pressed="true" lang="en" data-i18n="language.en">EN</button>
+                  <button type="button" data-map-language="fr" aria-pressed="false" lang="fr" data-i18n="language.fr">FR</button>
+                </div>
+                <select id="previewLanguageInput" class="visually-hidden" aria-hidden="true" tabindex="-1">
+                  <option value="en">English</option>
+                  <option value="fr">Français</option>
+                </select>
+              </div>
+            </div>
+          </header>
           <div class="preview-panel">
             <div id="mapHost" class="map-host">
               <div class="preview-loading" role="status" aria-live="polite">
@@ -335,47 +353,87 @@
                 </div>
               </div>
               <div id="previewErrorState" class="preview-state-card preview-error-state" hidden aria-live="polite"></div>
-              <div id="canvasPlaceholder" class="canvas-placeholder" aria-hidden="true" hidden>
-                <div class="canvas-placeholder-copy">
-                  <strong data-i18n="map.canvasPlaceholder.title">Map canvas</strong>
-                  <span data-i18n="properties.size.canvasPoints" data-i18n-params='{"width":"792","height":"570"}'>792 x 570 pt canvas</span>
+              <div id="canvasViewport" class="canvas-viewport" aria-describedby="documentPreviewHint">
+                <div class="document-preview-stack">
+                  <div class="document-preview-caption">
+                    <strong data-i18n="map.documentPreview.label">Document page preview</strong>
+                    <span id="documentPreviewHint" data-i18n="map.documentPreview.hint">Screen guide only — not included in exports</span>
+                  </div>
+                  <div id="documentPagePreview" class="document-page-preview" data-page-preset="letter">
+                    <div class="document-page-header" aria-hidden="true">
+                      <span data-i18n="map.documentPreview.figure">Figure #</span>
+                      <strong data-i18n="map.documentPreview.title">Map title</strong>
+                    </div>
+                    <div id="documentBleedGuide" class="document-canvas-bleed" aria-hidden="true">
+                      <span class="document-bleed-corner" data-corner="top-left"></span>
+                      <span class="document-bleed-corner" data-corner="top-right"></span>
+                      <span class="document-bleed-corner" data-corner="bottom-left"></span>
+                      <span class="document-bleed-corner" data-corner="bottom-right"></span>
+                    </div>
+                    <div id="documentCanvasSlot" class="document-canvas-slot">
+                      <div id="canvasPlaceholder" class="canvas-placeholder" aria-hidden="true" hidden>
+                        <div class="canvas-placeholder-copy">
+                          <strong data-i18n="map.canvasPlaceholder.title">Map canvas</strong>
+                          <span data-i18n="properties.size.canvasPixels" data-i18n-params='{"width":"792","height":"570"}'>792 x 570 px canvas</span>
+                        </div>
+                      </div>
+                      <svg id="mapSvg" role="img"></svg>
+                    </div>
+                    <div class="document-page-copy" aria-hidden="true">
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                    </div>
+                    <div class="document-page-footer" aria-hidden="true">
+                      <span data-i18n="map.documentPreview.note">Note:</span>
+                      <span data-i18n="map.documentPreview.source">Source:</span>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div id="canvasToolbar" class="canvas-toolbar" aria-label="Canvas controls" data-i18n-aria-label="aria.canvasControls">
-                <div class="canvas-zoom-group" role="group" aria-label="Map scale" data-i18n-aria-label="aria.mapScale">
-                  <button id="canvasZoomOutBtn" type="button" aria-label="Decrease map scale" data-i18n-aria-label="canvas.zoomOut">&minus;</button>
-                  <output id="canvasZoomReadout" for="mapScaleInput" data-i18n="canvas.mapScaleReadout" data-i18n-params='{"value":"100%"}'>Map 100%</output>
-                  <button id="canvasZoomInBtn" type="button" aria-label="Increase map scale" data-i18n-aria-label="canvas.zoomIn">+</button>
+                <div class="canvas-zoom-group" role="group" aria-label="Canvas zoom" data-i18n-aria-label="aria.canvasZoom">
+                  <button id="canvasZoomOutBtn" type="button" aria-label="Zoom canvas out" data-i18n-aria-label="canvas.zoomOut">&minus;</button>
+                  <output id="canvasZoomReadout" aria-live="polite" data-i18n="canvas.zoomReadout" data-i18n-params='{"value":"125%"}'>Canvas 125%</output>
+                  <button id="canvasZoomInBtn" type="button" aria-label="Zoom canvas in" data-i18n-aria-label="canvas.zoomIn">+</button>
                 </div>
                 <div class="canvas-auto-place-group" role="group" aria-labelledby="canvasAutoPlaceLabel">
                   <span id="canvasAutoPlaceLabel" class="canvas-auto-place-label" data-i18n="canvas.autoPlace.label">Auto-place</span>
-                  <button id="canvasAutoPlaceBtn" type="button" class="primary-action" data-icon="auto-fit" title="Auto-place labels and reduce the map size if needed" data-i18n-title="canvas.autoPlace.title"><span class="canvas-label-wide" data-i18n="canvas.autoPlace.wide">Fit map + labels</span><span class="canvas-label-compact" data-i18n="canvas.autoPlace.compact">Map + labels</span></button>
-                  <button id="canvasPlaceLabelsOnlyBtn" type="button" data-icon="label-place" title="Auto-place labels while preserving the current map size" data-i18n-title="canvas.labelsOnly.title"><span class="canvas-label-wide" data-i18n="canvas.labelsOnly.wide">Labels only</span><span class="canvas-label-compact" data-i18n="canvas.labelsOnly.compact">Labels</span></button>
+                  <button id="canvasAutoPlaceBtn" type="button" class="primary-action" data-icon="auto-fit" title="Auto-place labels and resize the baselayer to fit the canvas" data-i18n-title="canvas.autoPlace.title"><span class="canvas-label-wide" data-i18n="canvas.autoPlace.wide">Fit: map + labels</span><span class="canvas-label-compact" data-i18n="canvas.autoPlace.compact">Map + labels</span></button>
+                  <button id="canvasPlaceLabelsOnlyBtn" type="button" data-icon="label-place" title="Auto-place labels while preserving the current map size" data-i18n-title="canvas.labelsOnly.title"><span class="canvas-label-wide" data-i18n="canvas.labelsOnly.wide">Fit: labels only</span><span class="canvas-label-compact" data-i18n="canvas.labelsOnly.compact">Labels</span></button>
                 </div>
               </div>
-              <svg id="mapSvg" role="img"></svg>
               <div id="canvasQualityPill" class="canvas-quality-pill" hidden></div>
             </div>
           </div>
         </div>
         <div id="qualityTablePane" class="table-pane quality-table-pane" role="tabpanel" aria-labelledby="qualityTableTab" data-workspace="quality">
           <div class="quality-review">
-            <div id="qualitySummaryBanner" class="quality-summary-banner workspace-rail" role="status" aria-live="polite"></div>
-            <div id="qualityMetricsPanel" class="quality-metrics-panel"></div>
-            <section class="performance-telemetry" aria-labelledby="performanceTelemetryTitle" hidden>
-              <header>
-                <div>
-                  <span class="workspace-eyebrow" data-i18n="quality.performance.runtime">Runtime</span>
-                  <h3 id="performanceTelemetryTitle" data-i18n="quality.performance.title">Render performance</h3>
-                </div>
-                <span id="performanceTelemetryStatus" class="performance-telemetry-status" data-state="neutral" data-i18n="quality.performance.none">No timings yet</span>
-              </header>
-              <div id="performanceTelemetryMetrics" class="performance-telemetry-metrics" aria-live="polite"></div>
-            </section>
-            <details class="quality-detail-checklist">
-              <summary data-i18n="quality.checklist.summary">Detailed publishing checklist</summary>
-              <div id="statusBox" class="status-box" data-i18n="quality.checklist.empty">Load data to generate the map.</div>
-            </details>
+            <header class="workspace-intro">
+              <div class="workspace-intro-copy">
+                <span class="workspace-eyebrow" data-i18n="quality.intro.eyebrow">Export readiness</span>
+                <h2 data-i18n="quality.intro.title">Map quality</h2>
+                <p data-i18n="quality.intro.body">Review layout, translation, and map-detail issues before exporting the final map.</p>
+              </div>
+            </header>
+            <div class="quality-workspace-content">
+              <div id="qualitySummaryBanner" class="quality-summary-banner workspace-rail" role="status" aria-live="polite"></div>
+              <div id="qualityMetricsPanel" class="quality-metrics-panel"></div>
+              <section class="performance-telemetry" aria-labelledby="performanceTelemetryTitle" hidden>
+                <header>
+                  <div>
+                    <span class="workspace-eyebrow" data-i18n="quality.performance.runtime">Runtime</span>
+                    <h3 id="performanceTelemetryTitle" data-i18n="quality.performance.title">Render performance</h3>
+                  </div>
+                  <span id="performanceTelemetryStatus" class="performance-telemetry-status" data-state="neutral" data-i18n="quality.performance.none">No timings yet</span>
+                </header>
+                <div id="performanceTelemetryMetrics" class="performance-telemetry-metrics" aria-live="polite"></div>
+              </section>
+              <details class="quality-detail-checklist">
+                <summary data-i18n="quality.checklist.summary">Detailed publishing checklist</summary>
+                <div id="statusBox" class="status-box" data-i18n="quality.checklist.empty">Load data to generate the map.</div>
+              </details>
+            </div>
           </div>
         </div>
       </div>
@@ -444,6 +502,24 @@
             </label>
           </div>
         </div>
+
+        <section id="applicationConfigurationSection" class="properties-section application-configuration-section" aria-labelledby="applicationConfigurationTitle">
+          <h3 id="applicationConfigurationTitle" data-i18n="properties.section.configuration">Configuration</h3>
+          <div class="properties-position-setting">
+            <span id="propertiesPositionLabel" data-i18n="settings.propertiesPosition">Properties panel position</span>
+            <div class="properties-position-options" role="radiogroup" aria-labelledby="propertiesPositionLabel">
+              <label>
+                <input type="radio" name="propertiesPanelSide" value="left" data-properties-side-input checked />
+                <span data-i18n="settings.position.left">Left</span>
+              </label>
+              <label>
+                <input type="radio" name="propertiesPanelSide" value="right" data-properties-side-input />
+                <span data-i18n="settings.position.right">Right</span>
+              </label>
+            </div>
+            <p data-i18n="settings.propertiesPosition.hint">This preference is saved in this browser.</p>
+          </div>
+        </section>
 
       </div>
     </aside>
@@ -655,6 +731,29 @@
     </div>
   </div>
 
+  <div id="confirmationDialog" class="app-dialog confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirmationTitle" aria-describedby="confirmationMessage" hidden>
+    <div class="dialog-scrim" data-confirmation-action="cancel"></div>
+    <div class="dialog-card confirmation-dialog-card">
+      <header class="dialog-header">
+        <div class="dialog-title-row">
+          <span class="dialog-title-icon confirmation-dialog-icon" data-icon="trash" aria-hidden="true"></span>
+          <div>
+            <h2 id="confirmationTitle" data-i18n="dialog.confirm.clearTitle">Clear Project points?</h2>
+            <p data-i18n="dialog.confirm.subtitle">This action can be restored with Undo.</p>
+          </div>
+        </div>
+        <button type="button" class="icon-button dialog-close" data-confirmation-action="cancel" aria-label="Close confirmation" data-i18n-aria-label="dialog.confirm.close" data-icon="x"></button>
+      </header>
+      <div class="dialog-body confirmation-dialog-body">
+        <p id="confirmationMessage" data-i18n="status.clearProjectRowsConfirm" data-i18n-params='{"count":"0","label":"rows"}'>Clear 0 rows from Project points? Use Undo to restore them if needed.</p>
+      </div>
+      <footer class="dialog-footer">
+        <button type="button" data-confirmation-action="cancel" data-i18n="dialog.common.cancel">Cancel</button>
+        <button id="confirmationConfirmBtn" type="button" class="is-danger" data-confirmation-action="confirm" data-i18n="dialog.confirm.clearAction">Clear table</button>
+      </footer>
+    </div>
+  </div>
+
   <div id="shortcutsOverlay" class="shortcuts-overlay" role="dialog" aria-modal="true" aria-labelledby="shortcutsTitle" hidden>
     <div class="shortcuts-card">
       <div class="shortcuts-heading">
@@ -675,16 +774,16 @@
   <script src="assets/vendor/d3-7.9.0.min.js"></script>
   <script src="assets/vendor/papaparse-5.4.1.min.js"></script>
   <script src="presets.js?v=20260714-bilingual-audit"></script>
-  <script src="config.js?v=20260714-bilingual-audit"></script>
+  <script src="config.js?v=20260723-document-preview"></script>
   <script src="icons.js?v=20260722-compact-project-toolbar"></script>
   <script src="project-file.js?v=20260714-portable-projects"></script>
   <script src="geometry.js?v=20260622-module-extraction"></script>
   <script src="label-layout.js?v=20260622-module-extraction"></script>
   <script src="project-io.js?v=20260722-rich-label-border"></script>
   <script src="region-matching.js?v=20260712-location-mode"></script>
-  <script src="workspace.js?v=20260622-module-extraction"></script>
-  <script src="properties.js?v=20260722-rich-label-border"></script>
-  <script src="i18n.js?v=20260722-compact-project-toolbar"></script>
-  <script src="app.js?v=20260722-compact-project-toolbar-2"></script>
+  <script src="workspace.js?v=20260723-off-canvas-points"></script>
+  <script src="properties.js?v=20260723-document-preview"></script>
+  <script src="i18n.js?v=20260723-document-bleed"></script>
+  <script src="app.js?v=20260723-rich-label-type"></script>
 </body>
 </html>

@@ -12,7 +12,7 @@ Browsers usually block JavaScript from reading a sibling JSON file when `index.h
 - `fonts`: Add font choices for the Map font dropdown. Use `stylesheet` when the font needs a local CSS file with `@font-face` rules.
 - `defaults`: Set default book size, image size, print label size, map scale, marker size, line width and label max characters.
 - `performanceBudgets`: Set warning thresholds for ordinary renders, auto-placement and export renders, plus the rolling telemetry sample count.
-- `bookSizes`: Define the Book size dropdown and each related Image size option.
+- `bookSizes`: Define the Book size dropdown, each related Image size option, and optional `documentPage` dimensions (`widthIn`, `heightIn`, and `marginIn`) for the non-exported page preview.
 - `categories`: Set default legend marker/category names, shapes, colours, marker sizes and line widths.
 - `categoryColourPresets`: Set the approved marker colour dropdown values.
 - `mapStyles`: Set map style names, theme CSS files, region colour ramps and default category styles.

@@ -102,6 +102,112 @@ function makeMapBounds() {
   return { x0: 80, y0: 60, x1: 220, y1: 160 };
 }
 
+test("marker dragging allows an off-canvas warning gutter without losing the point", () => {
+  const api = loadApi();
+  const settings = makeSettings({ width: 300, height: 220 });
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(api.constrainMarkerToVisibleGutter({ x: -80, y: 400 }, settings, 12))),
+    { x: -20, y: 240, wasConstrained: true, offCanvas: true }
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(api.constrainMarkerToVisibleGutter({ x: 150, y: 110 }, settings, 12))),
+    { x: 150, y: 110, wasConstrained: false, offCanvas: false }
+  );
+  assert.equal(api.isPointOffCanvas({ x: -1, y: 110 }, settings), true);
+  assert.equal(api.isPointOffCanvas({ x: 0, y: 220 }, settings), false);
+});
+
+test("label dragging keeps the complete label inside the canvas", () => {
+  const api = loadApi();
+  const settings = makeSettings({ width: 300, height: 220 });
+  const label = makeLabel({ labelX: -120, labelY: -80, labelSide: "right" });
+  const constrained = api.constrainLabelToCanvas(label, settings);
+  const visibleLabel = { ...label, labelX: constrained.labelX, labelY: constrained.labelY };
+
+  assert.equal(constrained.wasConstrained, true);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(api.labelBackgroundRect(visibleLabel))),
+    { x0: 0, y0: 0, x1: 56, y1: 20, centerX: 28, centerY: 10 }
+  );
+
+  const inside = makeLabel({ labelX: 130, labelY: 100, labelSide: "right" });
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(api.constrainLabelToCanvas(inside, settings))),
+    { labelX: 130, labelY: 100, wasConstrained: false }
+  );
+});
+
+test("rich-label typography uses 10 px titles and 8 px body text on screen", () => {
+  const api = loadApi();
+  const webSizes = api.getLabelTypographyRenderSizes(12, "web");
+  const printSizes = api.getLabelTypographyRenderSizes(12, "print");
+  assert.deepEqual(JSON.parse(JSON.stringify(webSizes)), { title: 10, body: 8 });
+  assert.deepEqual(JSON.parse(JSON.stringify(printSizes)), { title: 12, body: 12 });
+
+  const settings = makeSettings({
+    outputMode: "web",
+    mapLanguage: "en",
+    labelSizePt: 12,
+    labelSizeRender: 12,
+    labelTitleSizeRender: webSizes.title,
+    labelBodySizeRender: webSizes.body
+  });
+  const box = api.makeLabelBox(makeLabel({
+    labelStyle: "rich",
+    content: [{ type: "paragraph", text: { en: "Supporting paragraph", fr: "" } }]
+  }), "right", settings, makeMapBounds());
+  const title = box.lines.find(line => line.role === "title");
+  const paragraph = box.lines.find(line => line.role === "paragraph");
+
+  assert.equal(title.fontSize, 10);
+  assert.equal(title.lineHeight, 12);
+  assert.equal(paragraph.fontSize, 8);
+  assert.equal(paragraph.baselineOffset, 12);
+});
+
+test("compact label titles use the same 10 px screen size as rich-label titles", () => {
+  const api = loadApi();
+  const webSizes = api.getLabelTypographyRenderSizes(12, "web");
+  const settings = makeSettings({
+    outputMode: "web",
+    mapLanguage: "en",
+    labelSizePt: 12,
+    labelSizeRender: 12,
+    labelTitleSizeRender: webSizes.title,
+    labelBodySizeRender: webSizes.body
+  });
+  const box = api.makeLabelBox(makeLabel({
+    name: "Compact label",
+    labelStyle: "compact",
+    content: []
+  }), "right", settings, makeMapBounds());
+  const title = box.lines.find(line => line.role === "title");
+
+  assert.equal(title.fontSize, 10);
+  assert.equal(title.lineHeight, 12);
+});
+
+test("no-coordinate callouts use 10 px headings and 8 px item text on screen", () => {
+  const api = loadApi();
+  const sizes = api.getLabelTypographyRenderSizes(12, "web");
+  const layout = api.getCalloutContentLayout([
+    makeLabel({ name: "No-coordinate project" })
+  ], makeSettings({
+    outputMode: "web",
+    mapLanguage: "en",
+    compactFurniture: true,
+    labelSizePt: 12,
+    labelTitleSizeRender: sizes.title,
+    labelBodySizeRender: sizes.body
+  }), 300);
+
+  assert.equal(layout.headingSize, 10);
+  assert.equal(layout.nameSize, 8);
+  assert.equal(layout.lineH, 12);
+  assert.equal(layout.rows[0].rowHeight >= layout.lineH, true);
+  assert.equal(layout.rows[0].textY >= layout.rows[0].rowY, true);
+});
+
 test("localized config fallbacks prefer the requested language", () => {
   const api = loadApi();
   const item = { label: "Custom style", labelFr: "Style personnalisé" };
@@ -140,6 +246,29 @@ test("malformed project JSON exposes a structured bilingual error key", () => {
       return true;
     }
   );
+});
+
+test("project CSV export omits the retired Priority field", () => {
+  const projectIo = loadProjectIo();
+  const exported = projectIo.createCsvExport({
+    rows: [{
+      name: "Legacy row",
+      nameFr: "Ancienne ligne",
+      footnote: "",
+      type: "infrastructure",
+      priority: 5,
+      lon: -75,
+      lat: 45,
+      hideLine: false
+    }],
+    projectLocationMode: "coordinates",
+    getCategoryLabel: value => value,
+    getCategoryText: category => category.labelFr || "",
+    getCategoryForType: value => ({ id: value, labelFr: "Infrastructure" })
+  });
+
+  assert.equal(exported.columns.includes("priority"), false);
+  assert.equal(Object.hasOwn(exported.rows[0], "priority"), false);
 });
 
 test("rich-label import composes typed, editable blocks from multiple source columns", () => {
@@ -268,6 +397,7 @@ test("project snapshots preserve unified annotation content and strip chart meta
   assert.equal(Object.hasOwn(snapshot.rows[0], "labelBlocks"), false);
   assert.equal(Object.hasOwn(snapshot.rows[0], "labelImage"), false);
   assert.equal(Object.hasOwn(snapshot.rows[0], "bullets"), false);
+  assert.equal(Object.hasOwn(snapshot.rows[0], "priority"), false);
 });
 
 test("rich label image sizing stays proportional and expands label geometry", () => {
@@ -319,7 +449,7 @@ test("project snapshots round-trip portable assets, styles, elbow settings, meta
   const customIcon = {
     dataUrl: "data:image/png;base64,iVBORw0KGgo=",
     mimeType: "image/png",
-    name: "priority-marker.png",
+    name: "infrastructure-marker.png",
     width: 24,
     height: 20,
     size: 128
@@ -344,8 +474,8 @@ test("project snapshots round-trip portable assets, styles, elbow settings, meta
     boundary: "canada",
     mapStyle: "goc-green",
     categories: [{
-      id: "priority",
-      label: "Priority",
+      id: "infrastructure",
+      label: "Infrastructure",
       shape: "circle",
       colour: "#123456",
       stroke: "#abcdef",
@@ -354,8 +484,8 @@ test("project snapshots round-trip portable assets, styles, elbow settings, meta
       customIcon
     }],
     rows: [
-      { rowId: "row-elbow", name: "Elbow", type: "priority", elbowLeader: true, labelStyle: "rich", labelBorder: true, content: [richImageBlock] },
-      { rowId: "row-default", name: "Default routing", type: "priority", elbowLeader: false }
+      { rowId: "row-elbow", name: "Elbow", type: "infrastructure", elbowLeader: true, labelStyle: "rich", labelBorder: true, content: [richImageBlock] },
+      { rowId: "row-default", name: "Default routing", type: "infrastructure", elbowLeader: false }
     ],
     languageLayouts,
     manualLabelPositions: { "row:legacy": { x: 1, y: 2, side: "top" } },
@@ -443,6 +573,21 @@ test("quality reports recompute from current moved label positions", () => {
   assert.deepEqual(movedReport.projectedProblems, [{ rowId: "projected" }]);
   assert.deepEqual(movedReport.hiddenRegionProblems, [{ rowId: "hidden" }]);
   assert.equal(layout.report, movedReport);
+});
+
+test("quality analysis flags and locates points outside the export canvas", () => {
+  const api = loadApi();
+  const settings = makeSettings();
+  const placed = [
+    makeLabel({ rowId: "row-inside", x: 120, y: 100 }),
+    makeLabel({ rowId: "row-outside", x: -18, y: 80 })
+  ];
+  const analyzer = api.createLayoutQualityAnalyzer(placed, settings, [], [], makeMapBounds(), placed);
+  analyzer.step();
+  const report = analyzer.getReport();
+
+  assert.equal(report.offCanvasPoints, 1);
+  assert.ok(report.qualityTargets.some(target => target.type === "off-canvas-point" && target.rowId === "row-outside"));
 });
 
 test("time-sliced quality analysis matches synchronous analysis", () => {

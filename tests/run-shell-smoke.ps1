@@ -5,7 +5,7 @@ param(
   [int]$ScreenshotDelayMs = 12000,
   [ValidateSet("", "preview", "projects", "categories", "regions", "translate", "quality")]
   [string]$Workspace = "",
-  [ValidateSet("", "startup", "map-details", "csv-map", "point-catalog", "shortcuts", "export-menu", "project-load-error")]
+  [ValidateSet("", "startup", "map-details", "csv-map", "point-catalog", "confirmation", "shortcuts", "export-menu", "add-data-menu", "project-load-error")]
   [string]$Dialog = "",
   [ValidateSet("projects", "regions")]
   [string]$CatalogOrigin = "projects",

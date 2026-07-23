@@ -168,6 +168,18 @@ function validateBookSizes(bookSizes) {
     const bookPath = ["bookSizes", bookKey];
     if (!requireObject(book, bookPath)) return;
     requireString(book.label, bookPath.concat("label"));
+    if (book.documentPage !== undefined && requireObject(book.documentPage, bookPath.concat("documentPage"))) {
+      requireNumber(book.documentPage.widthIn, bookPath.concat("documentPage", "widthIn"), { min: 1 });
+      requireNumber(book.documentPage.heightIn, bookPath.concat("documentPage", "heightIn"), { min: 1 });
+      requireNumber(book.documentPage.marginIn, bookPath.concat("documentPage", "marginIn"), { min: 0 });
+      if (
+        Number.isFinite(book.documentPage.widthIn)
+        && Number.isFinite(book.documentPage.marginIn)
+        && book.documentPage.marginIn * 2 >= book.documentPage.widthIn
+      ) {
+        addError(bookPath.concat("documentPage", "marginIn"), "must leave positive horizontal content space");
+      }
+    }
     if (!requireArray(book.sizes, bookPath.concat("sizes"))) return;
     if (!book.sizes.length) addError(bookPath.concat("sizes"), "must include at least one image size");
     validateUnique(book.sizes, (size) => size && size.value, bookPath.concat("sizes"), "size value");

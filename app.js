@@ -186,8 +186,8 @@
       stylesheet: "themes/goc-green.css",
       regionColours: fallbackRegionColours,
       categoryStyles: [
-        { colour: "#444444", stroke: "#ffffff", markerSize: 10, lineWidth: 2 },
-        { colour: "#ffffff", stroke: "#555555", markerSize: 10, lineWidth: 2 }
+        { colour: "#444444", stroke: "#ffffff", markerSize: 4, lineWidth: 2 },
+        { colour: "#ffffff", stroke: "#555555", markerSize: 4, lineWidth: 2 }
       ]
     }
   };
@@ -200,7 +200,6 @@
     footnote: ["footnote", "footnote marker", "note", "superscript"],
     type: ["type", "category", "project type", "categorie", "catégorie", "type de projet"],
     typeFr: ["type_fr", "type fr", "categorie", "catégorie", "categorie francaise", "catégorie française", "category fr", "french type", "type francais", "type français"],
-    priority: ["priority", "label priority", "importance", "rank", "priorite", "priorité", "niveau de priorite", "niveau de priorité"],
     lon: ["lon", "longitude", "long"],
     lat: ["lat", "latitude"],
     region: ["region", "région", "province", "territory", "territoire", "province territory", "province/territory", "province territoire", "province/territoire", "state", "jurisdiction", "city", "ville", "location", "emplacement", "place"],
@@ -214,20 +213,25 @@
     name: ["name", "project", "project name", "english", "english project name", "source", "source text", "en"],
     nameFr: ["name_fr", "nom", "nom du projet", "french", "french name", "fr name", "project fr", "project name fr", "french project name", "translation", "fr"]
   };
-  const tableFields = appConfig.tableFields || ["name", "footnote", "type", "priority", "lon", "lat"];
+  const tableFields = (appConfig.tableFields || ["name", "footnote", "type", "lon", "lat"])
+    .filter(field => field !== "priority");
   const layoutDefaults = appConfig.layoutDefaults || {
     bookSizeInput: "letter",
     imageSizeInput: "full",
     labelSizeInput: 12,
     mapScaleInput: 100,
-    markerSizeInput: 10,
+    markerSizeInput: 4,
     lineWidthInput: 2,
     labelCharsInput: 24
   };
+  const mapScaleRange = Object.freeze({ min: 45, max: 115, autoFitStep: 5 });
+  const canvasViewZoomLevels = Object.freeze([25, 33, 50, 67, 75, 90, 100, 110, 125, 150, 175, 200]);
+  const defaultCanvasViewZoom = 125;
   const storageKeys = appConfig.storageKeys || {};
   const layoutPreferencesStorageKey = storageKeys.layoutPreferences || "plotypus.layoutPreferences";
   const propertiesPanelStorageKey = storageKeys.propertiesPanel || "plotypus.propertiesPanel";
   const uiLanguageStorageKey = storageKeys.uiLanguage || "plotypus.uiLanguage";
+  const canvasViewZoomStorageKey = storageKeys.canvasViewZoom || "plotypus.canvasViewZoom";
   const imageSizePresets = appConfig.imageSizePresets || {};
   const regionPresetOptions = appConfig.regionPresetOptions || { canada: [], world: [] };
   const markerShapes = cloneConfigList(appConfig.markerShapes);
@@ -245,7 +249,7 @@
       shape: "circle",
       colour: "#444444",
       stroke: "#ffffff",
-      markerSize: 10,
+      markerSize: 4,
       lineWidth: 2,
       markerSizeCustom: false,
       lineWidthCustom: false,
@@ -260,7 +264,7 @@
       shape: "square",
       colour: "#ffffff",
       stroke: "#555555",
-      markerSize: 10,
+      markerSize: 4,
       lineWidth: 2,
       markerSizeCustom: false,
       lineWidthCustom: false,
@@ -304,7 +308,6 @@
     translationGroups: document.querySelector("#translationGroups"),
     translationProgressText: document.querySelector("#translationProgressText"),
     translationProgressBar: document.querySelector("#translationProgressBar"),
-    translationDirectionText: document.querySelector("#translationDirectionText"),
     translationPasteHint: document.querySelector("#translationPasteHint"),
     translationFilters: Array.from(document.querySelectorAll("[data-translation-filter]")),
     pasteTranslationColumnBtn: document.querySelector("#pasteTranslationColumnBtn"),
@@ -314,6 +317,7 @@
     propertiesPanel: document.querySelector("#propertiesPanel"),
     propertiesCollapseBtn: document.querySelector("#propertiesCollapseBtn"),
     propertiesResizeHandle: document.querySelector("#propertiesResizeHandle"),
+    propertiesSideInputs: Array.from(document.querySelectorAll("[data-properties-side-input]")),
     propertiesIcon: document.querySelector("#propertiesIcon"),
     previewDisplayPropertiesSection: document.querySelector("#previewDisplayPropertiesSection"),
     previewInteractionPropertiesSection: document.querySelector("#previewInteractionPropertiesSection"),
@@ -343,7 +347,6 @@
     addRowBtn: document.querySelector("#addRowBtn"),
     addPointsBtn: document.querySelector("#addPointsBtn"),
     projectSelectionActions: document.querySelector("#projectSelectionActions"),
-    bulkPriorityInput: document.querySelector("#bulkPriorityInput"),
     bulkClearCoordinatesBtn: document.querySelector("#bulkClearCoordinatesBtn"),
     deleteSelectedBtn: document.querySelector("#deleteSelectedBtn"),
     clearRowsBtn: document.querySelector("#clearRowsBtn"),
@@ -352,6 +355,8 @@
     mapHost: document.querySelector("#mapHost"),
     previewEmptyState: document.querySelector("#previewEmptyState"),
     previewErrorState: document.querySelector("#previewErrorState"),
+    documentPagePreview: document.querySelector("#documentPagePreview"),
+    documentCanvasSlot: document.querySelector("#documentCanvasSlot"),
     canvasPlaceholder: document.querySelector("#canvasPlaceholder"),
     previewLoadSampleBtn: document.querySelector("#previewLoadSampleBtn"),
     previewImportCsvBtn: document.querySelector("#previewImportCsvBtn"),
@@ -370,6 +375,7 @@
     fontFamilyInput: document.querySelector("#fontFamilyInput"),
     mapLanguageInput: document.querySelector("#mapLanguageInput"),
     previewLanguageInput: document.querySelector("#previewLanguageInput"),
+    mapLanguageButtons: Array.from(document.querySelectorAll("[data-map-language]")),
     uiLanguageButtons: Array.from(document.querySelectorAll("[data-ui-language]")),
     showLegendInput: document.querySelector("#showLegendInput"),
     showCalloutsInput: document.querySelector("#showCalloutsInput"),
@@ -431,6 +437,10 @@
     csvRichLabelPreview: document.querySelector("#csvRichLabelPreview"),
     csvRichLabelSources: document.querySelector("#csvRichLabelSources"),
     confirmCsvMapBtn: document.querySelector("#confirmCsvMapBtn"),
+    confirmationDialog: document.querySelector("#confirmationDialog"),
+    confirmationTitle: document.querySelector("#confirmationTitle"),
+    confirmationMessage: document.querySelector("#confirmationMessage"),
+    confirmationConfirmBtn: document.querySelector("#confirmationConfirmBtn"),
     shortcutsOverlay: document.querySelector("#shortcutsOverlay"),
     closeShortcutsBtn: document.querySelector("#closeShortcutsBtn")
   };
@@ -441,6 +451,7 @@
   const manualLayoutHistoryLimit = 25;
   let pendingCsvImport = null;
   let pendingCsvMapping = null;
+  let pendingConfirmation = null;
   let nextRowId = 1;
   let regionVisibility = {};
   let regionFills = {};
@@ -457,6 +468,7 @@
   let currentMapStylePreset = defaultMapStylePreset;
   let currentBoundary = "canada";
   let renderOutputMode = "web";
+  let canvasViewZoom = defaultCanvasViewZoom;
   let mapScaleControlsVisible = false;
   let draggedCategoryId = null;
   let activeCategoryDropEditor = null;
@@ -473,7 +485,7 @@
   let activePointCatalogView = "presets";
   let startupDialogDismissed = false;
   let selectedPointCatalogPresets = new Set();
-  const selectableProjectCellFields = ["name", "footnote", "type", "priority", "region", "lon", "lat", "status", "hideLine"];
+  const selectableProjectCellFields = ["name", "footnote", "type", "region", "lon", "lat", "status", "hideLine"];
 
   function getSelectableProjectCellFields() {
     return selectableProjectCellFields.filter(field => isRegionLocationMode() ? field !== "lon" && field !== "lat" : field !== "region");
@@ -1149,7 +1161,7 @@
     if (kind === "row" || kind === "project-data") return "map-pin";
     if (kind === "category") return "legend";
     if (kind === "region") return "regions";
-    if (kind === "translation" || kind === "translation-entry") return "languages";
+    if (kind === "translation") return "languages";
     if (kind === "quality") return "shield-check";
     if (kind === "map") return "regions";
     if (kind === "label") return "label-place";
@@ -1516,12 +1528,6 @@
     ].includes(raw);
   }
 
-  function toPriority(value) {
-    if (value === null || value === undefined || value === "") return 0;
-    const priority = Math.round(Number(String(value).trim()));
-    return Number.isFinite(priority) ? Math.max(0, Math.min(5, priority)) : 0;
-  }
-
   function normalizeFootnote(value) {
     return String(value || "").trim();
   }
@@ -1587,8 +1593,7 @@
   function getActiveTableFields() {
     if (!isRegionLocationMode()) return tableFields;
     const fields = tableFields.filter(field => field !== "lon" && field !== "lat" && field !== "region");
-    const insertAt = fields.includes("priority") ? fields.indexOf("priority") + 1 : fields.length;
-    return [...fields.slice(0, insertAt), "region", ...fields.slice(insertAt)];
+    return [...fields, "region"];
   }
 
   function deriveProjectLocationModeFromRows(rows = []) {
@@ -1877,7 +1882,6 @@
       footnote: normalizeFootnote(getField(row, csvColumnAliases.footnote)),
       type: cleanType(getField(row, csvColumnAliases.type) || getDefaultCategory().label),
       typeFr: String(getField(row, csvColumnAliases.typeFr) || row.typeFr || "").trim(),
-      priority: toPriority(getField(row, csvColumnAliases.priority)),
       lon: anchor === "region" ? "" : toNumber(getField(row, csvColumnAliases.lon)),
       lat: anchor === "region" ? "" : toNumber(getField(row, csvColumnAliases.lat)),
       anchor,
@@ -1930,12 +1934,11 @@
   }
 
   function addRow(
-    row = { name: "", nameFr: "", footnote: "", type: getDefaultCategory().id, priority: 0, lon: "", lat: "", anchor: "coord", region: "", labelStyle: "compact", content: [], labelBorder: false, chart: "none", chartSlices: [], hideLine: false, elbowLeader: false, labelMaxChars: "" },
+    row = { name: "", nameFr: "", footnote: "", type: getDefaultCategory().id, lon: "", lat: "", anchor: "coord", region: "", labelStyle: "compact", content: [], labelBorder: false, chart: "none", chartSlices: [], hideLine: false, elbowLeader: false, labelMaxChars: "" },
     options = {}
   ) {
     const tr = document.createElement("tr");
     const rowId = row.rowId ? String(row.rowId) : String(nextRowId);
-    const priority = toPriority(row.priority);
     tr.dataset.rowId = rowId;
     tr.dataset.nameEn = row.name || "";
     tr.dataset.nameFr = row.nameFr || "";
@@ -1960,7 +1963,6 @@
         </select>
       </td>
       <td class="annotation-preview-cell label-preview-cell" data-cell-field="labelStyle" aria-readonly="true"><span class="label-preview-text"></span></td>
-      <td class="bulk-edit-cell priority-cell vcell" data-cell-field="priority"><input class="priority-input" type="number" min="0" max="5" step="1" value="${priority}" aria-label="${escapeHtml(t("properties.field.priority"))}"></td>
       <td class="bulk-edit-cell region-cell anchor-preview-cell vcell" data-cell-field="region"><select class="region-input" aria-label="${escapeHtml(t("properties.field.region"))}"></select></td>
       <td class="bulk-edit-cell coordinate-cell lon-cell vcell" data-cell-field="lon"><input class="lon-input" type="text" inputmode="decimal" value="${escapeHtml(formatProjectCoordinate(row.lon))}" aria-label="${escapeHtml(t("table.longitude"))}"><button class="clear-coordinate-cell" type="button" data-clear-coordinate="lon" aria-label="${escapeHtml(t("table.clearLongitude"))}" title="${escapeHtml(t("table.clearLongitude"))}" hidden>&times;</button></td>
       <td class="bulk-edit-cell coordinate-cell lat-cell vcell" data-cell-field="lat"><input class="lat-input" type="text" inputmode="decimal" value="${escapeHtml(formatProjectCoordinate(row.lat))}" aria-label="${escapeHtml(t("table.latitude"))}"><button class="clear-coordinate-cell" type="button" data-clear-coordinate="lat" aria-label="${escapeHtml(t("table.clearLatitude"))}" title="${escapeHtml(t("table.clearLatitude"))}" hidden>&times;</button></td>
@@ -2266,7 +2268,6 @@
       const nameInput = tr.querySelector(".name-input");
       const typeInput = tr.querySelector(".type-input");
       const footnoteInput = tr.querySelector(".footnote-input");
-      const priorityInput = tr.querySelector(".priority-input");
       const lonInput = tr.querySelector(".lon-input");
       const latInput = tr.querySelector(".lat-input");
       const regionInput = tr.querySelector(".region-input");
@@ -2281,7 +2282,6 @@
         typeInput.title = getCategoryLabel(typeInput.value, activeAuthoringLanguage);
       }
       if (footnoteInput) footnoteInput.setAttribute("aria-label", t("table.footnote.title"));
-      if (priorityInput) priorityInput.setAttribute("aria-label", t("properties.field.priority"));
       if (lonInput) lonInput.setAttribute("aria-label", t("table.longitude"));
       if (latInput) latInput.setAttribute("aria-label", t("table.latitude"));
       if (regionInput) regionInput.setAttribute("aria-label", t("properties.field.region"));
@@ -2421,7 +2421,6 @@
       nameFr: activeAuthoringLanguage === "fr" ? tr.querySelector(".name-input").value.trim() : tr.dataset.nameFr || "",
       footnote: normalizeFootnote(tr.querySelector(".footnote-input").value),
       type: cleanType(tr.querySelector(".type-input").value),
-      priority: toPriority(tr.querySelector(".priority-input").value),
       lon: isRegionLocationMode() ? "" : toNumber(tr.querySelector(".lon-input").value),
       lat: isRegionLocationMode() ? "" : toNumber(tr.querySelector(".lat-input").value),
       anchor: getProjectLocationAnchor(),
@@ -2450,7 +2449,6 @@
     }
     if (field === "footnote") tr.querySelector(".footnote-input").value = normalizeFootnote(value);
     if (field === "type") tr.querySelector(".type-input").value = cleanType(value);
-    if (field === "priority") tr.querySelector(".priority-input").value = toPriority(value);
     if (field === "lon") {
       tr.dataset.coordLon = formatProjectCoordinate(value);
       tr.querySelector(".lon-input").value = tr.dataset.coordLon;
@@ -2547,12 +2545,7 @@
       });
     });
     const selectedFields = Array.from(selectedProjectCells).map(key => parseProjectCellKey(key).field);
-    const hasPriority = selectedFields.includes("priority");
     const hasCoordinate = selectedFields.some(field => field === "lon" || field === "lat" || field === "region");
-    if (els.bulkPriorityInput) {
-      els.bulkPriorityInput.disabled = !hasPriority;
-      if (!hasPriority) els.bulkPriorityInput.value = "";
-    }
     if (els.bulkClearCoordinatesBtn) els.bulkClearCoordinatesBtn.disabled = !hasCoordinate;
     updateDeleteButtonState();
   }
@@ -2590,20 +2583,6 @@
     }
     if (event.type === "focusin" && performance.now() - lastProjectCellPointerSelectionAt < 250) return;
     selectProjectCell(selection, event);
-  }
-
-  function applyBulkPriority(value) {
-    const priority = toPriority(value);
-    const keys = Array.from(selectedProjectCells).filter(key => parseProjectCellKey(key).field === "priority");
-    if (!keys.length) return;
-    pushAppUndoHistory("bulk priority edit");
-    keys.forEach(key => {
-      const { rowId } = parseProjectCellKey(key);
-      updateProjectRowField(rowId, "priority", priority);
-    });
-    requestPreviewRefresh();
-    refreshProjectCellSelectionUi();
-    setStatusMessage(t("status.updatedPriorityCells", { count: keys.length }), "ok");
   }
 
   function clearSelectedCoordinateCells() {
@@ -2847,6 +2826,7 @@
     renderFontOptions();
     renderMapStyleOptions();
     renderRegionPresetOptions();
+    updateCanvasToolbar();
     syncUiLanguageControls(nextLanguage);
     if (options.persist !== false) saveUiLanguagePreference(nextLanguage);
     if (options.syncMap !== false && currentMapLanguage !== nextLanguage) {
@@ -2859,6 +2839,9 @@
     }
     if (els.csvMapDialog && !els.csvMapDialog.hidden && pendingCsvMapping) {
       renderCsvMappingDialog();
+    }
+    if (els.confirmationDialog && !els.confirmationDialog.hidden && pendingConfirmation) {
+      renderConfirmationDialog();
     }
   }
 
@@ -2882,7 +2865,6 @@
     updateTypeOptions();
     updateProjectCoordinateDisplay();
     syncAuthoringLanguageControls(nextLanguage);
-    renderTranslationWorkbench();
     refreshProjectTableUx();
   }
 
@@ -3156,7 +3138,6 @@
         return groupEntries.length ? { group, label: groupEntries[0].groupLabel, entries: groupEntries } : null;
       })
       .filter(Boolean);
-    const reverse = activeAuthoringLanguage === "fr";
     const visibleEntryIds = groups.flatMap(group => (activeTranslationFilter === "missing"
       ? group.entries.filter(entry => getTranslationStatus(entry).state !== "done")
       : group.entries).map(entry => entry.id));
@@ -3166,10 +3147,6 @@
         return entry && getTranslationStatus(entry).state !== "done";
       }) || visibleEntryIds[0] || "";
     }
-    if (els.translationDirectionText) els.translationDirectionText.textContent = t(reverse ? "translate.direction.frEn" : "translate.direction.enFr");
-    document.querySelectorAll("[data-translation-direction]").forEach(button => {
-      button.classList.toggle("is-active", button.dataset.translationDirection === (reverse ? "fr-en" : "en-fr"));
-    });
     els.translationGroups.innerHTML = groups.map(group => {
       const visibleEntries = activeTranslationFilter === "missing"
         ? group.entries.filter(entry => getTranslationStatus(entry).state !== "done")
@@ -3184,8 +3161,8 @@
               return `
                 <div class="translation-row${status.state === "done" ? "" : " is-missing"}${status.state === "missing-en" ? " is-missing-en" : ""}${status.state === "missing-fr" ? " is-missing-fr" : ""}${entry.id === activeTranslationEntryId ? " is-active" : ""}" data-entry-id="${escapeHtml(entry.id)}" data-translation-group="${escapeHtml(group.group)}" tabindex="0">
                   <span class="translation-index" aria-hidden="true">${entryIndex + 1}</span>
-                  <textarea class="translation-input translation-en-input${status.state === "missing-en" ? " is-missing-value" : ""}${reverse ? "" : " is-emphasis"}" rows="1" data-entry-id="${escapeHtml(entry.id)}" data-entry-lang="en" data-edit-language="en" data-translation-group="${escapeHtml(group.group)}" aria-label="${escapeHtml(t("translate.aria.enString", { label: labelBase }))}" placeholder="${escapeHtml(t("translate.placeholder.en"))}">${escapeHtml(entry.ref)}</textarea>
-                  <textarea class="translation-input translation-fr-input${status.state === "missing-fr" ? " is-missing-value" : ""}${reverse ? " is-emphasis" : ""}" rows="1" data-entry-id="${escapeHtml(entry.id)}" data-entry-lang="fr" data-edit-language="fr" data-translation-group="${escapeHtml(group.group)}" aria-label="${escapeHtml(t("translate.aria.frString", { label: labelBase }))}" placeholder="${escapeHtml(t("translate.placeholder.fr"))}">${escapeHtml(entry.fr)}</textarea>
+                  <textarea class="translation-input translation-en-input${status.state === "missing-en" ? " is-missing-value" : ""}" rows="1" data-entry-id="${escapeHtml(entry.id)}" data-entry-lang="en" data-edit-language="en" data-translation-group="${escapeHtml(group.group)}" aria-label="${escapeHtml(t("translate.aria.enString", { label: labelBase }))}" placeholder="${escapeHtml(t("translate.placeholder.en"))}">${escapeHtml(entry.ref)}</textarea>
+                  <textarea class="translation-input translation-fr-input${status.state === "missing-fr" ? " is-missing-value" : ""}" rows="1" data-entry-id="${escapeHtml(entry.id)}" data-entry-lang="fr" data-edit-language="fr" data-translation-group="${escapeHtml(group.group)}" aria-label="${escapeHtml(t("translate.aria.frString", { label: labelBase }))}" placeholder="${escapeHtml(t("translate.placeholder.fr"))}">${escapeHtml(entry.fr)}</textarea>
                   <span class="translation-status" data-state="${escapeHtml(status.state)}">${escapeHtml(status.label)}</span>
                 </div>
               `;
@@ -3254,7 +3231,6 @@
         row.classList.toggle("is-active", row.dataset.entryId === activeTranslationEntryId);
       });
     }
-    renderPropertiesForActiveState({ kind: "translation-entry", id: activeTranslationEntryId });
   }
 
   function handleTranslationSelection(event) {
@@ -3337,21 +3313,27 @@
       `properties.size.image.${size.value}`,
       getLocalizedConfigLabel(size, currentUiLanguage, size.value)
     );
-    return `${label} (${size.width} x ${size.height})`;
+    return `${label} (${size.width} x ${size.height} px)`;
+  }
+
+  function formatBookSizeOption(value, preset) {
+    const label = tOr(
+      `properties.size.book.${value}`,
+      getLocalizedConfigLabel(preset, currentUiLanguage, value)
+    );
+    return `${label}${t("properties.size.inches")}`;
   }
 
   function updateCanvasPlaceholderSize() {
     if (!els.canvasPlaceholder) return;
     const size = getImageSizePreset();
     if (!size || !Number.isFinite(Number(size.width)) || !Number.isFinite(Number(size.height))) return;
-    const previewWidth = Math.round(Number(size.width) * 1.25);
-    els.canvasPlaceholder.style.width = `min(${previewWidth}px, calc(100% - 56px))`;
-    els.canvasPlaceholder.style.aspectRatio = `${size.width} / ${size.height}`;
     const sizeText = els.canvasPlaceholder.querySelector(".canvas-placeholder-copy span");
     if (sizeText) {
       sizeText.dataset.i18nParams = JSON.stringify({ width: size.width, height: size.height });
-      sizeText.textContent = t("properties.size.canvasPoints", { width: size.width, height: size.height });
+      sizeText.textContent = t("properties.size.canvasPixels", { width: size.width, height: size.height });
     }
+    applyCanvasViewZoomDimensions(size);
   }
 
   function findImageSizePresetByDimensions(width, height) {
@@ -3381,7 +3363,7 @@
     const currentValue = els.bookSizeInput.value;
     const bookEntries = Object.entries(imageSizePresets);
     els.bookSizeInput.innerHTML = bookEntries.map(([value, preset]) => (
-      `<option value="${escapeHtml(value)}">${escapeHtml(tOr(`properties.size.book.${value}`, getLocalizedConfigLabel(preset, currentUiLanguage, value)))}</option>`
+      `<option value="${escapeHtml(value)}">${escapeHtml(formatBookSizeOption(value, preset))}</option>`
     )).join("");
     els.bookSizeInput.value = imageSizePresets[currentValue] ? currentValue : layoutDefaults.bookSizeInput;
   }
@@ -3456,48 +3438,130 @@
     const parsed = Number(value);
     const fallback = layoutDefaults.mapScaleInput;
     const mapScale = Number.isFinite(parsed) ? parsed : fallback;
-    return Math.max(45, Math.min(115, mapScale));
+    return Math.max(mapScaleRange.min, Math.min(mapScaleRange.max, mapScale));
   }
 
   function formatMapScalePercent(value) {
     return `${Math.round(normalizeMapScale(value))}%`;
   }
 
-  function updateCanvasToolbar() {
-    if (els.canvasZoomReadout && els.mapScaleInput) {
-      const mapScaleText = t("canvas.mapScaleReadout", { value: formatMapScalePercent(els.mapScaleInput.value) });
-      els.canvasZoomReadout.value = mapScaleText;
-      els.canvasZoomReadout.textContent = mapScaleText;
+  function normalizeCanvasViewZoom(value) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return defaultCanvasViewZoom;
+    return Math.max(canvasViewZoomLevels[0], Math.min(canvasViewZoomLevels[canvasViewZoomLevels.length - 1], parsed));
+  }
+
+  function getSavedCanvasViewZoom() {
+    const saved = projectIo.getSavedJson(window.localStorage, canvasViewZoomStorageKey);
+    return normalizeCanvasViewZoom(saved === null ? defaultCanvasViewZoom : saved);
+  }
+
+  function saveCanvasViewZoom(value = canvasViewZoom) {
+    projectIo.saveJson(window.localStorage, canvasViewZoomStorageKey, normalizeCanvasViewZoom(value));
+  }
+
+  function formatCanvasViewZoom(value = canvasViewZoom) {
+    return `${Math.round(normalizeCanvasViewZoom(value))}%`;
+  }
+
+  function applyCanvasViewZoomDimensions(size = getImageSizePreset()) {
+    if (!size) return;
+    const width = Number(size.width);
+    const height = Number(size.height);
+    if (!Number.isFinite(width) || !Number.isFinite(height)) return;
+    const scale = normalizeCanvasViewZoom(canvasViewZoom) / 100;
+    const displayWidth = Math.round(width * scale);
+    const displayHeight = Math.round(height * scale);
+    const book = getBookSizePreset();
+    const documentPage = book.documentPage || (
+      els.bookSizeInput.value === "compact"
+        ? { widthIn: 6.5, heightIn: 9.75, marginIn: 0.75 }
+        : { widthIn: 8.5, heightIn: 11, marginIn: 1 }
+    );
+    const pageWidthIn = Math.max(1, Number(documentPage.widthIn) || 8.5);
+    const pageHeightIn = Math.max(1, Number(documentPage.heightIn) || 11);
+    const marginIn = Math.max(0, Math.min(Number(documentPage.marginIn) || 0, pageWidthIn / 2 - 0.1));
+    const contentWidthIn = Math.max(0.2, pageWidthIn - marginIn * 2);
+    const pixelsPerInch = displayWidth / contentWidthIn;
+    const documentPageWidth = Math.round(pageWidthIn * pixelsPerInch);
+    const documentPageHeight = Math.round(pageHeightIn * pixelsPerInch);
+    const documentPageMargin = Math.round(marginIn * pixelsPerInch);
+    const documentCanvasBleed = Math.max(2, Math.round(pixelsPerInch * 0.125));
+    const svgNode = els.svg && typeof els.svg.node === "function" ? els.svg.node() : null;
+    if (svgNode) {
+      svgNode.style.width = `${displayWidth}px`;
+      svgNode.style.height = `${displayHeight}px`;
     }
+    if (els.canvasPlaceholder) {
+      els.canvasPlaceholder.style.width = `${displayWidth}px`;
+      els.canvasPlaceholder.style.aspectRatio = `${width} / ${height}`;
+    }
+    if (els.documentCanvasSlot) {
+      els.documentCanvasSlot.style.width = `${displayWidth}px`;
+      els.documentCanvasSlot.style.height = `${displayHeight}px`;
+    }
+    if (els.documentPagePreview) {
+      els.documentPagePreview.dataset.pagePreset = els.bookSizeInput.value;
+      els.documentPagePreview.style.setProperty("--document-page-width", `${documentPageWidth}px`);
+      els.documentPagePreview.style.setProperty("--document-page-height", `${documentPageHeight}px`);
+      els.documentPagePreview.style.setProperty("--document-page-margin", `${documentPageMargin}px`);
+      els.documentPagePreview.style.setProperty("--document-canvas-width", `${displayWidth}px`);
+      els.documentPagePreview.style.setProperty("--document-canvas-height", `${displayHeight}px`);
+      els.documentPagePreview.style.setProperty("--document-canvas-bleed", `${documentCanvasBleed}px`);
+      els.documentPagePreview.dataset.bleedIn = "0.125";
+    }
+    if (els.mapHost) els.mapHost.dataset.canvasZoom = String(Math.round(normalizeCanvasViewZoom(canvasViewZoom)));
+  }
+
+  function updateCanvasToolbar() {
+    canvasViewZoom = normalizeCanvasViewZoom(canvasViewZoom);
+    const zoomText = t("canvas.zoomReadout", { value: formatCanvasViewZoom() });
+    if (els.canvasZoomReadout) {
+      els.canvasZoomReadout.value = zoomText;
+      els.canvasZoomReadout.textContent = zoomText;
+    }
+    if (els.canvasZoomOutBtn) els.canvasZoomOutBtn.disabled = canvasViewZoom <= canvasViewZoomLevels[0];
+    if (els.canvasZoomInBtn) els.canvasZoomInBtn.disabled = canvasViewZoom >= canvasViewZoomLevels[canvasViewZoomLevels.length - 1];
+    applyCanvasViewZoomDimensions();
     if (els.canvasToolbar) {
       els.canvasToolbar.hidden = false;
     }
   }
 
-  function setMapScaleFromCanvasToolbar(nextValue) {
-    const nextScale = normalizeMapScale(nextValue);
-    if (els.mapScaleInput) {
-      els.mapScaleInput.value = nextScale;
-      rememberCurrentLanguageMapScale();
-      saveLayoutPreferences();
-      updateCanvasToolbar();
-      handleLayoutSettingsChange({ target: els.mapScaleInput });
-    }
-  }
-
-  function adjustCanvasZoom(delta) {
-    const currentScale = normalizeMapScale(els.mapScaleInput.value);
-    setMapScaleFromCanvasToolbar(currentScale + delta);
+  function adjustCanvasZoom(direction) {
+    const current = normalizeCanvasViewZoom(canvasViewZoom);
+    const next = direction < 0
+      ? canvasViewZoomLevels.slice().reverse().find(level => level < current)
+      : canvasViewZoomLevels.find(level => level > current);
+    if (next === undefined) return;
+    canvasViewZoom = next;
+    saveCanvasViewZoom();
+    updateCanvasToolbar();
   }
 
   const defaultPrintLabelSizePt = 18;
   const defaultWebLabelSizePx = 12;
   const minimumWebLabelSizePx = 12;
   const webLabelSizeScale = defaultWebLabelSizePx / defaultPrintLabelSizePt;
+  const defaultLabelTypographyPrintSizePt = 12;
+  const defaultLabelTitleSizePx = 10;
+  const defaultLabelBodySizePx = 8;
 
   function getWebLabelSize(printPt) {
     // Keep the control in print points, but never render map text below 12 px.
     return Math.max(minimumWebLabelSizePx, Math.round(printPt * webLabelSizeScale));
+  }
+
+  function getLabelTypographyRenderSizes(printPt, outputMode = "web") {
+    const normalizedPrintSize = normalizeLabelSizePt(printPt);
+    if (outputMode === "print") {
+      return { title: normalizedPrintSize, body: normalizedPrintSize };
+    }
+    const scale = normalizedPrintSize / defaultLabelTypographyPrintSizePt;
+    return {
+      title: Math.max(defaultLabelTitleSizePx, Math.round(defaultLabelTitleSizePx * scale)),
+      body: Math.max(defaultLabelBodySizePx, Math.round(defaultLabelBodySizePx * scale))
+    };
   }
 
   function normalizeFontFamily(value) {
@@ -3509,6 +3573,7 @@
     const imageSize = getImageSizePreset();
     const outputMode = options.outputMode || renderOutputMode;
     const labelSizePt = normalizeLabelSizePt(els.labelSizeInput.value);
+    const labelTypographySizes = getLabelTypographyRenderSizes(labelSizePt, outputMode);
     const mapScale = normalizeMapScale(els.mapScaleInput.value);
     return {
       outputMode,
@@ -3520,8 +3585,10 @@
       labelSizePt,
       labelSize: labelSizePt,
       labelSizeRender: outputMode === "print" ? labelSizePt : getWebLabelSize(labelSizePt),
+      labelTitleSizeRender: labelTypographySizes.title,
+      labelBodySizeRender: labelTypographySizes.body,
       mapScale,
-      markerSize: Number(els.markerSizeInput.value) || 10,
+      markerSize: Number(els.markerSizeInput.value) || 4,
       lineWidth: Number(els.lineWidthInput.value) || 2,
       labelMaxChars: normalizeLabelMaxChars(els.labelCharsInput.value),
       mapLanguage: currentMapLanguage,
@@ -4132,22 +4199,22 @@
     activateLanguageLayoutState(currentMapLanguage, fallbackScale);
   }
 
+  function syncMapLanguageControls(language = currentMapLanguage) {
+    const nextLanguage = normalizeMapLanguage(language);
+    if (els.mapLanguageInput) els.mapLanguageInput.value = nextLanguage;
+    if (els.previewLanguageInput) els.previewLanguageInput.value = nextLanguage;
+    els.mapLanguageButtons.forEach(button => {
+      const active = button.dataset.mapLanguage === nextLanguage;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+  }
+
   function setMapLanguage(value, options = {}) {
     const nextLanguage = normalizeMapLanguage(value);
     const previousScale = els.mapScaleInput ? normalizeMapScale(els.mapScaleInput.value) : null;
     switchActiveLanguageLayout(nextLanguage, previousScale);
-    if (els.mapLanguageInput) els.mapLanguageInput.value = currentMapLanguage;
-    if (els.previewLanguageInput) els.previewLanguageInput.value = currentMapLanguage;
-    if (currentUiLanguage !== currentMapLanguage) {
-      currentUiLanguage = currentMapLanguage;
-      document.documentElement.lang = currentUiLanguage;
-      if (i18n && typeof i18n.applyStaticTranslations === "function") {
-        i18n.applyStaticTranslations(currentUiLanguage, document);
-      }
-      syncUiLanguageControls(currentUiLanguage);
-      saveUiLanguagePreference(currentUiLanguage);
-      setActiveDataTab(activeDataTable);
-    }
+    syncMapLanguageControls(currentMapLanguage);
     document.title = mapDetails[currentMapLanguage === "fr" ? "titleFr" : "titleEn"] || "Plotypus";
     updateExportLanguageNotice();
     renderPropertiesForActiveState();
@@ -4179,7 +4246,7 @@
     return en || fr;
   }
 
-  function asLabelLine(text, lang = "en", role = "text") {
+  function asLabelLine(text, lang = "en", role = "title") {
     return { text: String(text || ""), lang, role };
   }
 
@@ -4190,8 +4257,7 @@
   function getLabelLines(row, settings) {
     const maxChars = normalizeLabelMaxCharsOverride(row && row.labelMaxChars) || settings.labelMaxChars;
     const lang = settings.mapLanguage === "fr" ? "fr" : "en";
-    const headingRole = row && row.labelStyle === "rich" ? "title" : "text";
-    const headingLines = wrapLabel(getLabelText(row, settings.mapLanguage), maxChars).map(line => asLabelLine(line, lang, headingRole));
+    const headingLines = wrapLabel(getLabelText(row, settings.mapLanguage), maxChars).map(line => asLabelLine(line, lang, "title"));
     if (!row || row.labelStyle !== "rich") return headingLines;
     const normalizedContent = normalizeAnnotationContent(row.content);
     const titleText = getLabelText(row, settings.mapLanguage);
@@ -4239,6 +4305,18 @@
     return lines.filter(line => line.role !== "separator");
   }
 
+  function getLabelLineFontSize(line, settings) {
+    const role = line && line.role || "title";
+    if (role === "title") {
+      return Number(settings && settings.labelTitleSizeRender) || getLabelTypographyRenderSizes(settings && (settings.labelSizePt || settings.labelSize), settings && settings.outputMode).title;
+    }
+    return Number(settings && settings.labelBodySizeRender) || getLabelTypographyRenderSizes(settings && (settings.labelSizePt || settings.labelSize), settings && settings.outputMode).body;
+  }
+
+  function getLabelLineHeight(line, settings) {
+    return getLabelLineFontSize(line, settings) * 1.2;
+  }
+
   function preferredSide(d, settings, mapBounds) {
     if (currentBoundary === "canada") {
       const name = labelKeyText(d);
@@ -4282,10 +4360,6 @@
     return match ? match[1] : [];
   }
 
-  function labelPriority(row) {
-    return toPriority(row && row.priority);
-  }
-
   function placementDifficulty(item, points, settings) {
     const radius = Math.max(46, settings.labelSize * 3.4);
     return points.reduce((count, other) => {
@@ -4295,8 +4369,6 @@
   }
 
   function comparePlacementOrder(a, b, points, settings) {
-    const priority = labelPriority(b) - labelPriority(a);
-    if (priority) return priority;
     const difficulty = placementDifficulty(b, points, settings) - placementDifficulty(a, points, settings);
     if (difficulty) return difficulty;
     return a.y - b.y || a.x - b.x;
@@ -4407,31 +4479,35 @@
   }
 
   function makeLabelBox(d, side, settings, mapBounds = null) {
-    const lineHeight = settings.labelSize * 1.2;
-    const fontSize = lineHeight / 1.2;
-    const imageGap = Math.max(4, fontSize * 0.3);
+    const sourceLines = getLabelLines(d, settings);
+    const firstLine = sourceLines[0] || asLabelLine("");
+    const fontSize = getLabelLineFontSize(firstLine, settings);
+    const lineHeight = getLabelLineHeight(firstLine, settings);
+    const imageGap = Math.max(4, getLabelLineFontSize(asLabelLine("", "en", "paragraph"), settings) * 0.3);
     let baselineOffset = 0;
     let visualBottom = 0;
-    const lines = getLabelLines(d, settings).map((line, index, sourceLines) => {
-      const nextLine = { ...line, baselineOffset };
+    const lines = sourceLines.map((line, index) => {
+      const lineFontSize = getLabelLineFontSize(line, settings);
+      const currentLineHeight = getLabelLineHeight(line, settings);
+      const nextLine = { ...line, baselineOffset, fontSize: lineFontSize, lineHeight: currentLineHeight };
       if (line.role === "image") {
-        const imageHeight = Number(line.imageHeight) || lineHeight;
+        const imageHeight = Number(line.imageHeight) || currentLineHeight;
         visualBottom = Math.max(visualBottom, baselineOffset - fontSize + imageHeight);
-        if (index < sourceLines.length - 1) baselineOffset += Math.max(lineHeight, imageHeight + imageGap);
+        if (index < sourceLines.length - 1) baselineOffset += Math.max(currentLineHeight, imageHeight + imageGap);
       } else {
         visualBottom = Math.max(visualBottom, baselineOffset);
-        if (index < sourceLines.length - 1) baselineOffset += lineHeight;
+        if (index < sourceLines.length - 1) baselineOffset += currentLineHeight;
       }
       return nextLine;
     });
     const textLines = visibleLabelLines(lines);
     const footnote = getRenderableFootnote(d.footnote);
-    const longest = Math.max(...textLines.map(line => lineText(line).length), 0);
-    const baseTextWidth = Math.max(80, longest * settings.labelSize * 0.58);
-    const footnoteWidth = footnote ? footnote.length * settings.labelSize * 0.42 + 4 : 0;
+    const baseTextWidth = Math.max(80, ...textLines.map(line => lineText(line).length * (Number(line.fontSize) || fontSize) * 0.58));
     const lastTextLine = textLines[textLines.length - 1] || asLabelLine("");
+    const lastLineFontSize = Number(lastTextLine.fontSize) || fontSize;
+    const footnoteWidth = footnote ? footnote.length * lastLineFontSize * 0.42 + 4 : 0;
     const imageWidth = Math.max(...lines.filter(line => line.role === "image").map(line => Number(line.imageWidth) || 0), 0);
-    const textWidth = Math.max(baseTextWidth, imageWidth, lineText(lastTextLine).length * settings.labelSize * 0.58 + footnoteWidth);
+    const textWidth = Math.max(baseTextWidth, imageWidth, lineText(lastTextLine).length * lastLineFontSize * 0.58 + footnoteWidth);
     const visualHeight = Math.max(fontSize, visualBottom + fontSize);
     const textHeight = visualHeight - fontSize + lineHeight;
     return { lines, lineHeight, textWidth, textHeight, footnote, side };
@@ -5024,12 +5100,15 @@
   }
 
   function chooseFeasibleMapLayoutContext(visibleGeo, rows, baseSettings, options = {}) {
-    const startScale = normalizeMapScale(baseSettings.mapScale);
-    const minScale = Math.min(startScale, 65);
-    const step = 5;
+    const requestedMapScale = normalizeMapScale(baseSettings.mapScale);
+    // "Fit map + labels" may grow or shrink the baselayer. Searching only
+    // downward from the current value leaves previously undersized maps stuck.
+    const maxScale = mapScaleRange.max;
+    const minScale = mapScaleRange.min;
+    const step = mapScaleRange.autoFitStep;
     let fallback = null;
 
-    for (let scale = startScale; scale >= minScale; scale -= step) {
+    for (let scale = maxScale; scale >= minScale; scale -= step) {
       const settings = { ...baseSettings, mapScale: scale };
       const context = createMapLayoutContext(visibleGeo, rows, settings);
       const labelRows = context.mappedRows.filter(row => row.name);
@@ -5040,7 +5119,7 @@
           applyManual: options.ignoreManualPositions !== true
         }), settings)
         : null;
-      const candidate = { ...context, settings, feasibility, placementQuality, requestedMapScale: startScale };
+      const candidate = { ...context, settings, feasibility, placementQuality, requestedMapScale };
       if (isBetterScaleFallback(candidate, fallback)) fallback = candidate;
       if (feasibility.feasible && placementQualityAcceptable(placementQuality)) {
         return candidate;
@@ -5069,7 +5148,6 @@
       row.nameFr,
       row.footnote,
       row.type,
-      row.priority,
       row.lon,
       row.lat,
       row.anchor || "coord",
@@ -5105,6 +5183,8 @@
       height: settings.height,
       mapScale: settings.mapScale,
       labelSizeRender: settings.labelSizeRender,
+      labelTitleSizeRender: settings.labelTitleSizeRender,
+      labelBodySizeRender: settings.labelBodySizeRender,
       labelMaxChars: settings.labelMaxChars,
       markerSize: settings.markerSize,
       lineWidth: settings.lineWidth,
@@ -5182,7 +5262,21 @@
 
   function layoutLabels(points, settings, mapBounds, options = {}) {
     const placed = layoutLabelsWithoutManualPositions(points, settings, mapBounds);
-    return applyManualLabelPositions(placed, options.applyManual !== false);
+    const positioned = applyManualLabelPositions(placed, options.applyManual !== false);
+    positioned.forEach(label => {
+      const constrained = constrainLabelToCanvas(label, settings);
+      if (!constrained.wasConstrained) return;
+      label.labelX = constrained.labelX;
+      label.labelY = constrained.labelY;
+      if (manualLabelPositions[label.labelKey]) {
+        manualLabelPositions[label.labelKey] = {
+          x: label.labelX,
+          y: label.labelY,
+          side: label.labelSide
+        };
+      }
+    });
+    return positioned;
   }
 
   function getLabelKey(row) {
@@ -5293,10 +5387,14 @@
     };
   }
 
-  function createLayoutQualityAnalyzer(placed, settings, projectedProblems, hiddenRegionProblems, mapBounds) {
+  function createLayoutQualityAnalyzer(placed, settings, projectedProblems, hiddenRegionProblems, mapBounds, markerRows = placed) {
     let crossings = 0;
     let overlaps = 0;
     let minLabelGap = Infinity;
+    const placedByRowId = new Map(placed.map(row => [String(row.rowId), row]));
+    const markerItems = (Array.isArray(markerRows) ? markerRows : placed)
+      .map(row => placedByRowId.get(String(row.rowId)) || row);
+    const offCanvasPointItems = markerItems.filter(row => isPointOffCanvas(row, settings));
     const lines = placed
       .filter(d => !d.hideLine)
       .map(d => ({
@@ -5304,7 +5402,10 @@
         length: leaderPathLength(d, settings),
         target: snapshotQualityTarget(d)
       }));
-    const rectItems = placed.map(d => ({ target: snapshotQualityTarget(d), rect: labelRect(d) }));
+    const rectItems = placed.map(d => ({
+      target: snapshotQualityTarget(d),
+      rect: labelRect(d)
+    }));
     const rects = rectItems.map(item => item.rect);
     const qualityTargets = [];
     const qualityTargetKeys = new Set();
@@ -5361,6 +5462,7 @@
     }
 
     function finalize() {
+      offCanvasPointItems.forEach(item => addQualityIssueTarget(qualityTargets, qualityTargetKeys, "off-canvas-point", item));
       labelsNearEdgeItems.forEach(item => addQualityIssueTarget(qualityTargets, qualityTargetKeys, "near-edge", item.target));
       const longLineItems = lines.filter(line => line.length > maxAllowedLeaderLength(settings));
       longLineItems.forEach(line => addQualityIssueTarget(qualityTargets, qualityTargetKeys, "long-line", line.target));
@@ -5369,6 +5471,7 @@
         crossings,
         overlaps,
         longLines: longLineItems.length,
+        offCanvasPoints: offCanvasPointItems.length,
         projectedProblems,
         hiddenRegionProblems,
         labelsNearEdge,
@@ -5416,8 +5519,8 @@
     };
   }
 
-  function analyzeLayout(placed, settings, projectedProblems, hiddenRegionProblems, mapBounds) {
-    const analyzer = createLayoutQualityAnalyzer(placed, settings, projectedProblems, hiddenRegionProblems, mapBounds);
+  function analyzeLayout(placed, settings, projectedProblems, hiddenRegionProblems, mapBounds, markerRows = placed) {
+    const analyzer = createLayoutQualityAnalyzer(placed, settings, projectedProblems, hiddenRegionProblems, mapBounds, markerRows);
     analyzer.step();
     return analyzer.getReport();
   }
@@ -5430,7 +5533,8 @@
       layout.settings,
       Array.isArray(previousReport.projectedProblems) ? previousReport.projectedProblems : [],
       Array.isArray(previousReport.hiddenRegionProblems) ? previousReport.hiddenRegionProblems : [],
-      layout.mapBounds
+      layout.mapBounds,
+      Array.isArray(layout.mappedRows) ? layout.mappedRows : layout.placed
     );
     layout.report = report;
     return report;
@@ -5663,7 +5767,10 @@
             rowProjection
               ? rowProjection.hiddenRegionProblems
               : Array.isArray(previousReport.hiddenRegionProblems) ? previousReport.hiddenRegionProblems : [],
-            layout.mapBounds
+            layout.mapBounds,
+            rowProjection
+              ? rowProjection.mappedRows
+              : Array.isArray(layout.mappedRows) ? layout.mappedRows : layout.placed
           )
         };
         qualityAnalysisTelemetry.started += 1;
@@ -5829,6 +5936,10 @@
     checklist.push(report.projectedProblems.length
       ? checklistItem("danger", t("quality.check.invalidCoordinates"), t("quality.check.invalidCoordinatesDetail", { count: report.projectedProblems.length }))
       : checklistItem("ok", t("quality.check.coordinateRanges"), t("quality.check.coordinateRangesDetail")));
+
+    checklist.push(Number(report.offCanvasPoints || 0)
+      ? checklistItem("danger", t("quality.check.offCanvasPoints"), t("quality.check.offCanvasPointsDetail", { count: report.offCanvasPoints }))
+      : checklistItem("ok", t("quality.check.pointsInsideCanvas"), t("quality.check.pointsInsideCanvasDetail")));
 
     checklist.push(report.overlaps
       ? checklistItem("warning", t("quality.metric.labelOverlaps"), t("quality.check.labelOverlapsDetail", { count: report.overlaps }))
@@ -6019,7 +6130,7 @@
     }
     const issues = getReviewIssueCount(report);
     return issues
-      ? `<strong>${escapeHtml(t("quality.banner.review.title", { count: t("summary.issueCount", { count: issues, label: issues === 1 ? t("summary.issueSingular") : t("summary.issuePlural") }) }))}</strong><span>${escapeHtml(t("quality.banner.review.body"))}</span><button type="button" data-property-action="open-map">${escapeHtml(t("quality.action.locateFirst"))}</button>`
+      ? `<strong>${escapeHtml(t("quality.banner.review.title", { count: t("summary.issueCount", { count: issues, label: issues === 1 ? t("summary.issueSingular") : t("summary.issuePlural") }) }))}</strong><button type="button" data-property-action="open-map">${escapeHtml(t("quality.action.locateFirst"))}</button>`
       : `<strong>${escapeHtml(t("quality.banner.ready.title"))}</strong><span>${escapeHtml(t("quality.banner.ready.body"))}</span>`;
   }
 
@@ -6044,11 +6155,13 @@
     const overlaps = Number(report.overlaps || 0);
     const crossings = Number(report.crossings || 0);
     const nearEdge = Number(report.labelsNearEdge || 0);
+    const offCanvas = Number(report.offCanvasPoints || 0);
     els.canvasQualityPill.hidden = false;
     els.canvasQualityPill.innerHTML = `
       <span class="canvas-quality-metric" data-state="${overlaps ? "review" : "ok"}"><span aria-hidden="true"></span>${escapeHtml(t("quality.canvas.overlaps"))} <strong>${overlaps}</strong></span>
       <span class="canvas-quality-metric" data-state="${crossings ? "review" : "ok"}"><span aria-hidden="true"></span>${escapeHtml(t("quality.canvas.crossings"))} <strong>${crossings}</strong></span>
       <span class="canvas-quality-metric" data-state="${nearEdge ? "review" : "ok"}">${escapeHtml(t("quality.canvas.nearEdge"))} <strong>${nearEdge}</strong></span>
+      <span class="canvas-quality-metric" data-state="${offCanvas ? "danger" : "ok"}">${escapeHtml(t("quality.canvas.offCanvas"))} <strong>${offCanvas}</strong></span>
       <button type="button" data-property-action="open-map">${escapeHtml(t("quality.canvas.locateNext"))}</button>`;
   }
 
@@ -6095,8 +6208,13 @@
 
   function highlightQualityLocateTarget(target) {
     clearQualityLocateHighlight();
-    if (!target || !target.layoutId || !window.CSS || typeof CSS.escape !== "function") return;
-    const selector = `[data-layout-id="${CSS.escape(target.layoutId)}"]`;
+    if (!target || !window.CSS || typeof CSS.escape !== "function") return;
+    const selector = target.layoutId
+      ? `[data-layout-id="${CSS.escape(target.layoutId)}"]`
+      : target.rowId
+        ? `#mapSvg [data-row-id="${CSS.escape(String(target.rowId))}"]`
+        : "";
+    if (!selector) return;
     document.querySelectorAll(selector).forEach(node => node.classList.add("is-quality-located"));
   }
 
@@ -6132,7 +6250,7 @@
       ? lastLayout.placed.find(row => row.labelKey === activeQualityLocateTarget.labelKey || row.layoutId === activeQualityLocateTarget.layoutId)
       : null;
     const row = placed || getRows().find(item => String(item.rowId) === String(activeQualityLocateTarget.rowId)) || activeQualityLocateTarget;
-    setRowPropertiesContext("label", row, {
+    setRowPropertiesContext(activeQualityLocateTarget.type === "off-canvas-point" ? "marker" : "label", row, {
       labelKey: activeQualityLocateTarget.labelKey,
       manual: Boolean(manualLabelPositions[activeQualityLocateTarget.labelKey])
     });
@@ -6169,6 +6287,7 @@
     return `
       <div class="quality-card-grid">
         ${metadataCard}
+        ${qualityCard(t("quality.metric.offCanvasPoints"), String(report.offCanvasPoints || 0), report.offCanvasPoints ? "danger" : "ok", report.offCanvasPoints ? t("quality.metric.reviewOffCanvasPoints") : t("quality.metric.noOffCanvasPoints"), "", report.offCanvasPoints ? { name: "open-map", label: t("quality.action.locateFirst") } : null)}
         ${qualityCard(t("quality.metric.labelOverlaps"), String(report.overlaps), report.overlaps ? "review" : "ok", report.overlaps ? t("quality.metric.reviewTighten") : t("quality.metric.noOverlaps"), "", report.overlaps ? { name: "open-map", label: t("quality.action.locateFirst") } : null)}
         ${qualityCard(t("quality.metric.leaderCrossings"), report.crossings ? String(report.crossings) : "0 /", report.crossings ? "review" : "ok", report.crossings ? t("quality.metric.reviewCrossings") : t("quality.metric.noCrossings"), "", report.crossings ? { name: "open-map", label: t("quality.action.locateFirst") } : null)}
         ${qualityCard(t("quality.metric.longestLeader"), longestLeader, report.longLines ? "review" : "ok", report.longLines ? t("quality.metric.reviewLongest") : t("quality.metric.withinLimit"), "", report.longLines ? { name: "open-map", label: t("quality.action.locateFirst") } : null)}
@@ -6244,7 +6363,6 @@
       labelKey,
       manual: canResetLabel,
       advancedOpen: Boolean(options.advancedOpen),
-      priority: toPriority(row.priority),
       typeOptions: getTypeOptions(row.type),
       status,
       regionOptions: getRegionRows().map(region => ({ value: region.id, label: region.name })),
@@ -6276,19 +6394,9 @@
   }
 
   function renderMapPropertyControls() {
-    const regionSummaryText = els.regionSummary ? els.regionSummary.textContent : "";
     return properties.renderMapPropertyControls({
-      regionSummaryText,
-      selectOptions: {
-        boundary: selectOptionsHtml(els.boundaryInput),
-        regionPreset: selectOptionsHtml(els.regionPresetInput),
-        bookSize: selectOptionsHtml(els.bookSizeInput),
-        imageSize: selectOptionsHtml(els.imageSizeInput),
-        labelMaxChars: normalizeLabelMaxChars(els.labelCharsInput.value)
-      },
       mapScale: els.mapScaleInput ? els.mapScaleInput.value : "",
       escapeHtml,
-      iconSvg,
       t
     });
   }
@@ -6422,15 +6530,12 @@
         selection: { kind: "map" }
       };
     } else if (activeDataTable === "translate") {
-      const requestedEntryId = requested && requested.kind === "translation-entry" ? requested.id : activeTranslationEntryId;
-      const selectedEntry = getTranslationEntries().find(entry => entry.id === requestedEntryId) || null;
-      if (selectedEntry) activeTranslationEntryId = selectedEntry.id;
       context = {
         title: t("properties.title.translate"),
-        subtitle: t(activeAuthoringLanguage === "fr" ? "translate.direction.frEn" : "translate.direction.enFr"),
-        hint: selectedEntry ? t("properties.hint.translateEntry") : t("properties.hint.translate"),
-        controls: selectedEntry ? properties.renderTranslationEntryPropertyControls({ entry: selectedEntry, escapeHtml, iconSvg, t }) : renderTranslationPropertyControls(),
-        selection: selectedEntry ? { kind: "translation-entry", id: selectedEntry.id } : { kind: "translation" }
+        subtitle: t("properties.subtitle.translate"),
+        hint: t("properties.hint.translate"),
+        controls: renderTranslationPropertyControls(),
+        selection: { kind: "translation" }
       };
     } else if (activeDataTable === "quality") {
       context = {
@@ -6735,17 +6840,6 @@
     if (!field) return;
     const form = event.target.closest(".properties-form[data-property-kind]");
     if (!form) return;
-
-    if (form.dataset.propertyKind === "translation-entry") {
-      const entryId = form.dataset.entryId;
-      const language = event.target.dataset.translationProperty === "en" ? "en" : "fr";
-      pushAppUndoHistory("translation edit");
-      writeTranslationEntry(entryId, event.target.value, language);
-      activeTranslationEntryId = entryId;
-      renderTranslationWorkbench();
-      renderPropertiesForActiveState({ kind: "translation-entry", id: entryId });
-      return;
-    }
 
     if (form.dataset.propertyKind === "furniture" && field === "boxVisible") {
       const key = form.dataset.boxKey;
@@ -7101,16 +7195,17 @@
       return;
     }
 
-    const label = rowCount === 1 ? t("status.projectRowSingular") : t("status.projectRowPlural");
-    const confirmed = window.confirm(t("status.clearProjectRowsConfirm", { count: rowCount, label }));
-    if (!confirmed) {
-      setStatusMessage(t("status.clearTableCancelled"), "warning");
-      return;
-    }
-
-    pushAppUndoHistory("clear project rows");
-    setRows([]);
-    setStatusMessage(t("status.projectTableCleared"), "ok");
+    openConfirmationDialog({
+      kind: "clear",
+      count: rowCount,
+      returnFocus: els.projectMoreMenuBtn || els.clearRowsBtn,
+      onCancel: () => setStatusMessage(t("status.clearTableCancelled"), "warning"),
+      onConfirm: () => {
+        pushAppUndoHistory("clear project rows");
+        setRows([]);
+        setStatusMessage(t("status.projectTableCleared"), "ok");
+      }
+    });
   }
 
   function setExportMenuOpen(open, options = {}) {
@@ -7130,6 +7225,17 @@
     ].filter(item => item.button && item.menu);
   }
 
+  function positionProjectToolbarMenu(button, menu) {
+    const boundary = button.closest(".workspace") || document.documentElement;
+    menu.style.setProperty("--project-menu-shift-x", "0px");
+    const menuRect = menu.getBoundingClientRect();
+    const boundaryRect = boundary.getBoundingClientRect();
+    const minimumLeft = boundaryRect.left;
+    const maximumLeft = Math.max(minimumLeft, boundaryRect.right - menuRect.width);
+    const targetLeft = Math.min(Math.max(menuRect.left, minimumLeft), maximumLeft);
+    menu.style.setProperty("--project-menu-shift-x", `${targetLeft - menuRect.left}px`);
+  }
+
   function setProjectToolbarMenuOpen(button, menu, open, options = {}) {
     getProjectToolbarMenus().forEach(item => {
       const isTarget = item.button === button && item.menu === menu;
@@ -7137,6 +7243,7 @@
       item.menu.hidden = !shouldOpen;
       item.button.setAttribute("aria-expanded", String(shouldOpen));
     });
+    if (open) positionProjectToolbarMenu(button, menu);
     if (open && options.focusFirst) {
       const firstItem = menu.querySelector('[role="menuitem"]:not([disabled])');
       if (firstItem) firstItem.focus();
@@ -7261,6 +7368,38 @@
     });
   }
 
+  function normalizePropertiesPanelSide(value) {
+    return String(value || "").toLowerCase() === "right" ? "right" : "left";
+  }
+
+  function getPropertiesPanelSide() {
+    return normalizePropertiesPanelSide(document.body.dataset.propertiesSide);
+  }
+
+  function syncPropertiesPanelDomOrder(side) {
+    if (!els.propertiesPanel) return;
+    const shell = els.propertiesPanel.parentElement;
+    const workspace = shell && shell.querySelector(".workspace");
+    if (!shell || !workspace) return;
+    if (side === "left" && els.propertiesPanel.nextElementSibling !== workspace) {
+      shell.insertBefore(els.propertiesPanel, workspace);
+    }
+    if (side === "right" && workspace.nextElementSibling !== els.propertiesPanel) {
+      workspace.insertAdjacentElement("afterend", els.propertiesPanel);
+    }
+  }
+
+  function setPropertiesPanelSide(value, { persist = true } = {}) {
+    const side = normalizePropertiesPanelSide(value);
+    document.body.dataset.propertiesSide = side;
+    syncPropertiesPanelDomOrder(side);
+    els.propertiesSideInputs.forEach(input => {
+      input.checked = input.value === side;
+    });
+    if (persist) savePropertiesPanelPreference({ side });
+    return side;
+  }
+
   function readCssPixelVariable(name, fallback) {
     const raw = window.getComputedStyle(document.documentElement).getPropertyValue(name);
     const parsed = parseFloat(raw);
@@ -7321,6 +7460,7 @@
 
   function initializePropertiesPanelState() {
     const saved = getPropertiesPanelPreference();
+    setPropertiesPanelSide(saved.side, { persist: false });
     if (Number.isFinite(Number(saved.width))) setPropertiesPanelWidth(saved.width);
     else setPropertiesPanelWidth(readCssPixelVariable("--props-w", 320));
     if (!propertiesDrawerMedia.matches && saved.collapsed) {
@@ -7340,7 +7480,9 @@
     els.propertiesResizeHandle?.setPointerCapture?.(pointerId);
 
     const onPointerMove = moveEvent => {
-      const delta = startX - moveEvent.clientX;
+      const delta = getPropertiesPanelSide() === "left"
+        ? moveEvent.clientX - startX
+        : startX - moveEvent.clientX;
       setPropertiesPanelWidth(startWidth + delta);
     };
     const onPointerUp = () => {
@@ -7364,9 +7506,10 @@
     const current = els.propertiesPanel ? els.propertiesPanel.getBoundingClientRect().width : readCssPixelVariable("--props-w", 320);
     const { min, max } = getPropertiesWidthBounds();
     const step = event.shiftKey ? 40 : 16;
+    const side = getPropertiesPanelSide();
     let next = current;
-    if (event.key === "ArrowLeft") next = current + step;
-    if (event.key === "ArrowRight") next = current - step;
+    if (event.key === "ArrowLeft") next = current + (side === "right" ? step : -step);
+    if (event.key === "ArrowRight") next = current + (side === "left" ? step : -step);
     if (event.key === "Home") next = min;
     if (event.key === "End") next = max;
     setPropertiesPanelWidth(next, { persist: true });
@@ -7529,7 +7672,6 @@
     if (shouldResizeForAutoPlace && layoutContext.requestedMapScale && layoutContext.requestedMapScale !== settings.mapScale) {
       els.mapScaleInput.value = settings.mapScale;
       rememberCurrentLanguageMapScale();
-      updateCanvasToolbar();
     }
     const {
       projection,
@@ -7575,7 +7717,7 @@
     };
     const markerRows = mappedRows.map(row => placedByRowId.get(row.rowId) || row);
     const leaderRows = placed.filter(row => !row.hideLine);
-    const report = analyzeLayout(placed, settings, projectedProblems, hiddenRegionProblems, mapBounds);
+    const report = analyzeLayout(placed, settings, projectedProblems, hiddenRegionProblems, mapBounds, mappedRows);
     lastLayout = {
       placed,
       settings,
@@ -7594,7 +7736,7 @@
     leaderLayer.selectAll("path.leader-casing")
         .data(leaderRows)
         .join("path")
-        .attr("class", "leader-casing")
+        .attr("class", d => `leader-casing${isPointOffCanvas(d, settings) ? " is-off-canvas" : ""}`)
         .attr("data-layout-id", d => d.layoutId)
         .attr("data-label-side", d => d.labelSide)
         .attr("data-label-name", d => d.name)
@@ -7604,7 +7746,7 @@
     leaderLayer.selectAll("path.leader-line")
       .data(leaderRows)
       .join("path")
-      .attr("class", "leader-line")
+      .attr("class", d => `leader-line${isPointOffCanvas(d, settings) ? " is-off-canvas" : ""}`)
       .attr("data-layout-id", d => d.layoutId)
       .attr("data-label-side", d => d.labelSide)
       .attr("data-label-name", d => d.name)
@@ -7614,12 +7756,25 @@
       .attr("d", d => linePath(d, settings));
 
     const markerLayer = svg.append("g").attr("class", "marker-layer");
+    markerLayer.selectAll(".marker-boundary-warning")
+      .data(markerRows)
+      .join("circle")
+      .attr("class", d => `marker-boundary-warning${isPointOffCanvas(d, settings) ? " is-active" : ""}`)
+      .attr("data-layout-id", d => d.layoutId)
+      .attr("data-row-id", d => d.rowId)
+      .attr("cx", d => d.x)
+      .attr("cy", d => d.y)
+      .attr("r", d => getCategoryMarkerSize(getCategory(d.type), settings) + 4)
+      .attr("aria-hidden", "true");
     const markers = markerLayer.selectAll(".marker")
       .data(markerRows)
       .join(function (enter) {
         return enter.append(d => createMarkerElement(getCategory(d.type)));
       })
-      .attr("class", d => `marker marker-${cleanType(d.type)}${getCategory(d.type).customIcon ? " marker-custom-icon" : ""}${settings.lockMarkerCoordinates ? " is-locked" : ""}`)
+      .attr("class", d => `marker marker-${cleanType(d.type)}${getCategory(d.type).customIcon ? " marker-custom-icon" : ""}${settings.lockMarkerCoordinates ? " is-locked" : ""}${isPointOffCanvas(d, settings) ? " is-off-canvas" : ""}`)
+      .attr("data-layout-id", d => d.layoutId)
+      .attr("data-row-id", d => d.rowId)
+      .attr("data-off-canvas", d => String(isPointOffCanvas(d, settings)))
       .each(function (d) {
         const category = getCategory(d.type);
         const node = d3.select(this);
@@ -7662,9 +7817,9 @@
       .data(placed)
       .join("text")
       .attr("class", "map-label")
-      .attr("font-size", settings.labelSizeRender)
       .attr("font-family", settings.fontFamily)
       .attr("data-layout-id", d => d.layoutId)
+      .attr("data-label-style", d => d.labelStyle === "rich" ? "rich" : "compact")
       .attr("data-label-side", d => d.labelSide)
       .attr("data-label-name", d => d.name)
       .attr("x", d => d.labelX)
@@ -7697,7 +7852,7 @@
   function renderLabelTextLines(text, row, settings) {
     text.selectAll("*").remove();
     row.lines.forEach((line, index) => {
-      const role = line && line.role || "text";
+      const role = line && line.role || "title";
       const previousOffset = index > 0 ? Number(row.lines[index - 1].baselineOffset) : 0;
       const currentOffset = Number(line && line.baselineOffset);
       const lineAdvance = index === 0
@@ -7707,8 +7862,11 @@
         .attr("class", role === "separator" ? "label-line label-separator" : `label-line label-${role}`)
         .attr("x", row.labelX)
         .attr("dy", lineAdvance)
+        .attr("font-size", Number(line && line.fontSize) || getLabelLineFontSize(line, settings))
         .text(role === "separator" ? "" : lineText(line));
-      if (index === row.lines.length - 1 && row.footnote) appendSuperscript(text, row.footnote, settings.labelSizeRender);
+      if (index === row.lines.length - 1 && row.footnote) {
+        appendSuperscript(text, row.footnote, Number(line && line.fontSize) || getLabelLineFontSize(line, settings));
+      }
     });
   }
 
@@ -7737,6 +7895,18 @@
       labelY: current.labelY,
       anchor: current.anchor
     };
+    const constrained = constrainLabelToCanvas(next, lastLayout.settings);
+    if (constrained.wasConstrained) {
+      next.labelX = constrained.labelX;
+      next.labelY = constrained.labelY;
+      if (manualLabelPositions[next.labelKey]) {
+        manualLabelPositions[next.labelKey] = {
+          x: next.labelX,
+          y: next.labelY,
+          side: next.labelSide
+        };
+      }
+    }
     lastLayout.placed[placedIndex] = next;
     if (mappedIndex >= 0) lastLayout.mappedRows[mappedIndex] = projected;
 
@@ -7751,6 +7921,7 @@
 
     const label = svg.select(`text.map-label${selector}`)
       .datum(next)
+      .attr("data-label-style", next.labelStyle === "rich" ? "rich" : "compact")
       .attr("data-label-side", next.labelSide)
       .attr("data-label-name", next.name)
       .attr("x", next.labelX)
@@ -7761,6 +7932,7 @@
 
     svg.selectAll(`path${selector}`)
       .datum(next)
+      .classed("is-off-canvas", isPointOffCanvas(next, lastLayout.settings))
       .attr("data-label-side", next.labelSide)
       .attr("data-label-name", next.name)
       .attr("d", linePath(next, lastLayout.settings));
@@ -8092,6 +8264,9 @@
         d.labelX = next.x;
         d.labelY = next.y;
         setLabelSidePreservingBox(d, getLabelSideForPosition(d));
+        const constrained = constrainLabelToCanvas(d, settings);
+        d.labelX = constrained.labelX;
+        d.labelY = constrained.labelY;
         manualLabelPositions[d.labelKey] = { x: d.labelX, y: d.labelY, side: d.labelSide };
 
         const label = d3.select(this)
@@ -8140,6 +8315,7 @@
         d.dragStartX = d.x;
         d.dragStartY = d.y;
         d.dragAxis = null;
+        d.dragMarkerSize = getCategoryMarkerSize(getCategory(d.type), settings);
         d.qualityRefreshInvalidated = false;
         d3.select(this).classed("is-dragging", true);
       })
@@ -8155,34 +8331,123 @@
           d,
           event
         );
-        d.x = next.x;
-        d.y = next.y;
-        moveMarkerNode(d3.select(this), d, { markerSize: getCategoryMarkerSize(getCategory(d.type), settings) });
+        const constrained = constrainMarkerToVisibleGutter(next, settings, d.dragMarkerSize);
+        d.x = constrained.x;
+        d.y = constrained.y;
+        syncMarkerBoundaryState(d3.select(this), d, settings, d.dragMarkerSize);
         d3.selectAll(`path[data-layout-id="${d.layoutId}"]`)
+          .classed("is-off-canvas", isPointOffCanvas(d, settings))
           .attr("d", linePath(d, settings));
       })
       .on("end", function (event, d) {
+        const startX = d.dragStartX;
+        const startY = d.dragStartY;
+        const markerSize = d.dragMarkerSize || getCategoryMarkerSize(getCategory(d.type), settings);
+        const constrained = constrainMarkerToVisibleGutter({ x: d.x, y: d.y }, settings, markerSize);
+        d.x = constrained.x;
+        d.y = constrained.y;
+        syncMarkerBoundaryState(d3.select(this), d, settings, markerSize);
+        d3.selectAll(`path[data-layout-id="${d.layoutId}"]`)
+          .classed("is-off-canvas", isPointOffCanvas(d, settings))
+          .attr("d", linePath(d, settings));
+        const moved = Math.abs(d.x - startX) > 0.01 || Math.abs(d.y - startY) > 0.01;
+        const offCanvas = isPointOffCanvas(d, settings);
         delete d.dragOffsetX;
         delete d.dragOffsetY;
         delete d.dragStartX;
         delete d.dragStartY;
         delete d.dragAxis;
+        delete d.dragMarkerSize;
         delete d.qualityRefreshInvalidated;
         d3.select(this).classed("is-dragging", false);
         endLayoutQualityDrag();
         const coordinates = projection.invert([d.x, d.y]);
         if (!coordinates || !Number.isFinite(coordinates[0]) || !Number.isFinite(coordinates[1])) {
+          d.x = startX;
+          d.y = startY;
+          syncMarkerBoundaryState(d3.select(this), d, settings, markerSize);
+          d3.selectAll(`path[data-layout-id="${d.layoutId}"]`)
+            .classed("is-off-canvas", isPointOffCanvas(d, settings))
+            .attr("d", linePath(d, settings));
           setStatusMessage(t("status.coordinateUpdateFailed", { name: d.name }), "danger");
           return;
         }
 
+        if (moved) pushAppUndoHistory("marker coordinate move");
         const lon = roundCoordinate(coordinates[0]);
         const lat = roundCoordinate(coordinates[1]);
         updateTableCoordinates(d.rowId, lon, lat);
         d.lon = lon;
         d.lat = lat;
-        setStatusMessage(t("status.coordinatesUpdated", { name: d.name }), "ok");
+        setStatusMessage(t(offCanvas ? "status.markerMovedOffCanvas" : "status.coordinatesUpdated", { name: d.name }), offCanvas ? "warning" : "ok");
       }));
+  }
+
+  function isPointOffCanvas(position, settings) {
+    const width = Math.max(0, Number(settings && settings.width) || 0);
+    const height = Math.max(0, Number(settings && settings.height) || 0);
+    const x = Number(position && position.x);
+    const y = Number(position && position.y);
+    return Number.isFinite(x) && Number.isFinite(y) && (x < 0 || x > width || y < 0 || y > height);
+  }
+
+  function constrainLabelToCanvas(label, settings) {
+    const width = Math.max(0, Number(settings && settings.width) || 0);
+    const height = Math.max(0, Number(settings && settings.height) || 0);
+    const sourceX = Number(label && label.labelX);
+    const sourceY = Number(label && label.labelY);
+    const rect = labelBackgroundRect(label);
+    let offsetX = 0;
+    let offsetY = 0;
+    if (rect.x1 - rect.x0 <= width) {
+      if (rect.x0 < 0) offsetX = -rect.x0;
+      else if (rect.x1 > width) offsetX = width - rect.x1;
+    } else {
+      offsetX = -rect.x0;
+    }
+    if (rect.y1 - rect.y0 <= height) {
+      if (rect.y0 < 0) offsetY = -rect.y0;
+      else if (rect.y1 > height) offsetY = height - rect.y1;
+    } else {
+      offsetY = -rect.y0;
+    }
+    const labelX = sourceX + offsetX;
+    const labelY = sourceY + offsetY;
+    return {
+      labelX,
+      labelY,
+      wasConstrained: Math.abs(offsetX) > 0.01 || Math.abs(offsetY) > 0.01
+    };
+  }
+
+  function constrainMarkerToVisibleGutter(position, settings, markerSize) {
+    const width = Math.max(0, Number(settings && settings.width) || 0);
+    const height = Math.max(0, Number(settings && settings.height) || 0);
+    const warningGutter = Math.max(16, (Number(markerSize) || 0) + 8);
+    const sourceX = Number.isFinite(Number(position && position.x)) ? Number(position.x) : width / 2;
+    const sourceY = Number.isFinite(Number(position && position.y)) ? Number(position.y) : height / 2;
+    const x = clamp(sourceX, -warningGutter, width + warningGutter);
+    const y = clamp(sourceY, -warningGutter, height + warningGutter);
+    return {
+      x,
+      y,
+      wasConstrained: Math.abs(x - sourceX) > 0.01 || Math.abs(y - sourceY) > 0.01,
+      offCanvas: isPointOffCanvas({ x, y }, settings)
+    };
+  }
+
+  function syncMarkerBoundaryState(node, d, settings, markerSize) {
+    const offCanvas = isPointOffCanvas(d, settings);
+    moveMarkerNode(node, d, { markerSize });
+    node
+      .classed("is-off-canvas", offCanvas)
+      .attr("data-off-canvas", String(offCanvas));
+    d3.selectAll(".marker-boundary-warning")
+      .filter(warning => String(warning && warning.rowId) === String(d.rowId))
+      .classed("is-active", offCanvas)
+      .attr("cx", d.x)
+      .attr("cy", d.y)
+      .attr("r", markerSize + 4);
   }
 
   function positionLabelBackground(node, d) {
@@ -8249,7 +8514,6 @@
     if (active.classList.contains("name-input")) fieldIndex = activeFields.indexOf("name");
     if (active.classList.contains("footnote-input")) fieldIndex = activeFields.indexOf("footnote");
     if (active.classList.contains("type-input")) fieldIndex = activeFields.indexOf("type");
-    if (active.classList.contains("priority-input")) fieldIndex = activeFields.indexOf("priority");
     if (active.classList.contains("region-input")) fieldIndex = activeFields.indexOf("region");
     if (active.classList.contains("lon-input")) fieldIndex = activeFields.indexOf("lon");
     if (active.classList.contains("lat-input")) fieldIndex = activeFields.indexOf("lat");
@@ -8358,7 +8622,6 @@
     if (field === "name") tr.querySelector(".name-input").value = String(value || "").trim();
     if (field === "footnote") tr.querySelector(".footnote-input").value = normalizeFootnote(value);
     if (field === "type") tr.querySelector(".type-input").value = cleanType(value);
-    if (field === "priority") tr.querySelector(".priority-input").value = toPriority(value);
     if (field === "region") {
       const resolved = resolveProjectRegionInput(value);
       tr.dataset.region = resolved.status === "matched" ? resolved.id : "";
@@ -8697,6 +8960,9 @@
     if (event && (event.target === els.markerSizeInput || event.target === els.lineWidthInput)) {
       syncDefaultCategorySizes();
     }
+    if (target === els.mapScaleInput) {
+      target.value = normalizeMapScale(target.value);
+    }
     syncCompactFurnitureAvailability();
     if (!target || target === els.markerSizeInput || target === els.lineWidthInput) {
       renderCategoryEditors();
@@ -8704,7 +8970,6 @@
     scheduleRender();
     if (event && event.target === els.mapScaleInput) {
       rememberCurrentLanguageMapScale();
-      updateCanvasToolbar();
       setStatusMessage(t("status.mapSizeChanged"), "ok");
     }
   }
@@ -8967,18 +9232,28 @@
     };
   }
 
+  function getCalloutTypography(settings) {
+    const fallback = getLabelTypographyRenderSizes(
+      settings && (settings.labelSizePt || settings.labelSize),
+      settings && settings.outputMode
+    );
+    return {
+      headingSize: Number(settings && settings.labelTitleSizeRender) || fallback.title,
+      nameSize: Number(settings && settings.labelBodySizeRender) || fallback.body
+    };
+  }
+
   function getCalloutContentLayout(calloutRows, settings, width) {
     const compact = settings.compactFurniture !== false;
     const rowMetrics = getFurnitureRowMetrics(settings);
     const headingText = getChromeText("calloutHeading", settings.mapLanguage);
-    const headingSize = Math.max(settings.labelSizeRender, Math.round(settings.labelSizeRender * 1.02));
-    const headingHeight = Math.max(compact ? 26 : 31, Math.round(headingSize * (compact ? 1.85 : 2.1)));
-    const nameSize = settings.labelSizeRender;
-    const lineH = Math.max(compact ? 20 : 23, Math.round(nameSize * (compact ? 1.6 : 1.75)));
-    const rowGap = Math.max(compact ? 9 : 12, Math.round(settings.labelSizeRender * (compact ? 0.7 : 0.9)));
-    const padV = Math.max(compact ? 18 : 22, Math.round(settings.labelSize * (compact ? 1.45 : 1.7)));
+    const { headingSize, nameSize } = getCalloutTypography(settings);
+    const headingHeight = Math.max(compact ? 22 : 26, Math.round(headingSize * (compact ? 1.8 : 2)));
+    const lineH = Math.max(compact ? 12 : 14, Math.round(nameSize * (compact ? 1.5 : 1.65)));
+    const rowGap = Math.max(compact ? 6 : 8, Math.round(nameSize * (compact ? 0.75 : 1)));
+    const padV = Math.max(compact ? 16 : 20, Math.round(headingSize * (compact ? 1.4 : 1.6)));
     const headingRuleY = padV + headingHeight;
-    const headingRuleGap = compact ? 16 : 18;
+    const headingRuleGap = compact ? 12 : 15;
     const { textX, markerX, rightPad } = rowMetrics;
     const textWidth = Math.max(90, width - textX - rightPad);
     const maxNameChars = Math.max(12, Math.floor(textWidth / Math.max(6, nameSize * 0.58)));
@@ -8986,10 +9261,12 @@
     const rows = calloutRows.map((row, index) => {
       const nameLines = getLabelLines(row, { ...settings, labelMaxChars: maxNameChars });
       const nameHeight = nameLines.length * lineH;
-      const rowHeight = nameHeight;
+      const markerSize = Math.max(7, Math.min(14, getCategoryMarkerSize(getCategory(row.type), settings)));
+      const rowHeight = Math.max(nameHeight, markerSize * 2);
       const layout = {
         row,
         rowY: cursorY,
+        textY: cursorY + (rowHeight - nameHeight) / 2,
         rowHeight,
         nameLines
       };
@@ -9015,10 +9292,11 @@
   function getCalloutBoxLayout(calloutRows, settings) {
     const compact = settings.compactFurniture !== false;
     const headingText = getChromeText("calloutHeading", settings.mapLanguage);
+    const { headingSize, nameSize } = getCalloutTypography(settings);
     const longestNameLen = Math.max(0, ...calloutRows.map(row => getLabelText(row, settings.mapLanguage).length));
     const boxPad = compact ? 118 : 132;
-    const nameWidth = longestNameLen * settings.labelSize * 0.58 + boxPad;
-    const headingWidth = headingText.length * Math.max(settings.labelSize, Math.round(settings.labelSize * 1.02)) * 0.58 + boxPad;
+    const nameWidth = longestNameLen * nameSize * 0.58 + boxPad;
+    const headingWidth = headingText.length * headingSize * 0.58 + boxPad;
     const fallbackWidth = Math.max(compact ? 270 : 300, Math.min(settings.width - 40, Math.round(Math.max(nameWidth, headingWidth))));
     const widthConstraints = {
       minWidth: compact ? 260 : 290,
@@ -9367,7 +9645,7 @@
       .attr("y2", headingRuleY);
 
     rows.forEach(layout => {
-      const { row, rowY, nameLines, rowHeight } = layout;
+      const { row, rowY, textY, nameLines, rowHeight } = layout;
       const category = getCategory(row.type);
       const markerSize = Math.max(7, Math.min(14, getCategoryMarkerSize(category, settings)));
       drawMarkerSymbol(group, category, markerX, rowY + rowHeight / 2, markerSize);
@@ -9375,7 +9653,7 @@
       const nameEl = group.append("text")
         .attr("class", "callout-text")
         .attr("x", textX)
-        .attr("y", rowY)
+        .attr("y", textY)
         .attr("font-size", nameSize)
         .attr("font-family", settings.fontFamily)
         .attr("dominant-baseline", "hanging");
@@ -9469,21 +9747,29 @@
   }
 
   function getCategorySwatchSvg(category) {
+    const markerSize = optionalNumber(category.markerSize) || layoutDefaults.markerSizeInput;
+    const lineWidth = optionalNumber(category.lineWidth) || layoutDefaults.lineWidthInput;
+    const previewRadius = Math.max(2, Math.min(12, markerSize));
+    const previewLineWidth = Math.max(1, Math.min(4, lineWidth));
+    const centre = 14;
+    const svgAttributes = `class="category-marker-preview" viewBox="0 0 28 28" data-marker-size="${markerSize}" data-preview-radius="${previewRadius}" style="width:28px;height:28px" aria-hidden="true"`;
     if (category.customIcon) {
       const href = escapeHtml(category.customIcon.dataUrl);
-      return `<svg viewBox="0 0 24 24" aria-hidden="true"><image href="${href}" xlink:href="${href}" x="3" y="3" width="18" height="18" preserveAspectRatio="xMidYMid meet"></image></svg>`;
+      const iconSize = previewRadius * 2;
+      return `<svg ${svgAttributes}><image href="${href}" xlink:href="${href}" x="${centre - previewRadius}" y="${centre - previewRadius}" width="${iconSize}" height="${iconSize}" preserveAspectRatio="xMidYMid meet"></image></svg>`;
     }
 
     const fill = escapeHtml(category.colour);
     const stroke = escapeHtml(category.stroke);
     if (category.shape === "circle") {
-      return `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="${fill}" stroke="${stroke}" stroke-width="2.5"></circle></svg>`;
+      return `<svg ${svgAttributes}><circle cx="${centre}" cy="${centre}" r="${previewRadius}" fill="${fill}" stroke="${stroke}" stroke-width="${previewLineWidth}"></circle></svg>`;
     }
     if (category.shape === "square") {
-      return `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" fill="${fill}" stroke="${stroke}" stroke-width="2.5"></rect></svg>`;
+      const side = previewRadius * 2;
+      return `<svg ${svgAttributes}><rect x="${centre - previewRadius}" y="${centre - previewRadius}" width="${side}" height="${side}" fill="${fill}" stroke="${stroke}" stroke-width="${previewLineWidth}"></rect></svg>`;
     }
 
-    return `<svg viewBox="-12 -12 24 24" aria-hidden="true"><path d="${markerPath(category.shape, 9)}" fill="${fill}" stroke="${stroke}" stroke-width="2.5"></path></svg>`;
+    return `<svg ${svgAttributes}><path d="${markerPath(category.shape, previewRadius)}" transform="translate(${centre} ${centre})" fill="${fill}" stroke="${stroke}" stroke-width="${previewLineWidth}"></path></svg>`;
   }
 
   function starPath(size) {
@@ -9882,6 +10168,61 @@
     if (dialog._returnFocus && typeof dialog._returnFocus.focus === "function") dialog._returnFocus.focus();
   }
 
+  function setDynamicDialogTranslation(node, key, params = {}) {
+    if (!node) return;
+    node.dataset.i18n = key;
+    if (Object.keys(params).length) node.dataset.i18nParams = JSON.stringify(params);
+    else delete node.dataset.i18nParams;
+    node.textContent = t(key, params);
+  }
+
+  function getConfirmationCopy(confirmation = pendingConfirmation) {
+    if (!confirmation) return null;
+    const deleting = confirmation.kind === "delete";
+    const label = confirmation.count === 1
+      ? t(deleting ? "status.selectedRowSingular" : "status.projectRowSingular")
+      : t(deleting ? "status.selectedRowPlural" : "status.projectRowPlural");
+    return {
+      titleKey: deleting ? "dialog.confirm.deleteTitle" : "dialog.confirm.clearTitle",
+      actionKey: deleting ? "dialog.confirm.deleteAction" : "dialog.confirm.clearAction",
+      messageKey: deleting ? "status.deleteSelectedRowsConfirm" : "status.clearProjectRowsConfirm",
+      messageParams: { count: confirmation.count, label }
+    };
+  }
+
+  function renderConfirmationDialog() {
+    const copy = getConfirmationCopy();
+    if (!copy) return;
+    setDynamicDialogTranslation(els.confirmationTitle, copy.titleKey);
+    setDynamicDialogTranslation(els.confirmationMessage, copy.messageKey, copy.messageParams);
+    setDynamicDialogTranslation(els.confirmationConfirmBtn, copy.actionKey);
+  }
+
+  function openConfirmationDialog(options = {}) {
+    if (!els.confirmationDialog) {
+      if (typeof options.onConfirm === "function") options.onConfirm();
+      return;
+    }
+    pendingConfirmation = {
+      kind: options.kind === "delete" ? "delete" : "clear",
+      count: Number(options.count) || 0,
+      onConfirm: options.onConfirm,
+      onCancel: options.onCancel
+    };
+    renderConfirmationDialog();
+    openDialog(els.confirmationDialog, options.returnFocus);
+    els.confirmationConfirmBtn?.focus({ preventScroll: true });
+  }
+
+  function resolveConfirmationDialog(confirmed) {
+    if (!pendingConfirmation) return;
+    const confirmation = pendingConfirmation;
+    pendingConfirmation = null;
+    closeDialog(els.confirmationDialog);
+    const callback = confirmed ? confirmation.onConfirm : confirmation.onCancel;
+    if (typeof callback === "function") callback();
+  }
+
   function openMapDetailsDialog() {
     els.mapTitleEnInput.value = mapDetails.titleEn;
     els.mapTitleFrInput.value = mapDetails.titleFr;
@@ -10036,7 +10377,6 @@
     { key: "nameFr", labelKey: "dialog.csv.field.nameFr", required: false },
     { key: "type", labelKey: "dialog.csv.field.type", required: false },
     { key: "typeFr", labelKey: "dialog.csv.field.typeFr", required: false },
-    { key: "priority", labelKey: "dialog.csv.field.priority", required: false },
     { key: "lon", labelKey: "dialog.csv.field.lon", required: false },
     { key: "lat", labelKey: "dialog.csv.field.lat", required: false }
   ];
@@ -10045,7 +10385,6 @@
     { key: "nameFr", labelKey: "dialog.csv.field.nameFr", required: false },
     { key: "type", labelKey: "dialog.csv.field.type", required: true },
     { key: "typeFr", labelKey: "dialog.csv.field.typeFr", required: false },
-    { key: "priority", labelKey: "dialog.csv.field.priority", required: false },
     { key: "region", labelKey: "dialog.csv.field.region", required: true }
   ];
 
@@ -10567,8 +10906,8 @@
     on(els.previewEmptyState, "click", handlePreviewStateAction);
     on(els.previewErrorState, "click", handlePreviewStateAction);
     on(els.projectTableEmptyState, "click", handleEmptyStateAction);
-    on(els.canvasZoomOutBtn, "click", () => adjustCanvasZoom(-5));
-    on(els.canvasZoomInBtn, "click", () => adjustCanvasZoom(5));
+    on(els.canvasZoomOutBtn, "click", () => adjustCanvasZoom(-1));
+    on(els.canvasZoomInBtn, "click", () => adjustCanvasZoom(1));
     on(els.canvasAutoPlaceBtn, "click", autoPlaceLabels);
     on(els.canvasPlaceLabelsOnlyBtn, "click", autoPlaceLabelsWithoutResize);
     on(els.closeShortcutsBtn, "click", closeShortcutsOverlay);
@@ -10594,6 +10933,11 @@
       on(button, "keydown", handleProjectToolbarMenuKeydown);
       on(menu, "keydown", handleProjectToolbarMenuKeydown);
     });
+    on(window, "resize", () => {
+      getProjectToolbarMenus().forEach(({ button, menu }) => {
+        if (!menu.hidden) positionProjectToolbarMenu(button, menu);
+      });
+    });
     document.querySelectorAll("[data-authoring-language]").forEach(button => {
       on(button, "click", () => setAuthoringLanguage(button.dataset.authoringLanguage));
     });
@@ -10608,22 +10952,24 @@
         return;
       }
 
-      const label = selectedRows.length === 1 ? t("status.selectedRowSingular") : t("status.selectedRowPlural");
-      if (!window.confirm(t("status.deleteSelectedRowsConfirm", { count: selectedRows.length, label }))) {
-        setStatusMessage(t("status.deleteCancelled"), "warning");
-        return;
-      }
-
-      pushAppUndoHistory("delete project rows");
-      selectedRows.forEach(tr => tr.classList.add("is-deleting"));
-      els.deleteSelectedBtn.disabled = true;
-      window.setTimeout(() => {
-        selectedRows.forEach(tr => tr.remove());
-        clearProjectCellSelection();
-        updateDeleteButtonState();
-        refreshProjectTableUx();
-        requestPreviewRefresh();
-      }, 260);
+      openConfirmationDialog({
+        kind: "delete",
+        count: selectedRows.length,
+        returnFocus: els.deleteSelectedBtn,
+        onCancel: () => setStatusMessage(t("status.deleteCancelled"), "warning"),
+        onConfirm: () => {
+          pushAppUndoHistory("delete project rows");
+          selectedRows.forEach(tr => tr.classList.add("is-deleting"));
+          els.deleteSelectedBtn.disabled = true;
+          window.setTimeout(() => {
+            selectedRows.forEach(tr => tr.remove());
+            clearProjectCellSelection();
+            updateDeleteButtonState();
+            refreshProjectTableUx();
+            requestPreviewRefresh();
+          }, 260);
+        }
+      });
     });
     on(els.projectTableTab, "click", () => setActiveDataTab("projects"));
     on(els.categoriesTableTab, "click", () => setActiveDataTab("categories"));
@@ -10659,6 +11005,11 @@
     on(els.propertiesCollapseBtn, "click", togglePropertiesPanel);
     on(els.propertiesResizeHandle, "pointerdown", handlePropertiesResizeStart);
     on(els.propertiesResizeHandle, "keydown", handlePropertiesResizeKeydown);
+    els.propertiesSideInputs.forEach(input => {
+      on(input, "change", event => {
+        if (event.target.checked) setPropertiesPanelSide(event.target.value);
+      });
+    });
     if (typeof propertiesDrawerMedia.addEventListener === "function") {
       propertiesDrawerMedia.addEventListener("change", syncResponsivePropertiesState);
     } else {
@@ -10767,6 +11118,11 @@
         if (key === "map-details") updateMapDetailsState();
       });
     });
+    on(els.confirmationDialog, "click", event => {
+      const action = event.target.closest("[data-confirmation-action]")?.dataset.confirmationAction;
+      if (action === "confirm") resolveConfirmationDialog(true);
+      if (action === "cancel") resolveConfirmationDialog(false);
+    });
     on(els.pointCatalogDialog, "click", event => {
       const viewTab = event.target.closest("[data-catalog-view]");
       if (viewTab) {
@@ -10806,9 +11162,6 @@
     els.translationFilters.forEach(button => {
       on(button, "click", () => setTranslationFilter(button.dataset.translationFilter));
     });
-    document.querySelectorAll("[data-translation-direction]").forEach(button => {
-      on(button, "click", () => setAuthoringLanguage(button.dataset.translationDirection === "fr-en" ? "fr" : "en"));
-    });
     on(els.translationGroups, "click", handleTranslationSelection);
     on(els.translationGroups, "focusin", handleTranslationSelection);
     on(els.translationGroups, "focusin", event => primeInputUndo(event.target, "translation edit"));
@@ -10826,6 +11179,9 @@
     [els.mapLanguageInput, els.previewLanguageInput].forEach(input => {
       on(input, "change", event => setMapLanguage(event.target.value));
     });
+    els.mapLanguageButtons.forEach(button => {
+      on(button, "click", () => setMapLanguage(button.dataset.mapLanguage));
+    });
     els.uiLanguageButtons.forEach(button => {
       on(button, "click", () => applyUiLanguage(button.dataset.uiLanguage));
     });
@@ -10839,18 +11195,15 @@
     on(els.projectTable, "click", handleProjectCellSelection);
     on(els.projectTable, "focusin", handleProjectCellSelection);
     on(els.projectTable, "keydown", handleProjectTableKeydown);
-    on(els.bulkPriorityInput, "change", event => {
-      if (event.target.value !== "") applyBulkPriority(event.target.value);
-      event.target.value = "";
-    });
     on(els.bulkClearCoordinatesBtn, "click", clearSelectedCoordinateCells);
     document.addEventListener("keydown", handleGlobalKeyboardShortcuts);
     document.addEventListener("keydown", event => {
-      const openDialogElement = [els.startupDialog, els.csvMapDialog, els.pointCatalogDialog, els.mapDetailsDialog].find(dialog => dialog && !dialog.hidden);
+      const openDialogElement = [els.confirmationDialog, els.startupDialog, els.csvMapDialog, els.pointCatalogDialog, els.mapDetailsDialog].find(dialog => dialog && !dialog.hidden);
       if (!openDialogElement) return;
       if (event.key === "Escape") {
         event.preventDefault();
-        if (openDialogElement === els.startupDialog) closeStartupDialog();
+        if (openDialogElement === els.confirmationDialog) resolveConfirmationDialog(false);
+        else if (openDialogElement === els.startupDialog) closeStartupDialog();
         else closeDialog(openDialogElement);
         return;
       }
@@ -11149,6 +11502,7 @@
     renderBookSizeOptions();
     renderFontOptions();
     if (!applySavedLayoutPreferences()) renderImageSizeOptions();
+    canvasViewZoom = getSavedCanvasViewZoom();
     syncCompactFurnitureAvailability();
     renderRegionPresetOptions();
     renderMapStyleOptions();
@@ -11188,6 +11542,9 @@
       applyManualLabelPositions,
       normalizeAnnotationContent,
       getLabelLines,
+      getLabelTypographyRenderSizes,
+      getLabelLineFontSize,
+      getCalloutContentLayout,
       normalizeRichLabelImageDisplaySize,
       getRichLabelImageDimensions,
       getLocalizedConfigLabel,
@@ -11201,6 +11558,9 @@
       toBoolean,
       cleanType,
       formatLocalizedDecimal,
+      isPointOffCanvas,
+      constrainMarkerToVisibleGutter,
+      constrainLabelToCanvas,
       makeLabelBox,
       validateAndNormalizeProject,
       switchActiveLanguageLayout,

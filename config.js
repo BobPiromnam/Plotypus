@@ -76,9 +76,9 @@
         stylesheet: "themes/goc-green.css?v=20260612-map-only",
         regionColours: fallbackRegionColours,
         categoryStyles: [
-          { colour: "#444444", stroke: "#ffffff", markerSize: 10, lineWidth: 2 },
-          { colour: "#ffffff", stroke: "#555555", markerSize: 10, lineWidth: 2 },
-          { colour: "#0b6b57", stroke: "#ffffff", markerSize: 10, lineWidth: 2 }
+          { colour: "#444444", stroke: "#ffffff", markerSize: 4, lineWidth: 2 },
+          { colour: "#ffffff", stroke: "#555555", markerSize: 4, lineWidth: 2 },
+          { colour: "#0b6b57", stroke: "#ffffff", markerSize: 4, lineWidth: 2 }
         ]
       },
       "goc-blue": {
@@ -121,28 +121,31 @@
       footnote: ["footnote", "footnote marker", "note", "superscript"],
       type: ["type", "category", "project type"],
       typeFr: ["type_fr", "type fr", "categorie", "category fr", "french type"],
-      priority: ["priority", "label priority", "importance", "rank"],
       lon: ["lon", "longitude", "long"],
       lat: ["lat", "latitude"],
       hideLine: ["hide line", "hide lines", "hideline", "no line", "no leader line"]
     },
-    tableFields: ["name", "footnote", "type", "priority", "lon", "lat"],
+    tableFields: ["name", "footnote", "type", "lon", "lat"],
     layoutDefaults: {
       bookSizeInput: "letter",
       imageSizeInput: "full",
       labelSizeInput: 12,
       mapScaleInput: 100,
-      markerSizeInput: 10,
+      markerSizeInput: 4,
       lineWidthInput: 2,
       labelCharsInput: 24
     },
     storageKeys: {
-      layoutPreferences: "plotypus.layoutPreferences"
+      layoutPreferences: "plotypus.layoutPreferences",
+      propertiesPanel: "plotypus.propertiesPanel",
+      uiLanguage: "plotypus.uiLanguage",
+      canvasViewZoom: "plotypus.canvasViewZoom"
     },
     imageSizePresets: {
       letter: {
         label: "8.5 x 11",
         labelFr: "8,5 x 11",
+        documentPage: { widthIn: 8.5, heightIn: 11, marginIn: 1 },
         sizes: [
           { value: "full", label: "Full page", labelFr: "Page complète", width: 612, height: 750 },
           { value: "two-thirds", label: "2/3 page", labelFr: "2/3 de page", width: 612, height: 520 },
@@ -154,6 +157,7 @@
       compact: {
         label: "6.5 x 9.75",
         labelFr: "6,5 x 9,75",
+        documentPage: { widthIn: 6.5, heightIn: 9.75, marginIn: 0.75 },
         sizes: [
           { value: "full", label: "Full page", labelFr: "Page complète", width: 468, height: 700 },
           { value: "two-thirds", label: "2/3 page", labelFr: "2/3 de page", width: 468, height: 468 },
@@ -218,7 +222,7 @@
         shape: "circle",
         colour: "#444444",
         stroke: "#ffffff",
-        markerSize: 10,
+        markerSize: 4,
         lineWidth: 2,
         markerSizeCustom: false,
         lineWidthCustom: false,
@@ -233,7 +237,7 @@
         shape: "square",
         colour: "#ffffff",
         stroke: "#555555",
-        markerSize: 10,
+        markerSize: 4,
         lineWidth: 2,
         markerSizeCustom: false,
         lineWidthCustom: false,

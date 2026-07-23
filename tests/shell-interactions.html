@@ -24,10 +24,18 @@
     const loadSample = params.get("sample") === "1";
     const measurePerformance = params.get("performance") === "1";
     const visualCapture = params.get("visual") === "1";
+    const seededCanvasZoom = Number(params.get("canvasZoom"));
+    const canvasZoomLevels = [25, 33, 50, 67, 75, 90, 100, 110, 125, 150, 175, 200];
+    const initialCanvasZoom = canvasZoomLevels.includes(seededCanvasZoom) ? seededCanvasZoom : 125;
     if (visualCapture) document.documentElement.classList.add("is-visual-capture");
     try {
       localStorage.removeItem("plotypus.propertiesPanel");
       localStorage.removeItem("plotypus.uiLanguage");
+      if (canvasZoomLevels.includes(seededCanvasZoom)) {
+        localStorage.setItem("plotypus.canvasViewZoom", JSON.stringify(seededCanvasZoom));
+      } else {
+        localStorage.removeItem("plotypus.canvasViewZoom");
+      }
     } catch (_error) {
       // Storage may be unavailable in a locked-down browser profile.
     }
@@ -57,11 +65,60 @@
       checks.push({ name, pass: Boolean(pass), detail });
     }
 
+    function floatingSurfaceState(surface, { boundary = null, hitTarget = null } = {}) {
+      if (!surface) return { pass: false, detail: "surface missing" };
+      const view = surface.ownerDocument.defaultView;
+      const rect = surface.getBoundingClientRect();
+      const rawBoundaryRect = boundary?.getBoundingClientRect() || {
+        top: 0,
+        right: view.innerWidth,
+        bottom: view.innerHeight,
+        left: 0
+      };
+      const boundaryRect = {
+        top: Math.max(0, rawBoundaryRect.top),
+        right: Math.min(view.innerWidth, rawBoundaryRect.right),
+        bottom: Math.min(view.innerHeight, rawBoundaryRect.bottom),
+        left: Math.max(0, rawBoundaryRect.left)
+      };
+      const target = hitTarget || surface;
+      const targetRect = target.getBoundingClientRect();
+      const sampleX = Math.min(Math.max(targetRect.left + targetRect.width / 2, 0), view.innerWidth - 1);
+      const sampleY = Math.min(Math.max(targetRect.top + targetRect.height / 2, 0), view.innerHeight - 1);
+      const topNode = surface.ownerDocument.elementFromPoint(sampleX, sampleY);
+      const style = view.getComputedStyle(surface);
+      const hasSize = rect.width > 0 && rect.height > 0;
+      const isRendered = style.display !== "none" && style.visibility !== "hidden";
+      const isContained = rect.left >= boundaryRect.left - 1
+        && rect.right <= boundaryRect.right + 1
+        && rect.top >= boundaryRect.top - 1
+        && rect.bottom <= boundaryRect.bottom + 1;
+      const isTopmost = Boolean(topNode && (target === topNode || target.contains(topNode)));
+      return {
+        pass: hasSize && isRendered && isContained && isTopmost,
+        detail: `surface=${Math.round(rect.left)},${Math.round(rect.top)}-${Math.round(rect.right)},${Math.round(rect.bottom)} boundary=${Math.round(boundaryRect.left)},${Math.round(boundaryRect.top)}-${Math.round(boundaryRect.right)},${Math.round(boundaryRect.bottom)} top=${topNode?.tagName || "none"}#${topNode?.id || ""}.${topNode?.className?.baseVal || topNode?.className || ""}`
+      };
+    }
+
     function parseCssRgb(value) {
-      const match = String(value || "").match(/rgba?\(([^)]+)\)/i);
+      const colour = String(value || "").trim();
+      const hexMatch = colour.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+      if (hexMatch) {
+        const hex = hexMatch[1].length === 3
+          ? hexMatch[1].split("").map(channel => channel + channel).join("")
+          : hexMatch[1];
+        return [0, 2, 4].map(offset => Number.parseInt(hex.slice(offset, offset + 2), 16));
+      }
+      const match = colour.match(/rgba?\(([^)]+)\)/i);
       if (!match) return null;
       const channels = match[1].split(",").slice(0, 3).map(part => Number.parseFloat(part.trim()));
       return channels.length === 3 && channels.every(Number.isFinite) ? channels : null;
+    }
+
+    function cssColoursMatch(first, second) {
+      const firstRgb = parseCssRgb(first);
+      const secondRgb = parseCssRgb(second);
+      return Boolean(firstRgb && secondRgb && firstRgb.every((channel, index) => Math.abs(channel - secondRgb[index]) < 0.5));
     }
 
     function relativeLuminanceFromCssColor(value) {
@@ -138,9 +195,11 @@
       /\bDetailed publishing checklist\b/i,
       /\bLoad data to generate the map\b/i,
       /\bMap canvas\b/i,
+      /\bDocument page preview\b/i,
+      /\bScreen guide only\b/i,
       /\bAuto-place\b/i,
-      /\bFit map \+ labels\b/i,
-      /\bLabels only\b/i,
+      /\bFit: map \+ labels\b/i,
+      /\bFit: labels only\b/i,
       /\bExport readiness\b/i,
       /\bAdd points from a source\b/i,
       /\bCurated presets\b/i,
@@ -244,12 +303,63 @@
         if (doc.fonts?.load) await doc.fonts.load('12px "IBM Plex Mono"');
         if (doc.fonts?.ready) await doc.fonts.ready;
         assert(checks, "Bundled IBM Plex Mono is available offline", !doc.fonts || doc.fonts.check('12px "IBM Plex Mono"'));
+        const rootStyle = frame.contentWindow.getComputedStyle(doc.documentElement);
+        const brandSurfaces = {
+          app: rootStyle.getPropertyValue("--app-background").trim(),
+          controls: rootStyle.getPropertyValue("--control-background").trim(),
+          content: rootStyle.getPropertyValue("--content-background").trim(),
+          properties: rootStyle.getPropertyValue("--properties-background").trim()
+        };
+        const brandInk = rootStyle.getPropertyValue("--ink").trim();
+        const brandAccent = rootStyle.getPropertyValue("--accent").trim();
+        assert(checks, "App chrome uses four distinct semantic brand surfaces", Object.values(brandSurfaces).every(Boolean) && new Set(Object.values(brandSurfaces)).size === 4, JSON.stringify(brandSurfaces));
+        const brandSurfaceContrasts = Object.entries(brandSurfaces).map(([name, colour]) => [name, contrastRatioFromCssColors(brandInk, colour)]);
+        assert(checks, "Brand surfaces preserve readable text contrast", brandSurfaceContrasts.every(([, ratio]) => ratio >= 4.5), brandSurfaceContrasts.map(([name, ratio]) => `${name}=${ratio.toFixed(2)}`).join(", "));
+        const primaryButtonContrast = contrastRatioFromCssColors("#ffffff", brandAccent);
+        assert(checks, "Primary brand buttons preserve readable contrast", primaryButtonContrast >= 4.5, primaryButtonContrast.toFixed(2));
+        const dialogCardSurfaces = [
+          ...doc.querySelectorAll(".app-dialog .dialog-card"),
+          doc.querySelector(".shortcuts-overlay .shortcuts-card")
+        ].filter(Boolean);
+        const dialogChromeSurfaces = Array.from(doc.querySelectorAll(".app-dialog .dialog-header, .app-dialog .dialog-footer, .app-dialog .catalog-toolbar"));
+        const dialogBodySurfaces = Array.from(doc.querySelectorAll(".app-dialog .dialog-body"));
+        const dialogScrimSurfaces = [
+          ...doc.querySelectorAll(".app-dialog .dialog-scrim"),
+          doc.querySelector(".shortcuts-overlay")
+        ].filter(Boolean);
+        const contentSurface = brandSurfaces.content;
+        const controlSurface = brandSurfaces.controls;
+        const dialogScrim = rootStyle.getPropertyValue("--dialog-scrim").trim();
+        assert(checks, "Every modal uses the branded content surface", dialogCardSurfaces.length === 6 && dialogCardSurfaces.every(node => cssColoursMatch(frame.contentWindow.getComputedStyle(node).backgroundColor, contentSurface)), dialogCardSurfaces.map(node => frame.contentWindow.getComputedStyle(node).backgroundColor).join(", "));
+        assert(checks, "Dialog headers, toolbars, and footers use the branded control surface", dialogChromeSurfaces.length >= 10 && dialogChromeSurfaces.every(node => cssColoursMatch(frame.contentWindow.getComputedStyle(node).backgroundColor, controlSurface)), dialogChromeSurfaces.map(node => frame.contentWindow.getComputedStyle(node).backgroundColor).join(", "));
+        assert(checks, "Dialog bodies use the branded content surface", dialogBodySurfaces.length === 5 && dialogBodySurfaces.every(node => cssColoursMatch(frame.contentWindow.getComputedStyle(node).backgroundColor, contentSurface)), dialogBodySurfaces.map(node => frame.contentWindow.getComputedStyle(node).backgroundColor).join(", "));
+        assert(checks, "Every modal uses the shared branded scrim", dialogScrimSurfaces.length === 6 && dialogScrimSurfaces.every(node => cssColoursMatch(frame.contentWindow.getComputedStyle(node).backgroundColor, dialogScrim)), dialogScrimSurfaces.map(node => frame.contentWindow.getComputedStyle(node).backgroundColor).join(", "));
+        const workspaceIntros = Array.from(doc.querySelectorAll(".workspace-intro"));
+        const workspaceIntroSignatures = workspaceIntros.map(intro => {
+          const introStyle = frame.contentWindow.getComputedStyle(intro);
+          const copyStyle = frame.contentWindow.getComputedStyle(intro.querySelector(".workspace-intro-copy"));
+          const headingStyle = frame.contentWindow.getComputedStyle(intro.querySelector("h2"));
+          return [
+            introStyle.paddingTop,
+            introStyle.paddingRight,
+            introStyle.paddingBottom,
+            introStyle.paddingLeft,
+            introStyle.columnGap,
+            copyStyle.rowGap,
+            headingStyle.marginTop,
+            headingStyle.marginBottom
+          ].join("|");
+        });
+        assert(checks, "All six workspaces use the shared intro template", workspaceIntros.length === 6 && workspaceIntros.every(intro => intro.tagName === "HEADER" && intro.firstElementChild?.classList.contains("workspace-intro-copy")));
+        assert(checks, "All workspace intros use identical spacing", new Set(workspaceIntroSignatures).size === 1, workspaceIntroSignatures.join(", "));
         const startupDialog = await waitFor(() => {
           const dialog = doc.querySelector("#startupDialog");
           return dialog && dialog.hidden === false ? dialog : null;
         }, 4000);
         const startupActions = Array.from(startupDialog.querySelectorAll("[data-startup-action]")).map(button => button.dataset.startupAction);
         assert(checks, "Startup dialog opens for an empty app", startupDialog.getAttribute("role") === "dialog" && startupDialog.getAttribute("aria-modal") === "true" && startupDialog.getAttribute("aria-labelledby") === "startupTitle");
+        const startupSurfaceState = floatingSurfaceState(startupDialog.querySelector(".dialog-card"));
+        assert(checks, "Startup dialog is fully visible and unobscured", startupSurfaceState.pass, startupSurfaceState.detail);
         assert(checks, "Startup dialog offers new, open, sample, and CSV choices", ["new", "open", "sample", "csv"].every(action => startupActions.includes(action)), startupActions.join(", "));
         assert(checks, "Startup dialog starts on Start new", doc.activeElement === doc.querySelector("#startupStartNewBtn"));
         const startupPrimaryOption = doc.querySelector("#startupStartNewBtn");
@@ -330,10 +440,43 @@
           assert(checks, "Sample auto-place uses the configured auto-place budget", latestAutoPlace.budgetMs === performanceApi.budgets.autoPlaceMs && latestAutoPlace.overBudget === (latestAutoPlace.totalMs > latestAutoPlace.budgetMs), `${latestAutoPlace.totalMs} / ${latestAutoPlace.budgetMs} ms`);
           assert(checks, "Scheduled render telemetry includes queue time", performanceSnapshot.latestByKind.autoPlace.source === "scheduled" && performanceSnapshot.latestByKind.autoPlace.queueMs >= 0, `${performanceSnapshot.latestByKind.autoPlace.source}, ${performanceSnapshot.latestByKind.autoPlace.queueMs} ms`);
         }
-        const mapScaleReadout = doc.querySelector("#canvasZoomReadout");
-        if (mapScaleReadout) {
-          const readoutText = mapScaleReadout.textContent.trim();
-          assert(checks, "Canvas toolbar uses rounded map scale readout", /^Map \d+%$/.test(readoutText), readoutText);
+        const canvasZoomReadout = doc.querySelector("#canvasZoomReadout");
+        if (canvasZoomReadout) {
+          const readoutText = canvasZoomReadout.textContent.trim();
+          const mapScaleBeforeCanvasZoom = doc.querySelector("#mapScaleInput")?.value;
+          const canvasWidthBeforeZoom = parseFloat(doc.querySelector("#mapSvg")?.style.width || "0");
+          const documentPageWidthBeforeZoom = parseFloat(frame.contentWindow.getComputedStyle(doc.querySelector("#documentPagePreview")).width || "0");
+          const zoomAfterIncrease = canvasZoomLevels.find(level => level > initialCanvasZoom);
+          assert(checks, seededCanvasZoom ? "Canvas zoom restores the saved browser preference on load" : "Canvas zoom defaults to 125%", readoutText === `Canvas ${initialCanvasZoom}%`, readoutText);
+          doc.querySelector("#canvasZoomInBtn")?.click();
+          const canvasWidthAfterZoom = parseFloat(doc.querySelector("#mapSvg")?.style.width || "0");
+          const documentPageWidthAfterZoom = parseFloat(frame.contentWindow.getComputedStyle(doc.querySelector("#documentPagePreview")).width || "0");
+          assert(checks, "Canvas zoom enlarges the composed canvas without changing baselayer size", canvasZoomReadout.textContent.trim() === `Canvas ${zoomAfterIncrease}%` && canvasWidthAfterZoom > canvasWidthBeforeZoom && doc.querySelector("#mapScaleInput")?.value === mapScaleBeforeCanvasZoom, `${canvasZoomReadout.textContent.trim()} | canvas ${canvasWidthBeforeZoom} -> ${canvasWidthAfterZoom} | baselayer ${mapScaleBeforeCanvasZoom} -> ${doc.querySelector("#mapScaleInput")?.value}`);
+          assert(checks, "Canvas zoom changes persist as a browser preference", JSON.parse(frame.contentWindow.localStorage.getItem("plotypus.canvasViewZoom") || "null") === zoomAfterIncrease);
+          assert(checks, "Canvas zoom enlarges the document-page context at the same time", documentPageWidthAfterZoom > documentPageWidthBeforeZoom, `${documentPageWidthBeforeZoom} -> ${documentPageWidthAfterZoom}`);
+          doc.querySelector("#canvasZoomOutBtn")?.click();
+          assert(checks, "Canvas zoom can return to its initial saved size", canvasZoomReadout.textContent.trim() === `Canvas ${initialCanvasZoom}%` && JSON.parse(frame.contentWindow.localStorage.getItem("plotypus.canvasViewZoom") || "null") === initialCanvasZoom, canvasZoomReadout.textContent.trim());
+          if (loadSample) {
+            const mapScaleInput = doc.querySelector("#mapScaleInput");
+            mapScaleInput.value = "45";
+            mapScaleInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+            doc.querySelector("#canvasZoomInBtn")?.click();
+            doc.querySelector("#canvasZoomInBtn")?.click();
+            const zoomAfterTwoIncreases = canvasZoomLevels.filter(level => level > initialCanvasZoom).slice(0, 2).at(-1);
+            const samplesBeforeSmallMapAutoFit = performanceApi.snapshot().samples.length;
+            doc.querySelector("#canvasAutoPlaceBtn")?.click();
+            await waitFor(() => performanceApi.snapshot().samples.length > samplesBeforeSmallMapAutoFit && performanceApi.snapshot().latestByKind.autoPlace, 60000);
+            const fittedScale = Number(mapScaleInput.value);
+            const labelBounds = Array.from(doc.querySelectorAll("#mapSvg .map-label")).map(label => label.getBBox());
+            const labelTop = Math.min(...labelBounds.map(box => box.y));
+            const labelBottom = Math.max(...labelBounds.map(box => box.y + box.height));
+            const canvasHeight = doc.querySelector("#mapSvg")?.viewBox?.baseVal?.height || 0;
+            assert(checks, "Fit map + labels can enlarge an undersized baselayer", fittedScale > 45, `45% -> ${fittedScale}%`);
+            assert(checks, "Auto-fit remains independent of canvas viewport zoom", canvasZoomReadout.textContent.trim() === `Canvas ${zoomAfterTwoIncreases}%`, canvasZoomReadout.textContent.trim());
+            assert(checks, "Recovered auto-fit layout uses the available canvas height", labelBounds.length > 0 && labelBottom - labelTop > canvasHeight * 0.55, `labels=${Math.round(labelTop)}-${Math.round(labelBottom)} canvas=${canvasHeight}`);
+            doc.querySelector("#canvasZoomOutBtn")?.click();
+            doc.querySelector("#canvasZoomOutBtn")?.click();
+          }
         }
 
         if (requestedDialog) {
@@ -341,8 +484,10 @@
             "map-details": "#mapDetailsDialog",
             "csv-map": "#csvMapDialog",
             "point-catalog": "#pointCatalogDialog",
+            "confirmation": "#confirmationDialog",
             "shortcuts": "#shortcutsOverlay",
             "export-menu": "#exportMenu",
+            "add-data-menu": "#projectAddMenu",
             "project-load-error": "#statusBox"
           };
           const dialogSelector = dialogMap[requestedDialog];
@@ -354,6 +499,8 @@
             await waitFor(() => doc.querySelector(dialogSelector)?.hidden === false);
             const dialog = doc.querySelector(dialogSelector);
             assert(checks, "Map details dialog opens", !dialog.hidden);
+            const mapDetailsSurfaceState = floatingSurfaceState(dialog.querySelector(".dialog-card"));
+            assert(checks, "Map details dialog is fully visible and unobscured", mapDetailsSurfaceState.pass, mapDetailsSurfaceState.detail);
             assert(checks, "Map details exposes modal semantics", dialog.getAttribute("role") === "dialog" && dialog.getAttribute("aria-modal") === "true" && dialog.getAttribute("aria-labelledby") === "mapDetailsTitle");
             assert(checks, "Map details starts on the English title", doc.activeElement === doc.querySelector("#mapTitleEnInput"));
             assert(checks, "Map details does not block saving partial bilingual details", dialog.querySelectorAll("input[required], textarea[required]").length === 0);
@@ -387,17 +534,19 @@
             const input = doc.querySelector("#csvInput");
             const transfer = new frame.contentWindow.DataTransfer();
             transfer.items.add(new frame.contentWindow.File([
-              "Project,Project FR,Type,Type FR,Priority,Longitude,Latitude\nTest project,Projet test,Referred Project,Projets soumis,2,-75.7,45.4"
+              "Project,Project FR,Type,Type FR,Details,Longitude,Latitude\nTest project,Projet test,Referred Project,Projets soumis,Funding approved,-75.7,45.4"
             ], "mapped-sample.csv", { type: "text/csv" }));
             Object.defineProperty(input, "files", { configurable: true, value: transfer.files });
             input.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
-            await waitFor(() => doc.querySelector(dialogSelector)?.hidden === false && doc.querySelectorAll("#csvMapRows .csv-map-row").length === 7, 8000);
+            await waitFor(() => doc.querySelector(dialogSelector)?.hidden === false && doc.querySelectorAll("#csvMapRows .csv-map-row").length === 6, 8000);
             const dialog = doc.querySelector(dialogSelector);
             const mappings = Array.from(dialog.querySelectorAll("#csvMapRows select"));
             assert(checks, "CSV mapping dialog opens", !dialog.hidden);
+            const csvMapSurfaceState = floatingSurfaceState(dialog.querySelector(".dialog-card"));
+            assert(checks, "CSV mapping dialog is fully visible and unobscured", csvMapSurfaceState.pass, csvMapSurfaceState.detail);
             assert(checks, "CSV mapping exposes modal semantics", dialog.getAttribute("role") === "dialog" && dialog.getAttribute("aria-modal") === "true" && dialog.getAttribute("aria-labelledby") === "csvMapTitle");
             assert(checks, "CSV mapping starts on the English-name mapping", doc.activeElement === dialog.querySelector("[data-csv-target='name'] select"), `${doc.activeElement?.tagName || "none"}#${doc.activeElement?.id || ""}`);
-            assert(checks, "All supported Plotypus fields are shown", mappings.length === 7);
+            assert(checks, "All supported Plotypus fields are shown without Priority", mappings.length === 6 && !dialog.querySelector("[data-csv-target='priority']"));
             assert(checks, "Detected columns are auto-matched", mappings.every(select => Boolean(select.value)));
             assert(checks, "Required mappings enable import", doc.querySelector("#confirmCsvMapBtn")?.disabled === false);
             assert(checks, "Source samples are visible", Array.from(dialog.querySelectorAll(".csv-map-sample")).some(sample => /Test project/.test(sample.textContent || "")));
@@ -405,10 +554,10 @@
             const regionImportMode = doc.querySelector("[data-csv-location-mode='regions']");
             assert(checks, "CSV mapping dialog exposes coordinate and region location modes", Boolean(coordinateImportMode && regionImportMode && coordinateImportMode.getAttribute("aria-pressed") === "true"));
             regionImportMode?.click();
-            await waitFor(() => doc.querySelectorAll("#csvMapRows .csv-map-row").length === 6 && doc.querySelector("#csvMapRows [data-csv-target='region']"), 2000);
+            await waitFor(() => doc.querySelectorAll("#csvMapRows .csv-map-row").length === 5 && doc.querySelector("#csvMapRows [data-csv-target='region']"), 2000);
             assert(checks, "Switching the dialog to Regions replaces coordinate mappings without changing the workspace yet", !doc.querySelector("#csvMapRows [data-csv-target='lon'], #csvMapRows [data-csv-target='lat']") && doc.querySelector("#projectTable")?.dataset.locationMode === "coordinates" && doc.querySelector("#confirmCsvMapBtn")?.disabled === true);
             coordinateImportMode?.click();
-            await waitFor(() => doc.querySelectorAll("#csvMapRows .csv-map-row").length === 7 && doc.querySelector("#csvMapRows [data-csv-target='lon'] select")?.value === "Longitude" && doc.querySelector("#csvMapRows [data-csv-target='lat'] select")?.value === "Latitude", 2000);
+            await waitFor(() => doc.querySelectorAll("#csvMapRows .csv-map-row").length === 6 && doc.querySelector("#csvMapRows [data-csv-target='lon'] select")?.value === "Longitude" && doc.querySelector("#csvMapRows [data-csv-target='lat'] select")?.value === "Latitude", 2000);
             assert(checks, "Switching back to Coordinates restores its detected mappings", coordinateImportMode?.getAttribute("aria-pressed") === "true" && doc.querySelector("#confirmCsvMapBtn")?.disabled === false);
             const composerToggle = doc.querySelector("#csvRichLabelEnabled");
             composerToggle.click();
@@ -423,9 +572,9 @@
             addedTemplate.value = "{Type} | ";
             addedTemplate.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
             addedTemplate.setSelectionRange(addedTemplate.value.length, addedTemplate.value.length);
-            addedCard.querySelector('[data-label-token="Priority"]')?.click();
+            addedCard.querySelector('[data-label-token="Details"]')?.click();
             const composedCard = Array.from(doc.querySelectorAll(".labelElementCard")).at(-1);
-            assert(checks, "Column tokens compose a multi-field label element", composedCard.querySelector(".elementTemplateInput")?.value === "{Type} | {Priority}" && /Referred Project\s*\|\s*2/.test(doc.querySelector("#csvRichLabelPreview")?.textContent || ""));
+            assert(checks, "Column tokens compose a multi-field label element", composedCard.querySelector(".elementTemplateInput")?.value === "{Type} | {Details}" && /Referred Project\s*\|\s*Funding approved/.test(doc.querySelector("#csvRichLabelPreview")?.textContent || ""));
             composedCard.querySelector('[data-label-element-action="remove"]')?.click();
             assert(checks, "Label elements can be deleted before import", doc.querySelectorAll(".labelElementCard").length === 1);
             doc.querySelector("[data-ui-language='fr']")?.click();
@@ -445,7 +594,7 @@
             doc.querySelector("#csvAddLabelElementBtn")?.click();
             const importTextCard = Array.from(doc.querySelectorAll(".labelElementCard")).at(-1);
             const importTextTemplate = importTextCard.querySelector(".elementTemplateInput");
-            importTextTemplate.value = "{Type} | {Priority}";
+            importTextTemplate.value = "{Type} | {Details}";
             importTextTemplate.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
             doc.querySelector("#confirmCsvMapBtn")?.click();
             await waitFor(() => dialog.hidden && doc.querySelectorAll("#projectTable tbody tr[data-row-id]").length === 1, 4000);
@@ -479,6 +628,8 @@
             const presetsTab = doc.querySelector("#pointCatalogPresetsTab");
             const sourcesTab = doc.querySelector("#pointCatalogSourcesTab");
             assert(checks, "Point catalog opens", !dialog.hidden);
+            const pointCatalogSurfaceState = floatingSurfaceState(dialog.querySelector(".dialog-card"));
+            assert(checks, "Point catalog dialog is fully visible and unobscured", pointCatalogSurfaceState.pass, pointCatalogSurfaceState.detail);
             assert(checks, "Point catalog exposes modal semantics", dialog.getAttribute("role") === "dialog" && dialog.getAttribute("aria-modal") === "true" && dialog.getAttribute("aria-labelledby") === "pointCatalogTitle");
             assert(checks, "Point catalog starts on Presets", doc.activeElement === presetsTab && presetsTab.getAttribute("aria-selected") === "true" && !doc.querySelector("#pointCatalogPresetsPanel").hidden);
             assert(checks, "Point catalog source tab is labelled Import CSV", sourcesTab.textContent.trim() === "Import CSV", sourcesTab.textContent.trim());
@@ -517,11 +668,58 @@
             doc.querySelector("#addPointsBtn")?.click();
             await waitFor(() => dialog.hidden === false);
           }
+          if (requestedDialog === "confirmation") {
+            doc.querySelector("#projectTableTab")?.click();
+            await waitFor(() => doc.body.dataset.workspaceView === "projects");
+            doc.querySelector("#addRowBtn")?.click();
+            await waitFor(() => doc.querySelectorAll("#projectTable tbody tr[data-row-id]").length === 1, 2000);
+            doc.querySelector("#clearRowsBtn")?.click();
+            const dialog = await waitFor(() => doc.querySelector(dialogSelector)?.hidden === false && doc.querySelector(dialogSelector), 2000);
+            const confirmationSurfaceState = floatingSurfaceState(dialog.querySelector(".dialog-card"));
+            assert(checks, "Confirmation dialog is fully visible and unobscured", confirmationSurfaceState.pass, confirmationSurfaceState.detail);
+            assert(checks, "Confirmation dialog exposes alert semantics", dialog.getAttribute("role") === "alertdialog" && dialog.getAttribute("aria-modal") === "true" && dialog.getAttribute("aria-labelledby") === "confirmationTitle" && dialog.getAttribute("aria-describedby") === "confirmationMessage");
+            assert(checks, "Confirmation dialog focuses the destructive action", doc.activeElement === doc.querySelector("#confirmationConfirmBtn"));
+            assert(checks, "Clear confirmation explains Undo recovery", /Clear 1 project row/.test(dialog.querySelector("#confirmationMessage")?.textContent || "") && /Use Undo/.test(dialog.querySelector("#confirmationMessage")?.textContent || ""), dialog.textContent || "");
+            doc.querySelector("[data-ui-language='fr']")?.click();
+            await waitFor(() => /Vider les points de projet/.test(dialog.querySelector("#confirmationTitle")?.textContent || ""), 2000);
+            assert(checks, "Open confirmation dialog switches fully to French", /Vider 1 ligne de projet/.test(dialog.querySelector("#confirmationMessage")?.textContent || "") && /Utilisez Annuler/.test(dialog.querySelector("#confirmationMessage")?.textContent || "") && /Vider le tableau/.test(doc.querySelector("#confirmationConfirmBtn")?.textContent || ""), dialog.textContent || "");
+            assertNoRawUiKeys(checks, "Confirmation dialog does not show raw translation keys in French", dialog);
+            assertNoKnownEnglishUi(checks, "Confirmation dialog does not show known English UI phrases in French", [dialog]);
+            dispatchKey(doc, "Escape");
+            await waitFor(() => dialog.hidden === true, 2000);
+            assert(checks, "Escape cancels confirmation and restores toolbar focus", /Vidage du tableau annulé/.test(doc.querySelector("#statusBox")?.textContent || "") && doc.activeElement === doc.querySelector("#projectMoreMenuBtn"));
+            const firstRowSelect = doc.querySelector("#projectTable .row-select");
+            firstRowSelect.checked = true;
+            firstRowSelect.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+            doc.querySelector("#deleteSelectedBtn")?.click();
+            await waitFor(() => dialog.hidden === false && /Supprimer les lignes sélectionnées/.test(dialog.querySelector("#confirmationTitle")?.textContent || ""), 2000);
+            assert(checks, "Delete selected reuses the branded confirmation dialog", /Supprimer 1 ligne sélectionnée/.test(dialog.querySelector("#confirmationMessage")?.textContent || "") && /Supprimer la sélection/.test(doc.querySelector("#confirmationConfirmBtn")?.textContent || ""), dialog.textContent || "");
+            dialog.querySelector("[data-confirmation-action='cancel']:not(.dialog-scrim)")?.click();
+            await waitFor(() => dialog.hidden === true, 2000);
+            assert(checks, "Confirmation cancel preserves the selected row", doc.querySelectorAll("#projectTable tbody tr[data-row-id]").length === 1 && /Suppression annulée/.test(doc.querySelector("#statusBox")?.textContent || ""));
+            doc.querySelector("#deleteSelectedBtn")?.click();
+            await waitFor(() => dialog.hidden === false, 2000);
+            doc.querySelector("#confirmationConfirmBtn")?.click();
+            await waitFor(() => dialog.hidden === true && doc.querySelectorAll("#projectTable tbody tr[data-row-id]").length === 0, 2000);
+            assert(checks, "Delete confirmation completes the destructive action", doc.querySelectorAll("#projectTable tbody tr[data-row-id]").length === 0);
+            doc.querySelector("#addRowBtn")?.click();
+            doc.querySelector("#addRowBtn")?.click();
+            await waitFor(() => doc.querySelectorAll("#projectTable tbody tr[data-row-id]").length === 2, 2000);
+            doc.querySelector("#clearRowsBtn")?.click();
+            await waitFor(() => dialog.hidden === false, 2000);
+            doc.querySelector("#confirmationConfirmBtn")?.click();
+            await waitFor(() => dialog.hidden === true && doc.querySelectorAll("#projectTable tbody tr[data-row-id]").length === 0, 2000);
+            assert(checks, "Clear-table confirmation completes the destructive action", doc.querySelectorAll("#projectTable tbody tr[data-row-id]").length === 0 && /Tableau des projets vidé/.test(doc.querySelector("#statusBox")?.textContent || ""));
+            doc.querySelector("[data-ui-language='en']")?.click();
+            await waitFor(() => doc.documentElement.lang === "en", 2000);
+          }
           if (requestedDialog === "shortcuts") {
             dispatchKey(doc, "?");
             await waitFor(() => doc.querySelector(dialogSelector)?.hidden === false);
             const dialog = doc.querySelector(dialogSelector);
             assert(checks, "Shortcuts dialog opens", !dialog.hidden);
+            const shortcutsSurfaceState = floatingSurfaceState(dialog.querySelector(".shortcuts-card"));
+            assert(checks, "Shortcuts dialog is fully visible and unobscured", shortcutsSurfaceState.pass, shortcutsSurfaceState.detail);
             assert(checks, "Shortcuts exposes modal semantics", dialog.getAttribute("role") === "dialog" && dialog.getAttribute("aria-modal") === "true" && dialog.getAttribute("aria-labelledby") === "shortcutsTitle");
             assert(checks, "Shortcuts starts with a close control", doc.activeElement === doc.querySelector("#closeShortcutsBtn"));
             doc.querySelector("[data-ui-language='fr']")?.click();
@@ -543,10 +741,12 @@
             await waitFor(() => doc.querySelector(dialogSelector)?.hidden === false);
             const menu = doc.querySelector(dialogSelector);
             assert(checks, "Export menu opens", !menu.hidden && trigger.getAttribute("aria-expanded") === "true");
+            const exportMenuSurfaceState = floatingSurfaceState(menu, { hitTarget: menu.querySelector("[role='menuitem']") });
+            assert(checks, "Export menu is fully visible and unobscured", exportMenuSurfaceState.pass, exportMenuSurfaceState.detail);
             assert(checks, "Export menu exposes map and data commands", menu.getAttribute("role") === "menu" && Array.from(menu.querySelectorAll("[role='menuitem']")).length === 3 && Boolean(doc.querySelector("#ribbonExportCsvBtn")));
             doc.querySelector("[data-ui-language='fr']")?.click();
             await waitFor(() => doc.documentElement.lang === "fr" && /Exporter en PNG/.test(menu.textContent || ""), 2000);
-            assert(checks, "Top language toggle switches Export menu copy to French", /Sorties cartographiques/.test(menu.textContent || "") && /Image matricielle pour les documents/.test(menu.textContent || "") && /Illustration vectorielle modifiable/.test(menu.textContent || "") && /Données modifiables des points de projet/.test(menu.textContent || ""), menu.textContent || "");
+            assert(checks, "Top language toggle switches Export menu copy to French", /Sorties cartographiques/.test(menu.textContent || "") && /Image matricielle/.test(menu.textContent || "") && /Illustration vectorielle modifiable/.test(menu.textContent || "") && /Données modifiables des points de projet/.test(menu.textContent || ""), menu.textContent || "");
             assertNoRawUiKeys(checks, "Export menu does not show raw translation keys in French", menu);
             assertNoKnownEnglishUi(checks, "Export menu does not show known English UI phrases in French", [menu]);
             assertNoRawUiKeysInAttributes(checks, "Export menu attributes do not show raw translation keys in French", [menu]);
@@ -555,6 +755,20 @@
             await waitFor(() => doc.documentElement.lang === "en" && /Export PNG/.test(menu.textContent || ""), 2000);
             dispatchKey(doc, "Escape");
             assert(checks, "Escape closes Export menu", menu.hidden && trigger.getAttribute("aria-expanded") === "false");
+          }
+          if (requestedDialog === "add-data-menu") {
+            doc.querySelector("#projectTableTab")?.click();
+            await waitFor(() => doc.body.dataset.workspaceView === "projects");
+            const trigger = doc.querySelector("#projectAddMenuBtn");
+            trigger.focus();
+            trigger.click();
+            const menu = await waitFor(() => doc.querySelector(dialogSelector)?.hidden === false && doc.querySelector(dialogSelector), 2000);
+            const menuSurfaceState = floatingSurfaceState(menu, {
+              boundary: doc.querySelector(".workspace"),
+              hitTarget: menu.querySelector("[role='menuitem']")
+            });
+            assert(checks, "Add data menu opens with accessible menu semantics", trigger.getAttribute("aria-expanded") === "true" && menu.getAttribute("role") === "menu" && menu.querySelectorAll("[role='menuitem']").length === 3);
+            assert(checks, "Add data menu stays fully visible beside left-side Properties", doc.body.dataset.propertiesSide === "left" && menuSurfaceState.pass, menuSurfaceState.detail);
           }
           if (requestedDialog === "project-load-error") {
             doc.querySelector("[data-ui-language='fr']")?.click();
@@ -604,6 +818,18 @@
           await waitFor(() => doc.body.dataset.workspaceView === requestedWorkspace);
           const pane = doc.querySelector(target[1]);
           assert(checks, `${requestedWorkspace} workspace is active`, pane.classList.contains("is-active") && !pane.hidden);
+          const activeWorkspaceIntro = requestedWorkspace === "projects"
+            ? doc.querySelector(".project-workspace-intro")
+            : pane.querySelector(".workspace-intro");
+          const activeWorkspaceIntroStyle = activeWorkspaceIntro
+            ? frame.contentWindow.getComputedStyle(activeWorkspaceIntro)
+            : null;
+          assert(checks, `${requestedWorkspace} workspace has a visible page intro`, Boolean(
+            activeWorkspaceIntro
+            && activeWorkspaceIntroStyle?.display !== "none"
+            && activeWorkspaceIntro.querySelector("h2")?.textContent.trim()
+            && activeWorkspaceIntro.querySelector("p")?.textContent.trim()
+          ));
           if (loadSample) {
             assert(checks, "Sample rows are available", doc.querySelectorAll("#projectTable tbody tr").length > 0);
           } else {
@@ -619,17 +845,54 @@
           const propertiesToggle = doc.querySelector("#propertiesToggleBtn");
           const propertiesCollapse = doc.querySelector("#propertiesCollapseBtn");
           const propertiesResizeHandle = doc.querySelector("#propertiesResizeHandle");
+          const propertiesLeftInput = doc.querySelector("[data-properties-side-input][value='left']");
+          const propertiesRightInput = doc.querySelector("[data-properties-side-input][value='right']");
+          const workspaceElement = doc.querySelector(".workspace");
           const appWidth = frame.contentWindow.innerWidth;
           const summaryChips = Array.from(doc.querySelectorAll("#workspaceSummaryMetrics .workspace-summary-chip"));
           const visibleSummaryChips = summaryChips.filter(chip => frame.contentWindow.getComputedStyle(chip).display !== "none");
           const regionSummaryLabel = doc.querySelector("#workspaceSummaryMetrics [data-summary-key='regions'] span");
           const workspaceTabs = Array.from(doc.querySelectorAll(".workspace-nav .table-tab"));
           assert(checks, "Every workspace tab has an accessible name", workspaceTabs.every(tab => Boolean((tab.getAttribute("aria-label") || tab.textContent || "").trim())));
+          assert(checks, "Properties defaults to the left with an accessible Configuration control", doc.body.dataset.propertiesSide === "left" && propertiesLeftInput?.checked && propertiesLeftInput?.closest("[role='radiogroup']")?.getAttribute("aria-labelledby") === "propertiesPositionLabel");
+          if (appWidth > 1080) {
+            const initialPanelRect = propertiesPanel.getBoundingClientRect();
+            const initialWorkspaceRect = workspaceElement.getBoundingClientRect();
+            assert(checks, "Left Properties is visually and structurally before the workspace", initialPanelRect.right <= initialWorkspaceRect.left + 1 && propertiesPanel.nextElementSibling === workspaceElement, `panel=${initialPanelRect.left}-${initialPanelRect.right}, workspace=${initialWorkspaceRect.left}-${initialWorkspaceRect.right}`);
+          }
+          propertiesRightInput?.click();
+          await waitFor(() => doc.body.dataset.propertiesSide === "right" && propertiesRightInput.checked, 2000);
+          const savedRightPropertiesPreference = JSON.parse(frame.contentWindow.localStorage.getItem("plotypus.propertiesPanel") || "{}");
+          assert(checks, "Properties can move right and saves the preference", savedRightPropertiesPreference.side === "right" && workspaceElement.nextElementSibling === propertiesPanel);
+          if (appWidth > 1080) {
+            const rightPanelRect = propertiesPanel.getBoundingClientRect();
+            const rightWorkspaceRect = workspaceElement.getBoundingClientRect();
+            assert(checks, "Right Properties is visually after the workspace", rightPanelRect.left >= rightWorkspaceRect.right - 1, `workspace=${rightWorkspaceRect.left}-${rightWorkspaceRect.right}, panel=${rightPanelRect.left}-${rightPanelRect.right}`);
+            propertiesResizeHandle?.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true }));
+            await waitFor(() => Math.round(propertiesPanel.getBoundingClientRect().width) === (appWidth > 1280 ? 336 : 316), 2000);
+            const savedRightResizePreference = JSON.parse(frame.contentWindow.localStorage.getItem("plotypus.propertiesPanel") || "{}");
+            assert(checks, "Right-side splitter grows inward and preserves the saved side", savedRightResizePreference.side === "right" && savedRightResizePreference.width === (appWidth > 1280 ? 336 : 316));
+            propertiesResizeHandle?.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }));
+            await waitFor(() => Math.round(propertiesPanel.getBoundingClientRect().width) === (appWidth > 1280 ? 320 : 300), 2000);
+          }
+          propertiesLeftInput?.click();
+          await waitFor(() => doc.body.dataset.propertiesSide === "left" && propertiesLeftInput.checked, 2000);
+          const savedLeftPropertiesPreference = JSON.parse(frame.contentWindow.localStorage.getItem("plotypus.propertiesPanel") || "{}");
+          assert(checks, "Properties can move back left and updates the saved preference", savedLeftPropertiesPreference.side === "left" && propertiesPanel.nextElementSibling === workspaceElement);
           const uiFrenchButton = doc.querySelector("[data-ui-language='fr']");
           const uiEnglishButton = doc.querySelector("[data-ui-language='en']");
           uiFrenchButton?.click();
           await waitFor(() => doc.documentElement.lang === "fr" && doc.querySelector("#previewTableTab")?.textContent.trim() === "Carte", 2000);
           assert(checks, "Top language toggle switches app chrome to French", doc.documentElement.lang === "fr" && doc.querySelector("#mapDetailsBtn")?.textContent.includes("Détails de la carte") && doc.querySelector("#exportMenuBtn")?.textContent.trim() === "Exporter" && doc.querySelector("#mapLanguageInput")?.value === "fr");
+          const expectedFrenchIntroTitles = {
+            preview: "Carte",
+            projects: "Points de projet",
+            categories: "Catégories et repères",
+            regions: "Fond de carte",
+            translate: "Traduire",
+            quality: "Qualité de la carte"
+          };
+          assert(checks, `${requestedWorkspace} page intro switches to French`, activeWorkspaceIntro?.querySelector("h2")?.textContent.trim() === expectedFrenchIntroTitles[requestedWorkspace] && Boolean(activeWorkspaceIntro?.querySelector("p")?.textContent.trim()), activeWorkspaceIntro?.textContent.trim() || "");
           if (requestedWorkspace === "preview") {
             const expectedPropertiesCopy = ["Affichage", "Détails de la carte"];
             await waitFor(() => {
@@ -639,8 +902,8 @@
             const translatedPropertiesText = `${doc.querySelector("#propertiesTitle")?.textContent || ""} ${doc.querySelector("#propertiesSubtitle")?.textContent || ""} ${doc.querySelector("#propertiesSelectionControls")?.textContent || ""}`;
             assert(checks, "Top language toggle switches Properties copy to French", expectedPropertiesCopy.every(copy => translatedPropertiesText.includes(copy)), translatedPropertiesText);
             const placeholderText = doc.querySelector("#canvasPlaceholder")?.textContent || "";
-            assert(checks, "Top language toggle switches empty canvas fallback to French", /Canevas de carte/.test(placeholderText) && /Canevas de \d+ x \d+ pt/.test(placeholderText), placeholderText);
-            assert(checks, "Top language toggle switches map scale readout to French", /^Carte \d+%$/.test(doc.querySelector("#canvasZoomReadout")?.textContent.trim() || ""), doc.querySelector("#canvasZoomReadout")?.textContent.trim() || "");
+            assert(checks, "Top language toggle switches empty canvas fallback to French", /Canevas de carte/.test(placeholderText) && /Canevas de \d+ x \d+ px/.test(placeholderText), placeholderText);
+            assert(checks, "Top language toggle switches canvas zoom readout to French", /^Canevas \d+%$/.test(doc.querySelector("#canvasZoomReadout")?.textContent.trim() || ""), doc.querySelector("#canvasZoomReadout")?.textContent.trim() || "");
             const distanceGuidesInput = doc.querySelector("#showDistanceMarkersInput");
             if (distanceGuidesInput) {
               const nextDistanceState = !distanceGuidesInput.checked;
@@ -682,10 +945,10 @@
             const regionCellDisplay = frame.contentWindow.getComputedStyle(regionCell).display;
             assert(checks, "Project table hides both coordinate columns in Regions mode", lonHeaderDisplay === "none" && latHeaderDisplay === "none", lonHeaderDisplay + " / " + latHeaderDisplay);
             assert(checks, "Project table shows Region where the coordinate columns were", regionCellDisplay !== "none", regionCellDisplay);
-            const priorityRight = projectTable.querySelector("tbody .priority-cell").getBoundingClientRect().right;
+            const labelRight = projectTable.querySelector("tbody .label-preview-cell").getBoundingClientRect().right;
             const regionLeft = regionCell.getBoundingClientRect().left;
             const statusLeft = projectTable.querySelector("tbody .status-cell").getBoundingClientRect().left;
-            assert(checks, "Region column sits after Priority and before Status", regionLeft >= priorityRight - 1 && regionLeft < statusLeft, `priority=${priorityRight}, region=${regionLeft}, status=${statusLeft}`);
+            assert(checks, "Region column sits after Extra info and before Status", regionLeft >= labelRight - 1 && regionLeft < statusLeft, `label=${labelRight}, region=${regionLeft}, status=${statusLeft}`);
             const regionInput = regionCell.querySelector(".region-input");
             const regionInputStyle = frame.contentWindow.getComputedStyle(regionInput);
             const regionFont = regionInputStyle.fontFamily;
@@ -789,8 +1052,16 @@
             const richLabelVisualHeight = richLabelDatum ? richLabelDatum.textHeight - richLabelDatum.lineHeight + richLabelFontSize : 0;
             const richImageBottom = richImageLine ? richImageLine.baselineOffset - richLabelFontSize + richImageLine.imageHeight : Infinity;
             assert(checks, "Resized rich image contributes its real dimensions to label collision geometry", Boolean(richLabelDatum && richImageLine && richLabelDatum.textWidth >= 144 && richLabelVisualHeight >= richImageBottom + richLabelFontSize));
-            assert(checks, "Rich annotation renders title and content line roles on the map SVG", Boolean(doc.querySelector("#mapSvg .map-label .label-title") && doc.querySelector("#mapSvg .map-label .label-bullet")));
-            const richMapLabel = doc.querySelector("#mapSvg .map-label:has(.label-title)");
+            assert(checks, "Rich annotation renders title and content line roles on the map SVG", Boolean(doc.querySelector("#mapSvg .map-label[data-label-style='rich'] .label-title") && doc.querySelector("#mapSvg .map-label[data-label-style='rich'] .label-bullet")));
+            const richLabelTitle = doc.querySelector("#mapSvg .map-label[data-label-style='rich'] .label-title");
+            const richLabelParagraph = doc.querySelector("#mapSvg .map-label[data-label-style='rich'] .label-paragraph");
+            const richLabelTitleStyle = richLabelTitle ? frame.contentWindow.getComputedStyle(richLabelTitle) : null;
+            const richLabelParagraphStyle = richLabelParagraph ? frame.contentWindow.getComputedStyle(richLabelParagraph) : null;
+            assert(checks, "Rich-label screen typography uses a 10px bold title and 8px paragraphs", richLabelTitleStyle?.fontSize === "10px" && Number(richLabelTitleStyle?.fontWeight) >= 700 && richLabelParagraphStyle?.fontSize === "8px", `title=${richLabelTitleStyle?.fontSize || "missing"}/${richLabelTitleStyle?.fontWeight || "missing"}, paragraph=${richLabelParagraphStyle?.fontSize || "missing"}`);
+            const compactLabelTitle = doc.querySelector("#mapSvg .map-label[data-label-style='compact'] .label-title");
+            const compactLabelTitleStyle = compactLabelTitle ? frame.contentWindow.getComputedStyle(compactLabelTitle) : null;
+            assert(checks, "Compact-label screen typography uses the same 10px bold title", compactLabelTitleStyle?.fontSize === "10px" && Number(compactLabelTitleStyle?.fontWeight) >= 700, `title=${compactLabelTitleStyle?.fontSize || "missing"}/${compactLabelTitleStyle?.fontWeight || "missing"}`);
+            const richMapLabel = doc.querySelector("#mapSvg .map-label[data-label-style='rich']");
             richMapLabel?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
             const openedPropertiesForLiveEdit = Boolean(propertiesPanel?.inert);
             if (openedPropertiesForLiveEdit) {
@@ -885,6 +1156,7 @@
             doc.querySelector(".app-ribbon.command-bar"),
             doc.querySelector(".workspace-nav"),
             doc.querySelector("#workspaceSummaryMetrics"),
+            activeWorkspaceIntro,
             ...activePaneUiRoots,
             doc.querySelector("#propertiesPanel")
           ].filter(Boolean);
@@ -899,7 +1171,7 @@
               projects: /Aucun point de projet|Chargez l'exemple/,
               categories: /Catégories et repères|Ajouter un repère de légende/,
               regions: /Fond de carte|Région|Incluse/,
-              translate: /Traduire|chaînes bilingues complètes|Catégories/,
+              translate: /Traduire|Traductions|Catégories/,
               quality: /Chargez des données pour générer la carte/
             };
             assert(checks, `${requestedWorkspace} no-data state shows French UI copy`, expectedNoDataCopy[requestedWorkspace]?.test(noDataText), noDataText);
@@ -928,14 +1200,12 @@
             const frenchStatusBadge = doc.querySelector("#projectTable .row-status-badge:not([data-state='blank'])");
             assert(checks, "Project row status ARIA switches to French", /^État\s*:/.test(frenchStatusBadge?.getAttribute("aria-label") || ""), frenchStatusBadge?.getAttribute("aria-label") || "");
             assert(checks, "Project row edit ARIA labels switch to French", /Nom du projet/i.test(doc.querySelector("#projectTable .name-input")?.getAttribute("aria-label") || "") && /Type de projet/i.test(doc.querySelector("#projectTable .type-input")?.getAttribute("aria-label") || ""), `${doc.querySelector("#projectTable .name-input")?.getAttribute("aria-label") || ""} | ${doc.querySelector("#projectTable .type-input")?.getAttribute("aria-label") || ""}`);
-            const originalConfirm = frame.contentWindow.confirm;
-            let clearTablePrompt = "";
-            frame.contentWindow.confirm = message => {
-              clearTablePrompt = String(message || "");
-              return false;
-            };
             doc.querySelector("#clearRowsBtn")?.click();
-            frame.contentWindow.confirm = originalConfirm;
+            const confirmationDialog = await waitFor(() => doc.querySelector("#confirmationDialog")?.hidden === false && doc.querySelector("#confirmationDialog"), 2000);
+            const clearTablePrompt = confirmationDialog.querySelector("#confirmationMessage")?.textContent || "";
+            assert(checks, "Destructive actions use the branded confirmation dialog", confirmationDialog.getAttribute("role") === "alertdialog" && confirmationDialog.getAttribute("aria-modal") === "true" && confirmationDialog.getAttribute("aria-describedby") === "confirmationMessage");
+            confirmationDialog.querySelector("[data-confirmation-action='cancel']:not(.dialog-scrim)")?.click();
+            await waitFor(() => confirmationDialog.hidden === true, 2000);
             const cancelledStatusText = doc.querySelector("#statusBox")?.textContent || "";
             assert(checks, "French Clear table confirmation is translated", /Vider \d+ lignes de projet de Points de projet/i.test(clearTablePrompt) && /Utilisez Annuler/.test(clearTablePrompt), clearTablePrompt);
             assert(checks, "French Clear table cancellation status is translated", /Vidage du tableau annulé/i.test(cancelledStatusText), cancelledStatusText);
@@ -946,12 +1216,11 @@
             if (firstRowSelect) {
               firstRowSelect.checked = true;
               firstRowSelect.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
-              frame.contentWindow.confirm = message => {
-                deleteSelectedPrompt = String(message || "");
-                return false;
-              };
               doc.querySelector("#deleteSelectedBtn")?.click();
-              frame.contentWindow.confirm = originalConfirm;
+              await waitFor(() => confirmationDialog.hidden === false && /Supprimer/.test(confirmationDialog.querySelector("#confirmationTitle")?.textContent || ""), 2000);
+              deleteSelectedPrompt = confirmationDialog.querySelector("#confirmationMessage")?.textContent || "";
+              confirmationDialog.querySelector("[data-confirmation-action='cancel']:not(.dialog-scrim)")?.click();
+              await waitFor(() => confirmationDialog.hidden === true, 2000);
               firstRowSelect.checked = false;
               firstRowSelect.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
             }
@@ -975,7 +1244,7 @@
             assert(checks, "Desktop Properties collapses to a 48px rail", Math.round(propertiesPanel.getBoundingClientRect().width) === 48 && propertiesCollapse?.getAttribute("aria-expanded") === "false", `${propertiesPanel.getBoundingClientRect().width}`);
             propertiesCollapse?.click();
             await waitFor(() => !doc.body.classList.contains("properties-collapsed"));
-            propertiesResizeHandle?.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true }));
+            propertiesResizeHandle?.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }));
             await waitFor(() => Math.round(propertiesPanel.getBoundingClientRect().width) === 336);
             assert(checks, "Desktop Properties can be resized from the splitter", Math.round(propertiesPanel.getBoundingClientRect().width) === 336);
             assert(checks, "Desktop readiness shows every summary chip", currentVisibleSummaryChips.length === 4);
@@ -986,7 +1255,7 @@
             assert(checks, "Working-width readiness retains every value", currentVisibleSummaryChips.length === 4 && frame.contentWindow.getComputedStyle(currentRegionSummaryLabel).display === "none", currentSummaryChips.map(chip => `${chip.dataset.summaryKey}:${frame.contentWindow.getComputedStyle(chip).display}`).join(", "));
             assert(checks, "Working-width workspace tabs retain labels", workspaceTabs.every(tab => frame.contentWindow.getComputedStyle(tab).fontSize !== "0px"));
           } else {
-            assert(checks, "Properties becomes a fixed slide-over", propertiesStyle.position === "fixed" && propertiesStyle.right === "0px");
+            assert(checks, "Properties becomes a fixed slide-over on its saved side", propertiesStyle.position === "fixed" && propertiesStyle.left === "0px");
             assert(checks, "Narrow shell exposes the Properties trigger", frame.contentWindow.getComputedStyle(propertiesToggle).display !== "none");
             assert(checks, "Narrow readiness collapses to one review control", currentVisibleSummaryChips.length === 1 && currentVisibleSummaryChips[0].dataset.summaryKey === "to-review", currentSummaryChips.map(chip => `${chip.dataset.summaryKey}:${Math.round(chip.getBoundingClientRect().height)}/${frame.contentWindow.getComputedStyle(chip).display}`).join(", "));
             assert(checks, "Icon-only workspace tabs retain tooltips", workspaceTabs.every(tab => frame.contentWindow.getComputedStyle(tab).fontSize === "0px" && Boolean(tab.title)));
@@ -1011,19 +1280,99 @@
             }
             const initialPropertyKind = doc.querySelector("#propertiesSelectionControls .properties-form")?.dataset.propertyKind || "";
             assert(checks, "Map starts with document Properties", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='document']")), `kind=${initialPropertyKind} title=${doc.querySelector("#propertiesTitle")?.textContent.trim() || ""}`);
-            assert(checks, "Document Properties expose page and canvas size presets", Boolean(doc.querySelector("#propertiesSelectionControls [data-layout-proxy='bookSizeInput']") && doc.querySelector("#propertiesSelectionControls [data-layout-proxy='imageSizeInput']")));
+            const pagePresetProxy = doc.querySelector("#propertiesSelectionControls [data-layout-proxy='bookSizeInput']");
+            const canvasSizeProxy = doc.querySelector("#propertiesSelectionControls [data-layout-proxy='imageSizeInput']");
+            assert(checks, "Document Properties expose page and canvas size presets", Boolean(pagePresetProxy && canvasSizeProxy));
+            assert(checks, "Page and canvas presets identify inches and pixels", Array.from(pagePresetProxy?.options || []).every(option => /″$/.test(option.textContent.trim())) && Array.from(canvasSizeProxy?.options || []).every(option => /\(\d+\s*x\s*\d+\s*px\)$/.test(option.textContent.trim())), `${pagePresetProxy?.selectedOptions[0]?.textContent || "missing"} / ${canvasSizeProxy?.selectedOptions[0]?.textContent || "missing"}`);
+            assert(checks, "Canvas-size guidance points users to the document-page preview", /document page/i.test(doc.querySelector("#propertiesSelectionControls")?.textContent || ""));
             assert(checks, "Document Properties expose default label line length", Boolean(doc.querySelector("#propertiesSelectionControls [data-layout-proxy='labelCharsInput']")));
+            const markerSizeProxy = doc.querySelector("#propertiesSelectionControls [data-layout-proxy='markerSizeInput']");
+            const markerSizeInput = doc.querySelector("#markerSizeInput");
+            assert(checks, "Document Properties expose a shared default marker size of 4", Boolean(markerSizeProxy && markerSizeInput && markerSizeProxy.value === "4" && markerSizeInput.value === "4" && markerSizeProxy.min === "4" && markerSizeProxy.max === "20"), `proxy=${markerSizeProxy?.value || "missing"}, source=${markerSizeInput?.value || "missing"}`);
+            if (markerSizeProxy && markerSizeInput) {
+              const originalMarkerSize = markerSizeInput.value;
+              const updatedMarkerSize = originalMarkerSize === "12" ? "11" : "12";
+              markerSizeProxy.value = updatedMarkerSize;
+              markerSizeProxy.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+              await waitFor(() => markerSizeInput.value === updatedMarkerSize && doc.querySelector("#propertiesSelectionControls [data-layout-proxy='markerSizeInput']")?.value === updatedMarkerSize, 4000);
+              const categoryMarkerSizes = Array.from(doc.querySelectorAll("#categoryList .category-marker-size-input")).map(input => input.value);
+              assert(checks, "Changing the Document default marker size updates shared default categories", categoryMarkerSizes.length > 0 && categoryMarkerSizes.every(value => value === updatedMarkerSize), categoryMarkerSizes.join(", "));
+              const refreshedMarkerSizeProxy = doc.querySelector("#propertiesSelectionControls [data-layout-proxy='markerSizeInput']");
+              refreshedMarkerSizeProxy.value = originalMarkerSize;
+              refreshedMarkerSizeProxy.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+              await waitFor(() => markerSizeInput.value === originalMarkerSize, 4000);
+            }
             assert(checks, "Document Properties do not duplicate map scale", !doc.querySelector("#propertiesSelectionControls [data-layout-proxy='mapScaleInput']"));
             assert(checks, "Document context shows map display groups", previewSections.every(section => section && !section.hidden));
+            const documentPropertyHeading = doc.querySelector("#propertiesSelectionControls .document-property-section h3");
+            const documentPropertyFieldHeading = doc.querySelector("#propertiesSelectionControls .properties-field-label");
+            const documentPropertyHelper = doc.querySelector("#propertiesSelectionControls .properties-muted");
+            const documentPropertyHeadingStyle = documentPropertyHeading ? frame.contentWindow.getComputedStyle(documentPropertyHeading) : null;
+            const documentPropertyFieldHeadingStyle = documentPropertyFieldHeading ? frame.contentWindow.getComputedStyle(documentPropertyFieldHeading) : null;
+            const documentPropertyHelperStyle = documentPropertyHelper ? frame.contentWindow.getComputedStyle(documentPropertyHelper) : null;
+            assert(checks, "Properties section and field headings use consistent 10px bold screen typography", documentPropertyHeadingStyle?.fontSize === "10px" && Number(documentPropertyHeadingStyle?.fontWeight) >= 700 && documentPropertyFieldHeadingStyle?.fontSize === "10px" && Number(documentPropertyFieldHeadingStyle?.fontWeight) >= 700, `section=${documentPropertyHeadingStyle?.fontSize || "missing"}/${documentPropertyHeadingStyle?.fontWeight || "missing"}, field=${documentPropertyFieldHeadingStyle?.fontSize || "missing"}/${documentPropertyFieldHeadingStyle?.fontWeight || "missing"}`);
+            assert(checks, "Properties helper paragraphs use 8px screen typography", documentPropertyHelperStyle?.fontSize === "8px", documentPropertyHelperStyle?.fontSize || "missing");
+            const documentPagePreview = doc.querySelector("#documentPagePreview");
+            const documentPageRect = documentPagePreview?.getBoundingClientRect();
+            const canvasSurface = loadSample ? doc.querySelector("#mapSvg") : doc.querySelector("#canvasPlaceholder");
+            const canvasSurfaceRect = canvasSurface?.getBoundingClientRect();
+            const documentBleedGuide = doc.querySelector("#documentBleedGuide");
+            const documentBleedRect = documentBleedGuide?.getBoundingClientRect();
+            assert(checks, "Map canvas is shown within a larger Word-style document page", documentPageRect && canvasSurfaceRect && documentPageRect.width > canvasSurfaceRect.width && documentPageRect.height > canvasSurfaceRect.height && canvasSurfaceRect.left > documentPageRect.left && canvasSurfaceRect.top > documentPageRect.top && canvasSurfaceRect.right < documentPageRect.right && canvasSurfaceRect.bottom < documentPageRect.bottom, `page=${Math.round(documentPageRect?.width || 0)}x${Math.round(documentPageRect?.height || 0)}, canvas=${Math.round(canvasSurfaceRect?.width || 0)}x${Math.round(canvasSurfaceRect?.height || 0)}`);
+            const bleedGaps = documentBleedRect && canvasSurfaceRect ? [
+              canvasSurfaceRect.left - documentBleedRect.left,
+              canvasSurfaceRect.top - documentBleedRect.top,
+              documentBleedRect.right - canvasSurfaceRect.right,
+              documentBleedRect.bottom - canvasSurfaceRect.bottom
+            ] : [];
+            assert(checks, "A standard bleed guide surrounds all four sides of the map canvas", documentBleedRect && canvasSurfaceRect && bleedGaps.length === 4 && bleedGaps.every(gap => gap >= 2) && Math.max(...bleedGaps) - Math.min(...bleedGaps) <= 1.5 && documentPagePreview.dataset.bleedIn === "0.125" && documentBleedGuide.querySelectorAll(".document-bleed-corner").length === 4, `gaps=${bleedGaps.map(gap => gap.toFixed(1)).join(",")}, bleed=${documentPagePreview?.dataset.bleedIn || "missing"}`);
+            assert(checks, "Document preview is clearly identified as a non-exported screen guide", /page and bleed lines are not included in exports/i.test(doc.querySelector("#documentPreviewHint")?.textContent || "") && !doc.querySelector("#mapSvg .document-page-header, #mapSvg .document-page-footer, #mapSvg .document-canvas-bleed"));
+            const imageSizeInput = doc.querySelector("#imageSizeInput");
+            const originalImageSize = imageSizeInput?.value;
+            const alternateImageSize = Array.from(imageSizeInput?.options || []).find(option => option.value !== originalImageSize)?.value;
+            if (imageSizeInput && alternateImageSize) {
+              const initialPageHeight = parseFloat(frame.contentWindow.getComputedStyle(documentPagePreview).height || "0");
+              const initialCanvasHeight = parseFloat(doc.querySelector("#mapSvg")?.style.height || "0");
+              imageSizeInput.value = alternateImageSize;
+              imageSizeInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+              await waitFor(() => parseFloat(doc.querySelector("#mapSvg")?.style.height || "0") !== initialCanvasHeight, 12000);
+              const alternatePageHeight = parseFloat(frame.contentWindow.getComputedStyle(documentPagePreview).height || "0");
+              const alternateCanvasHeight = parseFloat(doc.querySelector("#mapSvg")?.style.height || "0");
+              assert(checks, "Changing canvas size preserves the page while changing the map footprint", Math.abs(alternatePageHeight - initialPageHeight) <= 1 && alternateCanvasHeight !== initialCanvasHeight, `page ${initialPageHeight} -> ${alternatePageHeight}, canvas ${initialCanvasHeight} -> ${alternateCanvasHeight}`);
+              imageSizeInput.value = originalImageSize;
+              imageSizeInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+              await waitFor(() => parseFloat(doc.querySelector("#mapSvg")?.style.height || "0") === initialCanvasHeight, 12000);
+            }
+            const bookSizeInput = doc.querySelector("#bookSizeInput");
+            const originalBookSize = bookSizeInput?.value;
+            const alternateBookSize = Array.from(bookSizeInput?.options || []).find(option => option.value !== originalBookSize)?.value;
+            if (bookSizeInput && alternateBookSize) {
+              const initialPageWidth = parseFloat(frame.contentWindow.getComputedStyle(documentPagePreview).width || "0");
+              const initialPageHeight = parseFloat(frame.contentWindow.getComputedStyle(documentPagePreview).height || "0");
+              bookSizeInput.value = alternateBookSize;
+              bookSizeInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+              await waitFor(() => documentPagePreview.dataset.pagePreset === alternateBookSize, 12000);
+              const alternatePageWidth = parseFloat(frame.contentWindow.getComputedStyle(documentPagePreview).width || "0");
+              const alternatePageHeight = parseFloat(frame.contentWindow.getComputedStyle(documentPagePreview).height || "0");
+              assert(checks, "Changing the page preset updates the surrounding document proportions", Math.abs((alternatePageHeight / alternatePageWidth) - (initialPageHeight / initialPageWidth)) > 0.1, `${originalBookSize} ${initialPageWidth}x${initialPageHeight} -> ${alternateBookSize} ${alternatePageWidth}x${alternatePageHeight}`);
+              bookSizeInput.value = originalBookSize;
+              bookSizeInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+              await waitFor(() => documentPagePreview.dataset.pagePreset === originalBookSize, 12000);
+            }
             const previewLanguageInput = doc.querySelector("#previewLanguageInput");
-            if (previewLanguageInput) {
-              previewLanguageInput.value = "fr";
-              previewLanguageInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+            const mapLanguageEnglishButton = doc.querySelector("[data-map-language='en']");
+            const mapLanguageFrenchButton = doc.querySelector("[data-map-language='fr']");
+            if (previewLanguageInput && mapLanguageEnglishButton && mapLanguageFrenchButton) {
+              const mapLanguageControl = doc.querySelector(".map-tab-language-control");
+              const mapLanguageControlStyle = frame.contentWindow.getComputedStyle(mapLanguageControl);
+              const mapLanguageControlRect = mapLanguageControl.getBoundingClientRect();
+              assert(checks, "Map tab exposes a visible dedicated EN/FR map-language toggle", mapLanguageEnglishButton.getAttribute("aria-pressed") === "true" && mapLanguageFrenchButton.getAttribute("aria-pressed") === "false" && mapLanguageControlStyle.display !== "none" && mapLanguageControlRect.width > 0 && mapLanguageControlRect.height > 0, `${mapLanguageControlStyle.display} ${mapLanguageControlRect.width}x${mapLanguageControlRect.height}`);
+              mapLanguageFrenchButton.click();
               await waitFor(() => /Carte personnalisée/.test(doc.querySelector("#mapSvg title")?.textContent || ""), 12000);
-              assert(checks, "Generated SVG metadata follows the selected map language", doc.documentElement.lang === "fr" && /Carte personnalisée/.test(doc.querySelector("#mapSvg title")?.textContent || "") && /^Carte /.test(doc.querySelector("#mapSvg desc")?.textContent || ""), `${doc.documentElement.lang} | ${doc.querySelector("#mapSvg title")?.textContent || ""} | ${doc.querySelector("#mapSvg desc")?.textContent || ""}`);
-              previewLanguageInput.value = "en";
-              previewLanguageInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+              assert(checks, "Map-tab language changes only map output, not the English interface", doc.documentElement.lang === "en" && doc.querySelector("[data-ui-language='en']")?.getAttribute("aria-pressed") === "true" && doc.querySelector("#previewTableTab")?.textContent.trim() === "Map" && doc.querySelector("#exportMenuBtn")?.textContent.trim() === "Export" && previewLanguageInput.value === "fr" && doc.querySelector("#mapLanguageInput")?.value === "fr" && mapLanguageFrenchButton.getAttribute("aria-pressed") === "true" && /Carte personnalisée/.test(doc.querySelector("#mapSvg title")?.textContent || "") && /^Carte /.test(doc.querySelector("#mapSvg desc")?.textContent || ""), `${doc.documentElement.lang} | ${doc.querySelector("#previewTableTab")?.textContent || ""} | ${doc.querySelector("#mapSvg title")?.textContent || ""} | ${doc.querySelector("#mapSvg desc")?.textContent || ""}`);
+              mapLanguageEnglishButton.click();
               await waitFor(() => doc.documentElement.lang === "en" && /Custom map/.test(doc.querySelector("#mapSvg title")?.textContent || ""), 12000);
+              assert(checks, "Map-language toggle stays synchronized when returning to English", previewLanguageInput.value === "en" && doc.querySelector("#mapLanguageInput")?.value === "en" && mapLanguageEnglishButton.getAttribute("aria-pressed") === "true" && mapLanguageFrenchButton.getAttribute("aria-pressed") === "false");
             }
             const legendBox = doc.querySelector("#mapSvg .legend-box");
             const calloutBox = doc.querySelector("#mapSvg .callout-box");
@@ -1038,6 +1387,8 @@
               const calloutHeading = doc.querySelector("#mapSvg .callout-heading");
               const legendText = doc.querySelector("#mapSvg .legend-text");
               const calloutText = doc.querySelector("#mapSvg .callout-text");
+              const calloutHeadingStyle = calloutHeading ? frame.contentWindow.getComputedStyle(calloutHeading) : null;
+              const calloutTextStyle = calloutText ? frame.contentWindow.getComputedStyle(calloutText) : null;
               const legendMarker = doc.querySelector("#mapSvg .legend-layer .marker");
               const calloutMarker = doc.querySelector("#mapSvg .callout-layer .marker");
               const legendWidth = numberAttr(legendBox, "width");
@@ -1049,7 +1400,8 @@
               const legendRuleInset = numberAttr(legendRule, "x1");
               const calloutRuleInset = numberAttr(calloutRule, "x1");
               assert(checks, "Legend box keeps reference-style padding and row rhythm", legendWidth >= 260 && legendHeight >= 118 && legendRuleInset >= 22 && legendHeading && legendRuleY - numberAttr(legendHeading, "y") >= 20 && legendText && numberAttr(legendText, "y") - legendRuleY >= 14, `legend=${legendWidth}x${legendHeight}, rule=${legendRuleY}`);
-              assert(checks, "No-coordinate callouts keep reference-style padding and row rhythm", calloutWidth >= 280 && calloutHeight >= 90 && calloutRuleInset >= 22 && calloutHeading && calloutRuleY - numberAttr(calloutHeading, "y") >= 20 && calloutText && numberAttr(calloutText, "y") - calloutRuleY >= 14 && calloutMarker, `callout=${calloutWidth}x${calloutHeight}, rule=${calloutRuleY}`);
+              assert(checks, "No-coordinate callouts keep compact padding and row rhythm", calloutWidth >= 260 && calloutHeight >= 80 && calloutRuleInset >= 22 && calloutHeading && calloutRuleY - numberAttr(calloutHeading, "y") >= 16 && calloutText && numberAttr(calloutText, "y") - calloutRuleY >= 12 && calloutMarker, `callout=${calloutWidth}x${calloutHeight}, rule=${calloutRuleY}`);
+              assert(checks, "No-coordinate callouts use a 10px heading and 8px item text", calloutHeadingStyle?.fontSize === "10px" && calloutTextStyle?.fontSize === "8px", `heading=${calloutHeadingStyle?.fontSize || "missing"}, item=${calloutTextStyle?.fontSize || "missing"}`);
               assert(checks, "Legend and no-coordinate callout rows use matching marker and text columns", legendMarker && calloutMarker && legendText && calloutText && Math.abs(numberAttr(legendText, "x") - numberAttr(calloutText, "x")) <= 1 && Math.abs(numberAttr(legendMarker, "cx") - (numberAttr(calloutMarker, "x") + numberAttr(calloutMarker, "width") / 2)) <= 1, `legend=${numberAttr(legendMarker, "cx")}/${numberAttr(legendText, "x")}, callout=${numberAttr(calloutMarker, "x") + numberAttr(calloutMarker, "width") / 2}/${numberAttr(calloutText, "x")}`);
             }
             const legendInput = doc.querySelector("#showLegendInput");
@@ -1064,6 +1416,131 @@
               legendInput.checked = true;
               legendInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
               assert(checks, "Compact boxes re-enables when a map box is visible", !compactInput.disabled && !compactInput.closest(".toolbar-check")?.classList.contains("is-disabled"));
+            }
+            if (loadSample) {
+              const label = doc.querySelector("#mapSvg .map-label[data-label-style='compact']");
+              const mapSvgRect = doc.querySelector("#mapSvg")?.getBoundingClientRect();
+              const labelRect = label?.getBoundingClientRect();
+              if (label && labelRect && mapSvgRect) {
+                const dragLabel = (node, fromRect, clientX, clientY) => {
+                  node.dispatchEvent(new frame.contentWindow.MouseEvent("mousedown", {
+                    bubbles: true,
+                    cancelable: true,
+                    view: frame.contentWindow,
+                    clientX: fromRect.left + fromRect.width / 2,
+                    clientY: fromRect.top + fromRect.height / 2,
+                    buttons: 1
+                  }));
+                  frame.contentWindow.dispatchEvent(new frame.contentWindow.MouseEvent("mousemove", {
+                    bubbles: true,
+                    cancelable: true,
+                    view: frame.contentWindow,
+                    clientX,
+                    clientY,
+                    buttons: 1
+                  }));
+                  frame.contentWindow.dispatchEvent(new frame.contentWindow.MouseEvent("mouseup", {
+                    bubbles: true,
+                    cancelable: true,
+                    view: frame.contentWindow,
+                    clientX,
+                    clientY,
+                    buttons: 0
+                  }));
+                };
+                dragLabel(label, labelRect, mapSvgRect.left - 220, mapSvgRect.top - 220);
+                await waitFor(() => {
+                  const rect = label.getBoundingClientRect();
+                  return rect.left >= mapSvgRect.left - 1 && rect.top >= mapSvgRect.top - 1;
+                }, 4000);
+                const constrainedLabelRect = label.getBoundingClientRect();
+                const constrainedBackground = doc.querySelector(`#mapSvg .map-label-background[data-layout-id="${label.dataset.layoutId}"]`);
+                const constrainedBackgroundRect = constrainedBackground?.getBoundingClientRect();
+                assert(checks, "Dragging a label past the canvas edge clamps the complete label inside the canvas", constrainedBackgroundRect && constrainedBackgroundRect.left >= mapSvgRect.left - 1 && constrainedBackgroundRect.top >= mapSvgRect.top - 1 && constrainedBackgroundRect.right <= mapSvgRect.right + 1 && constrainedBackgroundRect.bottom <= mapSvgRect.bottom + 1, `label=${Math.round(constrainedLabelRect.left)},${Math.round(constrainedLabelRect.top)}-${Math.round(constrainedLabelRect.right)},${Math.round(constrainedLabelRect.bottom)} background=${Math.round(constrainedBackgroundRect?.left || 0)},${Math.round(constrainedBackgroundRect?.top || 0)}-${Math.round(constrainedBackgroundRect?.right || 0)},${Math.round(constrainedBackgroundRect?.bottom || 0)} canvas=${Math.round(mapSvgRect.left)},${Math.round(mapSvgRect.top)}-${Math.round(mapSvgRect.right)},${Math.round(mapSvgRect.bottom)}`);
+                const hasOffCanvasLabelCard = Array.from(doc.querySelectorAll("#qualityMetricsPanel .quality-card"))
+                  .some(card => /Labels off canvas/i.test(card.textContent || ""));
+                assert(checks, "Labels no longer expose off-canvas warning state or a label quality card", !label.classList.contains("is-off-canvas") && !label.hasAttribute("data-off-canvas") && !hasOffCanvasLabelCard, label.getAttribute("class") || "");
+                dragLabel(label, constrainedLabelRect, mapSvgRect.left + mapSvgRect.width / 2, mapSvgRect.top + mapSvgRect.height / 2);
+              }
+            }
+            const lockMarkerCoordinatesInput = doc.querySelector("#lockMarkerCoordinatesInput");
+            if (loadSample && lockMarkerCoordinatesInput) {
+              const markersWereLocked = lockMarkerCoordinatesInput.checked;
+              lockMarkerCoordinatesInput.checked = false;
+              lockMarkerCoordinatesInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+              await waitFor(() => Boolean(doc.querySelector("#mapSvg .marker-layer .marker:not(.is-locked)")), 12000);
+              const marker = doc.querySelector("#mapSvg .marker-layer .marker:not(.is-locked)");
+              const markerDatum = marker?.__data__;
+              const markerRow = Array.from(doc.querySelectorAll("#projectTable tbody tr[data-row-id]"))
+                .find(row => row.dataset.rowId === String(markerDatum?.rowId));
+              const originalLongitude = markerRow?.querySelector(".lon-input")?.value || "";
+              const originalLatitude = markerRow?.querySelector(".lat-input")?.value || "";
+              const markerRect = marker?.getBoundingClientRect();
+              const mapSvgRect = doc.querySelector("#mapSvg")?.getBoundingClientRect();
+              if (marker && markerRect && mapSvgRect) {
+                const startX = markerRect.left + markerRect.width / 2;
+                const startY = markerRect.top + markerRect.height / 2;
+                marker.dispatchEvent(new frame.contentWindow.MouseEvent("mousedown", {
+                  bubbles: true,
+                  cancelable: true,
+                  view: frame.contentWindow,
+                  clientX: startX,
+                  clientY: startY,
+                  buttons: 1
+                }));
+                frame.contentWindow.dispatchEvent(new frame.contentWindow.MouseEvent("mousemove", {
+                  bubbles: true,
+                  cancelable: true,
+                  view: frame.contentWindow,
+                  clientX: mapSvgRect.left - 200,
+                  clientY: mapSvgRect.top - 200,
+                  buttons: 1
+                }));
+                frame.contentWindow.dispatchEvent(new frame.contentWindow.MouseEvent("mouseup", {
+                  bubbles: true,
+                  cancelable: true,
+                  view: frame.contentWindow,
+                  clientX: mapSvgRect.left - 200,
+                  clientY: mapSvgRect.top - 200,
+                  buttons: 0
+                }));
+                await waitFor(() => /outside the canvas/i.test(doc.querySelector("#statusBox")?.textContent || ""), 4000);
+                const offCanvasMarkerRect = marker.getBoundingClientRect();
+                const movedLongitude = markerRow?.querySelector(".lon-input")?.value || "";
+                const movedLatitude = markerRow?.querySelector(".lat-input")?.value || "";
+                const offCanvasMarkerCenter = {
+                  x: offCanvasMarkerRect.left + offCanvasMarkerRect.width / 2,
+                  y: offCanvasMarkerRect.top + offCanvasMarkerRect.height / 2
+                };
+                const topmostMarkerNode = doc.elementFromPoint(offCanvasMarkerCenter.x, offCanvasMarkerCenter.y);
+                assert(checks, "Dragging a point past the canvas keeps it visible and selectable in the document warning gutter", offCanvasMarkerRect.right < mapSvgRect.left && offCanvasMarkerRect.bottom < mapSvgRect.top && documentPageRect && offCanvasMarkerRect.left >= documentPageRect.left && offCanvasMarkerRect.top >= documentPageRect.top && (topmostMarkerNode === marker || marker.contains(topmostMarkerNode)), `marker=${Math.round(offCanvasMarkerRect.left)},${Math.round(offCanvasMarkerRect.top)}-${Math.round(offCanvasMarkerRect.right)},${Math.round(offCanvasMarkerRect.bottom)} canvas=${Math.round(mapSvgRect.left)},${Math.round(mapSvgRect.top)} page=${Math.round(documentPageRect?.left || 0)},${Math.round(documentPageRect?.top || 0)}`);
+                assert(checks, "An off-canvas point receives a red warning treatment and updated coordinates", marker.classList.contains("is-off-canvas") && marker.dataset.offCanvas === "true" && Boolean(doc.querySelector(`#mapSvg .marker-boundary-warning.is-active[data-row-id="${markerDatum?.rowId}"]`)) && (movedLongitude !== originalLongitude || movedLatitude !== originalLatitude), `${originalLongitude},${originalLatitude} -> ${movedLongitude},${movedLatitude}; ${marker.getAttribute("class") || ""}`);
+                await new Promise(resolve => setTimeout(resolve, 50));
+                doc.querySelector("#qualityTableTab")?.click();
+                await waitFor(() => doc.body.dataset.workspaceView === "quality", 4000);
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                const qualityChecklistText = doc.querySelector("#statusBox")?.textContent || "";
+                const offCanvasQualityCard = Array.from(doc.querySelectorAll("#qualityMetricsPanel .quality-card"))
+                  .find(card => /Points off canvas/i.test(card.textContent || ""));
+                assert(checks, "Map quality reports the off-canvas point", /Points off canvas/i.test(qualityChecklistText) && /outside the export canvas:\s*1/i.test(qualityChecklistText) && /1/.test(offCanvasQualityCard?.textContent || "") && offCanvasQualityCard?.dataset.state === "danger", `${offCanvasQualityCard?.textContent || "missing quality card"} | ${qualityChecklistText.trim()}`);
+                doc.querySelector("#previewTableTab")?.click();
+                await waitFor(() => doc.body.dataset.workspaceView === "preview", 4000);
+                const undoButton = doc.querySelector("#ribbonUndoBtn");
+                assert(checks, "A point move can be recovered with Undo", Boolean(undoButton && !undoButton.disabled));
+                await new Promise(resolve => setTimeout(resolve, 50));
+                undoButton?.click();
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                const restoredRow = Array.from(doc.querySelectorAll("#projectTable tbody tr[data-row-id]"))
+                  .find(row => row.dataset.rowId === String(markerDatum?.rowId));
+                const restoredLongitude = restoredRow?.querySelector(".lon-input")?.value || "";
+                const restoredLatitude = restoredRow?.querySelector(".lat-input")?.value || "";
+                assert(checks, "Undo restores the point's original coordinates", restoredLongitude === originalLongitude && restoredLatitude === originalLatitude, `${movedLongitude},${movedLatitude} -> ${restoredLongitude},${restoredLatitude}; ${doc.querySelector("#statusBox")?.textContent?.trim() || "no status"}`);
+              } else {
+                assert(checks, "Dragging a point past the canvas keeps it visible and selectable in the document warning gutter", false, "No draggable map marker was rendered.");
+              }
+              lockMarkerCoordinatesInput.checked = markersWereLocked;
+              lockMarkerCoordinatesInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+              await waitFor(() => markersWereLocked ? Boolean(doc.querySelector("#mapSvg .marker-layer .marker.is-locked")) : Boolean(doc.querySelector("#mapSvg .marker-layer .marker:not(.is-locked)")), 12000);
             }
             const mapBeforePreviewSelection = doc.querySelector("#mapSvg")?.innerHTML || "";
             const label = doc.querySelector("#mapSvg .map-label");
@@ -1107,6 +1584,12 @@
             const filterOptions = doc.querySelectorAll("#projectFilterSelect option");
             const firstNameInput = doc.querySelector("#projectTable .name-input");
             const inputStyle = firstNameInput ? frame.contentWindow.getComputedStyle(firstNameInput) : null;
+            const projectAreaBackgrounds = [
+              doc.querySelector("[data-table-actions='projects']")?.closest(".workspace-rail"),
+              doc.querySelector("#projectTablePane"),
+              doc.querySelector("#propertiesPanel")
+            ].map(element => element ? frame.contentWindow.getComputedStyle(element).backgroundColor : "");
+            assert(checks, "Project controls, main content, and Properties use distinct brand surfaces", projectAreaBackgrounds.every(Boolean) && new Set(projectAreaBackgrounds).size === 3, projectAreaBackgrounds.join(", "));
             assert(checks, "Project filters use one compact counted selector", filterOptions.length === 3 && /All rows \(\d+\)/.test(filterOptions[0]?.textContent || "") && /Missing coordinates \(\d+\)/.test(filterOptions[1]?.textContent || "") && /No-coordinate callouts \(\d+\)/.test(filterOptions[2]?.textContent || ""));
             assert(checks, "Project authoring language remains available", doc.querySelectorAll("[data-authoring-language]").length === 2);
             const firstTypeInput = doc.querySelector("#projectTable .type-input");
@@ -1127,27 +1610,54 @@
             assert(checks, "Project add actions are grouped in Add data", addMenuButton?.textContent.trim() === "Add data" && Boolean(addMenuButton?.querySelector("svg")) && addMenu?.contains(doc.querySelector("#addRowBtn")) && addMenu?.contains(doc.querySelector("#addPointsBtn")) && addMenu?.contains(doc.querySelector("#ribbonImportCsvBtn")) && Array.from(addMenu?.querySelectorAll("[role='menuitem']") || []).every(item => Boolean(item.querySelector("svg"))) && doc.querySelector("#addRowBtn")?.textContent.trim() === "Blank row" && doc.querySelector("#addPointsBtn")?.textContent.trim() === "From source");
             addMenuButton?.click();
             assert(checks, "Add data opens an accessible menu", addMenu?.hidden === false && addMenuButton?.getAttribute("aria-expanded") === "true" && addMenu?.querySelectorAll("[role='menuitem']").length === 3);
+            const addMenuRect = addMenu?.getBoundingClientRect();
+            const addMenuButtonRect = addMenuButton?.getBoundingClientRect();
+            const projectActionsRect = doc.querySelector("[data-table-actions='projects']")?.getBoundingClientRect();
+            assert(checks, "Add data trigger and menu stay compact in the Project toolbar", addMenuButton?.scrollWidth <= addMenuButton?.clientWidth + 1 && addMenuRect && addMenuButtonRect && projectActionsRect && addMenuRect.width <= 211 && addMenuRect.left <= addMenuButtonRect.right && addMenuRect.right >= addMenuButtonRect.left, `button=${addMenuButton?.scrollWidth || 0}/${addMenuButton?.clientWidth || 0}, menu=${Math.round(addMenuRect?.width || 0)}px at ${Math.round(addMenuRect?.left || 0)}-${Math.round(addMenuRect?.right || 0)}, toolbar=${Math.round(projectActionsRect?.left || 0)}-${Math.round(projectActionsRect?.right || 0)}`);
+            const leftAddMenuSurfaceState = floatingSurfaceState(addMenu, {
+              boundary: workspaceElement,
+              hitTarget: addMenu?.querySelector("[role='menuitem']")
+            });
+            assert(checks, "Add data menu stays visible and clickable with left-side Properties", doc.body.dataset.propertiesSide === "left" && leftAddMenuSurfaceState.pass, leftAddMenuSurfaceState.detail);
             dispatchKey(addMenuButton, "Escape");
             assert(checks, "Escape closes Add data and restores focus", addMenu?.hidden === true && doc.activeElement === addMenuButton);
+            propertiesRightInput?.click();
+            await waitFor(() => doc.body.dataset.propertiesSide === "right" && propertiesRightInput.checked, 2000);
+            addMenuButton?.click();
+            const rightAddMenuSurfaceState = floatingSurfaceState(addMenu, {
+              boundary: workspaceElement,
+              hitTarget: addMenu?.querySelector("[role='menuitem']")
+            });
+            assert(checks, "Add data menu stays visible and clickable with right-side Properties", rightAddMenuSurfaceState.pass, rightAddMenuSurfaceState.detail);
+            dispatchKey(addMenuButton, "Escape");
+            propertiesLeftInput?.click();
+            await waitFor(() => doc.body.dataset.propertiesSide === "left" && propertiesLeftInput.checked, 2000);
             const selectionActions = doc.querySelector(".selection-actions");
-            assert(checks, "Project selection actions are grouped", selectionActions && selectionActions.contains(doc.querySelector("#bulkPriorityInput")) && selectionActions.contains(doc.querySelector("#bulkClearCoordinatesBtn")) && selectionActions.contains(doc.querySelector("#deleteSelectedBtn")));
+            assert(checks, "Project selection actions are grouped", selectionActions && selectionActions.contains(doc.querySelector("#bulkClearCoordinatesBtn")) && selectionActions.contains(doc.querySelector("#deleteSelectedBtn")));
             assert(checks, "Project selection actions stay hidden until selection", selectionActions?.hidden === true && selectionActions?.querySelector(".toolbar-group-label")?.textContent.trim() === "Selected" && doc.querySelector("#deleteSelectedBtn")?.textContent.trim() === "Delete");
             const moreMenuButton = doc.querySelector("#projectMoreMenuBtn");
             const moreMenu = doc.querySelector("#projectMoreMenu");
+            const projectMenuButtonBackgrounds = [addMenuButton, moreMenuButton].map(button => button ? frame.contentWindow.getComputedStyle(button).backgroundColor : "");
+            assert(checks, "Peer Project action buttons share one secondary colour", projectMenuButtonBackgrounds.every(Boolean) && new Set(projectMenuButtonBackgrounds).size === 1, projectMenuButtonBackgrounds.join(", "));
             moreMenuButton?.click();
             assert(checks, "Rare destructive actions live under More", moreMenu?.hidden === false && moreMenu?.contains(doc.querySelector("#clearRowsBtn")));
+            const moreMenuSurfaceState = floatingSurfaceState(moreMenu, {
+              boundary: workspaceElement,
+              hitTarget: moreMenu?.querySelector("[role='menuitem']")
+            });
+            assert(checks, "More menu stays fully visible and clickable", moreMenuSurfaceState.pass, moreMenuSurfaceState.detail);
             dispatchKey(moreMenuButton, "Escape");
             assert(checks, "Project field guide is removed from the toolbar", !doc.querySelector(".project-field-legend"));
             const projectToolbarControls = Array.from(doc.querySelectorAll("#projectFilterSelect, .project-location-mode > button, .authoring-language > button, .project-toolbar-menu-button, .selection-actions > button, .selection-actions > select"))
               .filter(control => control.getBoundingClientRect().height > 0);
             const projectToolbarHeights = projectToolbarControls.map(control => Math.round(control.getBoundingClientRect().height));
             assert(checks, "Project toolbar controls use compact standard heights", projectToolbarHeights.every(height => height >= 38 && height <= 46), projectToolbarHeights.join(", "));
-            const centeredHeaderClasses = [".priority-col", ".region-col", ".lon-col", ".lat-col", ".status-col"];
+            const centeredHeaderClasses = [".region-col", ".lon-col", ".lat-col", ".status-col"];
             assert(checks, "Project numeric/status headers are centered", centeredHeaderClasses.every(selector => frame.contentWindow.getComputedStyle(doc.querySelector(`#projectTable ${selector}`)).textAlign === "center"));
             assert(checks, "Project table labels the rich/compact column as Extra info", doc.querySelector("#projectTable .annotation-preview-col")?.textContent.includes("Extra info"), doc.querySelector("#projectTable .annotation-preview-col")?.textContent || "");
-            assert(checks, "Project Priority header explains label placement order", /label placement order/i.test(doc.querySelector("#projectTable .priority-col")?.title || ""));
-            assert(checks, "Project headers show editable or automatic hints", doc.querySelectorAll("#projectTable thead .col-edit-hint[data-icon='pencil']").length === 9 && Boolean(doc.querySelector("#projectTable thead .col-auto-chip [data-icon='wand']")));
-            const projectHeadersWithoutEllipses = [".priority-col", ".region-col", ".lon-col", ".lat-col", ".status-col"].every(selector => {
+            assert(checks, "Project table and Properties omit Priority", !doc.querySelector("#projectTable .priority-col, #projectTable .priority-input") && !doc.querySelector("#propertiesSelectionControls [data-property-field='priority']"));
+            assert(checks, "Project headers show editable or automatic hints", doc.querySelectorAll("#projectTable thead .col-edit-hint[data-icon='pencil']").length === 8 && Boolean(doc.querySelector("#projectTable thead .col-auto-chip [data-icon='wand']")));
+            const projectHeadersWithoutEllipses = [".region-col", ".lon-col", ".lat-col", ".status-col"].every(selector => {
               const header = doc.querySelector(`#projectTable ${selector}`);
               return header && header.scrollWidth <= header.clientWidth + 1;
             });
@@ -1169,7 +1679,7 @@
             assert(checks, "Project selection actions appear contextually", selectionActions?.hidden === false);
             assert(checks, "Project toolbar does not create page-level horizontal overflow", doc.documentElement.scrollWidth <= doc.documentElement.clientWidth + 1, `${doc.documentElement.scrollWidth}/${doc.documentElement.clientWidth}`);
             assert(checks, "Selecting a project row opens row Properties", doc.querySelector("#propertiesTitle")?.textContent.trim() === "Project data" && doc.querySelector("#propertiesSubtitle")?.textContent.trim() === firstNameInput?.value.trim());
-            assert(checks, "Project row Properties mark editable fields and automatic status", doc.querySelectorAll("#propertiesSelectionControls [data-property-kind='row'] .field-origin-icon-edit").length >= 8 && Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='row'] .properties-record-status .field-origin-icon-auto")));
+            assert(checks, "Project row Properties mark editable fields and automatic status", doc.querySelectorAll("#propertiesSelectionControls [data-property-kind='row'] .field-origin-icon-edit").length >= 7 && Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='row'] .properties-record-status .field-origin-icon-auto")));
             assert(checks, "Project row Properties expose an elbow leader override", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-field='elbowLeader']")));
             assert(checks, "Row selection does not re-plot the map", (doc.querySelector("#mapSvg")?.innerHTML || "") === mapBeforeNavigation);
             const labelMaxCharsInput = doc.querySelector("#propertiesSelectionControls [data-property-field='labelMaxChars']");
@@ -1197,26 +1707,18 @@
             undoButton.click();
             await waitFor(() => doc.querySelector("#projectTable .name-input")?.value === originalProjectName, 12000);
             assert(checks, "Undo restores project row edits", doc.querySelector("#projectTable .name-input")?.value === originalProjectName);
-            const priorityInputs = doc.querySelectorAll("#projectTable .priority-input");
-            const firstPriorityCell = priorityInputs[0]?.closest("td");
-            const secondPriorityCell = priorityInputs[1]?.closest("td");
-            priorityInputs[0]?.click();
-            priorityInputs[1]?.dispatchEvent(new frame.contentWindow.PointerEvent("pointerdown", { bubbles: true, ctrlKey: true }));
-            priorityInputs[1]?.dispatchEvent(new frame.contentWindow.FocusEvent("focusin", { bubbles: true }));
-            priorityInputs[1]?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true, ctrlKey: true }));
-            assert(checks, "Ctrl-click adds a Priority cell to the selection", firstPriorityCell?.classList.contains("is-cell-selected") && secondPriorityCell?.classList.contains("is-cell-selected"));
-            priorityInputs[1]?.dispatchEvent(new frame.contentWindow.PointerEvent("pointerdown", { bubbles: true, ctrlKey: true }));
-            priorityInputs[1]?.dispatchEvent(new frame.contentWindow.FocusEvent("focusin", { bubbles: true }));
-            priorityInputs[1]?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true, ctrlKey: true }));
-            assert(checks, "Ctrl-click removes a Priority cell from the selection", firstPriorityCell?.classList.contains("is-cell-selected") && !secondPriorityCell?.classList.contains("is-cell-selected"));
-            priorityInputs[0]?.click();
-            priorityInputs[1]?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true, shiftKey: true }));
-            const bulkPriorityInput = doc.querySelector("#bulkPriorityInput");
-            if (bulkPriorityInput) {
-              bulkPriorityInput.value = "4";
-              bulkPriorityInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
-            }
-            assert(checks, "Selected priority cells can be bulk changed", priorityInputs[0]?.value === "4" && priorityInputs[1]?.value === "4");
+            const projectNameInputs = doc.querySelectorAll("#projectTable .name-input");
+            const firstProjectNameCell = projectNameInputs[0]?.closest("td");
+            const secondProjectNameCell = projectNameInputs[1]?.closest("td");
+            projectNameInputs[0]?.click();
+            projectNameInputs[1]?.dispatchEvent(new frame.contentWindow.PointerEvent("pointerdown", { bubbles: true, ctrlKey: true }));
+            projectNameInputs[1]?.dispatchEvent(new frame.contentWindow.FocusEvent("focusin", { bubbles: true }));
+            projectNameInputs[1]?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true, ctrlKey: true }));
+            assert(checks, "Ctrl-click adds a Project name cell to the selection", firstProjectNameCell?.classList.contains("is-cell-selected") && secondProjectNameCell?.classList.contains("is-cell-selected"));
+            projectNameInputs[1]?.dispatchEvent(new frame.contentWindow.PointerEvent("pointerdown", { bubbles: true, ctrlKey: true }));
+            projectNameInputs[1]?.dispatchEvent(new frame.contentWindow.FocusEvent("focusin", { bubbles: true }));
+            projectNameInputs[1]?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true, ctrlKey: true }));
+            assert(checks, "Ctrl-click removes a Project name cell from the selection", firstProjectNameCell?.classList.contains("is-cell-selected") && !secondProjectNameCell?.classList.contains("is-cell-selected"));
             const firstLonInput = doc.querySelector("#projectTable .lon-input");
             const firstLatInput = doc.querySelector("#projectTable .lat-input");
             firstLonInput?.click();
@@ -1225,12 +1727,11 @@
             assert(checks, "Selected coordinate cells can be bulk cleared", firstLonInput?.value === "" && firstLatInput?.value === "");
             const deleteFromCellSelectionBtn = doc.querySelector("#deleteSelectedBtn");
             const rowsBeforeCellDelete = doc.querySelectorAll("#projectTable tbody tr").length;
-            firstPriorityCell?.querySelector("input")?.click();
+            firstProjectNameCell?.querySelector("input")?.click();
             assert(checks, "Delete enables from a selected Project cell", deleteFromCellSelectionBtn && !deleteFromCellSelectionBtn.disabled);
-            const originalDeleteConfirm = frame.contentWindow.confirm;
-            frame.contentWindow.confirm = () => true;
             deleteFromCellSelectionBtn?.click();
-            frame.contentWindow.confirm = originalDeleteConfirm;
+            await waitFor(() => doc.querySelector("#confirmationDialog")?.hidden === false, 2000);
+            doc.querySelector("#confirmationConfirmBtn")?.click();
             await waitFor(() => doc.querySelectorAll("#projectTable tbody tr").length === rowsBeforeCellDelete - 1, 2000);
             assert(checks, "Delete removes rows represented by selected Project cells", doc.querySelectorAll("#projectTable tbody tr").length === rowsBeforeCellDelete - 1);
             const rowsBeforeAnyColumnDelete = doc.querySelectorAll("#projectTable tbody tr").length;
@@ -1240,10 +1741,9 @@
             secondStatusCellForDelete?.dispatchEvent(new frame.contentWindow.PointerEvent("pointerdown", { bubbles: true, ctrlKey: true }));
             secondStatusCellForDelete?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true, ctrlKey: true }));
             assert(checks, "Delete enables from selected Project cells in any column", deleteFromCellSelectionBtn && !deleteFromCellSelectionBtn.disabled && firstNameCellForDelete?.classList.contains("is-cell-selected") && secondStatusCellForDelete?.classList.contains("is-cell-selected"));
-            const confirmForAnyColumnDelete = frame.contentWindow.confirm;
-            frame.contentWindow.confirm = () => true;
             deleteFromCellSelectionBtn?.click();
-            frame.contentWindow.confirm = confirmForAnyColumnDelete;
+            await waitFor(() => doc.querySelector("#confirmationDialog")?.hidden === false, 2000);
+            doc.querySelector("#confirmationConfirmBtn")?.click();
             await waitFor(() => doc.querySelectorAll("#projectTable tbody tr").length === rowsBeforeAnyColumnDelete - 2, 2000);
             assert(checks, "Delete removes every row that has a selected Project cell", doc.querySelectorAll("#projectTable tbody tr").length === rowsBeforeAnyColumnDelete - 2);
             doc.querySelector("[data-project-location-mode='coordinates']")?.click();
@@ -1256,9 +1756,9 @@
               ], "region-import.csv", { type: "text/csv" }));
               Object.defineProperty(regionImportInput, "files", { configurable: true, value: regionTransfer.files });
               regionImportInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
-              await waitFor(() => doc.querySelector("#csvMapDialog")?.hidden === false && doc.querySelectorAll("#csvMapRows .csv-map-row").length === 7, 4000);
+              await waitFor(() => doc.querySelector("#csvMapDialog")?.hidden === false && doc.querySelectorAll("#csvMapRows .csv-map-row").length === 6, 4000);
               doc.querySelector("[data-csv-location-mode='regions']")?.click();
-              await waitFor(() => doc.querySelectorAll("#csvMapRows .csv-map-row").length === 6 && doc.querySelector("#csvMapRows [data-csv-target='region'] select")?.value === "Province", 2000);
+              await waitFor(() => doc.querySelectorAll("#csvMapRows .csv-map-row").length === 5 && doc.querySelector("#csvMapRows [data-csv-target='region'] select")?.value === "Province", 2000);
               const regionMapText = doc.querySelector("#csvMapDialog")?.textContent || "";
               assert(checks, "Region CSV import can switch location mode inside the mapping dialog", /Region/.test(regionMapText) && !/Longitude|Latitude/.test(regionMapText) && doc.querySelector("#projectTable")?.dataset.locationMode === "coordinates", regionMapText);
               assert(checks, "Region CSV import required mappings are auto-matched", doc.querySelector("#confirmCsvMapBtn")?.disabled === false);
@@ -1273,6 +1773,12 @@
             assert(checks, "Category cards are rendered", cards.length > 0);
             assert(checks, "Category cards show usage and marker metadata", Array.from(cards).every(card => /points?\s+·\s+/i.test(card.querySelector("small")?.textContent || "")));
             assert(checks, "Category Properties are contextual", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='category']")));
+            const selectedCategoryCard = doc.querySelector("#categoryList .category-editor.is-selected") || cards[0];
+            const categoryMarkerSizeInput = doc.querySelector("#propertiesSelectionControls [data-category-field='markerSize']");
+            const cardMarkerPreview = selectedCategoryCard?.querySelector(".category-swatch .category-marker-preview");
+            const selectedShapePreview = doc.querySelector("#propertiesSelectionControls .category-shape-option.is-selected .category-marker-preview");
+            const expectedMarkerPreviewRadius = Math.max(2, Math.min(12, Number(categoryMarkerSizeInput?.value)));
+            assert(checks, "Legend card and Properties previews use the same selected marker size", Boolean(categoryMarkerSizeInput && cardMarkerPreview && selectedShapePreview) && Number(cardMarkerPreview.dataset.markerSize) === Number(categoryMarkerSizeInput.value) && Number(selectedShapePreview.dataset.markerSize) === Number(categoryMarkerSizeInput.value) && Number(cardMarkerPreview.dataset.previewRadius) === expectedMarkerPreviewRadius && Number(selectedShapePreview.dataset.previewRadius) === expectedMarkerPreviewRadius, `input=${categoryMarkerSizeInput?.value || "missing"}, card=${cardMarkerPreview?.dataset.markerSize || "missing"}, properties=${selectedShapePreview?.dataset.markerSize || "missing"}`);
             assert(checks, "Category custom icon upload is available", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-action='upload-category-icon']")));
             assert(checks, "Category custom icon upload accepts PNG/WebP only", doc.querySelector("#propertiesSelectionControls [data-category-icon-upload]")?.getAttribute("accept") === "image/png,image/webp");
             const uploadInput = doc.querySelector("#propertiesSelectionControls [data-category-icon-upload]");
@@ -1370,10 +1876,10 @@
             doc.querySelector("#regionTableTab")?.click();
             await waitFor(() => doc.body.dataset.workspaceView === "regions");
             assert(checks, "Project points and Map baselayer row text share the same font size", projectRowFontSize === regionRowFontSize, `projects=${projectRowFontSize}, regions=${regionRowFontSize}`);
-            assert(checks, "Map Properties expose page and canvas size presets", Boolean(doc.querySelector("#propertiesSelectionControls [data-layout-proxy='bookSizeInput']") && doc.querySelector("#propertiesSelectionControls [data-layout-proxy='imageSizeInput']")));
-            assert(checks, "Map Properties expose default label line length", Boolean(doc.querySelector("#propertiesSelectionControls [data-layout-proxy='labelCharsInput']")));
-            assert(checks, "Map Properties do not duplicate map scale", !doc.querySelector("#propertiesSelectionControls [data-layout-proxy='mapScaleInput']"));
-            assert(checks, "Map Properties mark map controls as editable", doc.querySelectorAll("#propertiesSelectionControls [data-property-kind='map'] .field-origin-icon-edit").length >= 5);
+            assert(checks, "Map baselayer Properties omit document page, canvas, and label-width controls", !doc.querySelector("#propertiesSelectionControls [data-layout-proxy='bookSizeInput']") && !doc.querySelector("#propertiesSelectionControls [data-layout-proxy='imageSizeInput']") && !doc.querySelector("#propertiesSelectionControls [data-layout-proxy='labelCharsInput']"));
+            assert(checks, "Map baselayer Properties omit duplicate boundary and region-preset selectors", !doc.querySelector("#propertiesSelectionControls [data-map-proxy='boundaryInput'], #propertiesSelectionControls [data-map-proxy='regionPresetInput']"));
+            assert(checks, "Map Properties expose baselayer size separately from canvas zoom", Boolean(doc.querySelector("#propertiesSelectionControls [data-layout-proxy='mapScaleInput']") && /exported files/.test(doc.querySelector("#propertiesSelectionControls")?.textContent || "")));
+            assert(checks, "Map Properties mark baselayer size as editable", doc.querySelectorAll("#propertiesSelectionControls [data-property-kind='map'] .field-origin-icon-edit").length === 1);
             assert(checks, "Map baselayer Properties omit duplicate region table actions", !doc.querySelector("#propertiesSelectionControls [data-property-action='select-all-regions']") && !doc.querySelector("#propertiesSelectionControls [data-property-action='clear-regions']") && !doc.querySelector("#propertiesSelectionControls [data-property-action='use-project-regions']"));
             const regionIncludedWidth = doc.querySelector("#regionTable .region-included-col")?.getBoundingClientRect().width || 0;
             const regionCountWidth = doc.querySelector("#regionTable .region-count-col")?.getBoundingClientRect().width || 0;
@@ -1394,7 +1900,6 @@
             regionPresetInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
             await waitFor(() => doc.querySelector("#regionPresetInput")?.value === "territories");
             assert(checks, "Region preset remains selected after applying", doc.querySelector("#regionPresetInput")?.value === "territories");
-            assert(checks, "Region preset remains selected in Properties", doc.querySelector("[data-map-proxy='regionPresetInput']")?.value === "territories");
             const firstRegionRow = Array.from(doc.querySelectorAll("#regionTable tbody tr[data-region-id]")).find(row => row.querySelector(".region-table-included-input")?.checked) || doc.querySelector("#regionTable tbody tr[data-region-id]");
             firstRegionRow?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
             assert(checks, "Selecting a region shows region-only Properties", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='region']")) && firstRegionRow?.classList.contains("is-active-region"));
@@ -1474,14 +1979,16 @@
             }
           }
           if (requestedWorkspace === "translate") {
-            assert(checks, "Translation direction is explicit", ["EN → FR", "FR → EN"].includes(doc.querySelector("#translationDirectionText")?.textContent.trim()));
+            assert(checks, "Translate omits the retired language-focus control and emphasis state", !doc.querySelector(".translation-direction, [data-translation-direction], #translationDirectionText, .translation-input.is-emphasis"));
             assert(checks, "Translation groups are rendered", doc.querySelectorAll("#translationGroups .translation-group").length > 0);
+            assert(checks, "Translation progress uses the concise Translations label", /^\d+ \/ \d+ (Translations|Traductions)$/.test(doc.querySelector("#translationProgressText")?.textContent.trim() || ""), doc.querySelector("#translationProgressText")?.textContent.trim() || "");
             const translateAddSection = doc.querySelector(".translate-add-section");
             assert(checks, "Translation filters and paste action remain available", doc.querySelectorAll("[data-translation-filter]").length === 2 && Boolean(doc.querySelector("#pasteTranslationColumnBtn")));
             assert(checks, "Translation import action is in the Add section", Boolean(translateAddSection?.querySelector("#importTranslationsBtn")) && /Add|Ajouter/.test(translateAddSection?.textContent || ""), translateAddSection?.textContent || "");
-            assert(checks, "Translate Properties are contextual", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='translation'], #propertiesSelectionControls [data-property-kind='translation-entry']")));
+            assert(checks, "Translate Properties show the summary without a repeated selected-string editor", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='translation']")) && !doc.querySelector("#propertiesSelectionControls [data-property-kind='translation-entry'], #propertiesSelectionControls [data-translation-property]"));
             assert(checks, "Translate column labels show editable and automatic hints", doc.querySelectorAll(".translation-column-labels [data-icon='pencil']").length === 2 && Boolean(doc.querySelector(".translation-column-labels .col-auto-chip [data-icon='wand']")));
-            assert(checks, "Translate entry Properties mark editable language fields", doc.querySelectorAll("#propertiesSelectionControls [data-property-kind='translation-entry'] .field-origin-icon-edit").length >= 2);
+            const translationLanguageHeadings = Array.from(doc.querySelectorAll(".translation-column-labels > span")).slice(1, 3).map(node => node.textContent.trim());
+            assert(checks, "Translation language headings omit editable source and translation qualifiers", /^(English|Anglais)$/.test(translationLanguageHeadings[0] || "") && translationLanguageHeadings[1] === "Français", translationLanguageHeadings.join(" | "));
             const firstTranslationRow = doc.querySelector(".translation-row[data-entry-id^='project:']");
             const englishTranslationInput = firstTranslationRow?.querySelector(".translation-en-input");
             const frenchTranslationInput = firstTranslationRow?.querySelector(".translation-fr-input");
@@ -1597,6 +2104,7 @@
             assert(checks, "Quality metrics render as cards", cards.length >= 5);
             assert(checks, "Quality cards expose severity state", Array.from(cards).every(card => ["ok", "review", "danger"].includes(card.dataset.state)));
             assert(checks, "Quality summary exposes readiness state", ["ok", "review", "info"].includes(doc.querySelector("#qualitySummaryBanner")?.dataset.state));
+            assert(checks, "Quality review banner omits the retired explanatory sentence", !/Actionable|Passive counts|Éléments à corriger|décomptes informatifs/.test(doc.querySelector("#qualitySummaryBanner")?.textContent || ""));
             assert(checks, "Detailed checklist remains available", Boolean(doc.querySelector(".quality-detail-checklist #statusBox")));
             assert(checks, "Quality Properties are contextual", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='quality']")));
             assert(checks, "Quality workspace shows render timing telemetry", doc.querySelectorAll("#performanceTelemetryMetrics .performance-metric").length === 5 && ["ok", "warning"].includes(doc.querySelector("#performanceTelemetryStatus")?.dataset.state));

@@ -1,5 +1,6 @@
 /.chrome-smoke-profile/
 /.edge-smoke-profile/
+.DS_Store
 /.claude/
 /handoff/
 /node_modules/
@@ -8,4 +9,3 @@
 /tests/smoke-labels-dom.err
 /tests/smoke-labels-dom.html
 /tests/smoke-labels.png
-

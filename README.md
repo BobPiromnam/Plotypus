@@ -113,12 +113,14 @@ Project files identify their Plotypus format version and the app version that sa
 
 Use CSV when you only need to exchange the project-point table with Excel or another data source.
 
+The Properties panel's left/right position, width, and collapsed state are interface preferences saved in the current browser. They are intentionally separate from project files, so opening a shared map does not change another user's preferred workspace layout.
+
 ## CSV Format
 
 Recommended columns:
 
 ```csv
-name,footnote,type,priority,lon,lat,hideLine
+name,footnote,type,lon,lat,hideLine
 ```
 
 Required columns:
@@ -132,7 +134,6 @@ name,type,lon,lat
 | `name` | Label text |
 | `footnote` | Optional superscript text |
 | `type` | Marker category |
-| `priority` | Label priority from `0` to `5`; higher values place earlier |
 | `lon` | Longitude in decimal degrees |
 | `lat` | Latitude in decimal degrees |
 | `hideLine` | Hides the leader line for truthy values |
@@ -212,13 +213,14 @@ Use `bookSizes` to define the Book size dropdown. Each entry inside `sizes` beco
     "imageSize": "half",
     "printLabelSize": 12,
     "mapScale": 100,
-    "defaultMarkerSize": 10,
+    "defaultMarkerSize": 4,
     "defaultLineWidth": 2,
     "labelMaxChars": 24
   },
   "bookSizes": {
     "department-report": {
       "label": "Department report",
+      "documentPage": { "widthIn": 8.5, "heightIn": 11, "marginIn": 1 },
       "sizes": [
         { "value": "full", "label": "Full page", "width": 792, "height": 570 },
         { "value": "half", "label": "1/2 page", "width": 792, "height": 285 }
@@ -232,6 +234,7 @@ In this example:
 
 - `defaults.bookSize` must match the `department-report` key.
 - `defaults.imageSize` must match one of the `sizes[].value` entries.
+- `documentPage` sets the width, height and conventional margin used by the non-exported document-page preview.
 - `width` and `height` are output canvas dimensions in pixels.
 
 ### Category Example
@@ -242,9 +245,9 @@ Use `categories` to define the default marker types in the legend and in the Pro
 {
   "categories": [
     {
-      "id": "priority-project",
-      "label": "Priority Project",
-      "defaultLabel": "Priority Project",
+      "id": "capital-project",
+      "label": "Capital Project",
+      "defaultLabel": "Capital Project",
       "shape": "circle",
       "colour": "#444444",
       "stroke": "#ffffff",
@@ -275,7 +278,7 @@ Use `categories` to define the default marker types in the legend and in the Pro
 
 Category rules:
 
-- `id` must be unique and should use simple lowercase text such as `priority-project`.
+- `id` must be unique and should use simple lowercase text such as `capital-project`.
 - `label` is what users see in the app.
 - `sampleRows[].type` should match a category `label`, not the `id`.
 - Supported marker shapes include `circle`, `square`, `diamond`, `triangle-up`, `triangle-down`, `star`, `plus`, and `cross`.
@@ -330,8 +333,7 @@ Use `sampleRows` to change the starter data.
   "sampleRows": [
     {
       "name": "Example Mine",
-      "type": "Priority Project",
-      "priority": 3,
+      "type": "Capital Project",
       "lon": -103.9,
       "lat": 54.5
     },

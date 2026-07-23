@@ -17,7 +17,7 @@ Research threads considered:
 - QGIS/ArcGIS/cartographic production principles: prefer outside-map label bands for dense point maps, keep label order consistent along each side, reduce leader crossings, keep leaders short and direct, preserve manual edits, and use visual hierarchy/legibility before maximizing map scale.
 - General cartography and geologic map design practice: do not let labels obscure the map unnecessarily, keep legend and no-coordinate callouts compact, maintain a minimum readable label size, and reduce the map when the fixed output canvas cannot fit the required label/leader/legend space.
 
-The resulting approach keeps the implementation local and dependency-free while borrowing the practical ideas: candidate generation, rectangle geometry, leader-line crossing checks, outside perimeter label slots, side-band ordering, priority-based placement, leader-length quality gates, compact map furniture, and testable quality metrics.
+The resulting approach keeps the implementation local and dependency-free while borrowing the practical ideas: candidate generation, rectangle geometry, leader-line crossing checks, outside perimeter label slots, side-band ordering, density-aware placement, leader-length quality gates, compact map furniture, and testable quality metrics.
 
 ## Discussion-Derived Context
 
@@ -37,7 +37,7 @@ The research thread explored whether existing libraries, CLIs, APIs, MCP tools, 
 - side bands and outside perimeter slots instead of only placing labels near points
 - scoring penalties for label overlap, marker overlap, leader crossings, map overlap, furniture overlap, wrong-side placement, and excessive leader length
 - local optimization/relaxation concepts for dense cases
-- priority sorting for important labels
+- density-aware sorting for labels in crowded areas
 - quality gates that can reduce map scale when the layout cannot meet readable-spacing constraints
 - smoke metrics that quantify what had previously been judged only by looking at screenshots
 
@@ -61,7 +61,7 @@ The branding/configuration work came later as the app became more shareable. Onc
 
 - Added a denser label-placement engine with perimeter/outside-map candidates, side-band ordering, collision penalties, leader crossing checks, and reserved furniture avoidance.
 - Added geometry helpers for rectangle overlap, segment crossing, segment-rectangle intersection, candidate scoring, and perimeter feasibility.
-- Added per-label `priority` support so important labels can be placed earlier and receive cleaner positions.
+- Added density-aware placement so labels in crowded areas are considered earlier and receive cleaner positions.
 - Preserved manual label positions after drag edits while allowing explicit `Run auto-place` to clear/recompute automatic placement.
 - Added long-leader quality handling and map-scale reduction logic so fixed-size canvases can shrink the geography when labels need more surrounding space.
 - Added optional elbow/routed leader behavior for dense clusters.

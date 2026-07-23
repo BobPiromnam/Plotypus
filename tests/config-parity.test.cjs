@@ -214,6 +214,9 @@ test("bundled file-mode defaults match the editable JSON configuration", () => {
     lineWidthInput: external.defaults.defaultLineWidth,
     labelCharsInput: external.defaults.labelMaxChars
   });
+  assert.equal(bundled.layoutDefaults.markerSizeInput, 4);
+  assert.ok(bundled.categorySettings.filter(category => !category.markerSizeCustom).every(category => category.markerSize === 4));
+  assert.ok(bundled.mapStylePresets[bundled.defaultMapStylePreset].categoryStyles.every(category => category.markerSize === 4));
 });
 
 test("config-backed user-facing labels include French fallbacks", () => {

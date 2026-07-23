@@ -47,7 +47,7 @@
     "imageSize": "full",
     "printLabelSize": 12,
     "mapScale": 100,
-    "defaultMarkerSize": 10,
+    "defaultMarkerSize": 4,
     "defaultLineWidth": 2,
     "labelMaxChars": 24
   },
@@ -55,6 +55,7 @@
     "letter": {
       "label": "8.5 x 11",
       "labelFr": "8,5 x 11",
+      "documentPage": { "widthIn": 8.5, "heightIn": 11, "marginIn": 1 },
       "sizes": [
         { "value": "full", "label": "Full page", "labelFr": "Page complète", "width": 612, "height": 750 },
         { "value": "two-thirds", "label": "2/3 page", "labelFr": "2/3 de page", "width": 612, "height": 520 },
@@ -66,6 +67,7 @@
     "compact": {
       "label": "6.5 x 9.75",
       "labelFr": "6,5 x 9,75",
+      "documentPage": { "widthIn": 6.5, "heightIn": 9.75, "marginIn": 0.75 },
       "sizes": [
         { "value": "full", "label": "Full page", "labelFr": "Page complète", "width": 468, "height": 700 },
         { "value": "two-thirds", "label": "2/3 page", "labelFr": "2/3 de page", "width": 468, "height": 468 },
@@ -128,9 +130,9 @@
       "stylesheet": "themes/goc-green.css?v=20260612-map-only",
       "regionColours": ["#c7ded5", "#96c6b4", "#6caf94", "#078c70"],
       "categoryStyles": [
-        { "colour": "#444444", "stroke": "#ffffff", "markerSize": 10, "lineWidth": 2 },
-        { "colour": "#ffffff", "stroke": "#555555", "markerSize": 10, "lineWidth": 2 },
-        { "colour": "#0b6b57", "stroke": "#ffffff", "markerSize": 10, "lineWidth": 2 }
+        { "colour": "#444444", "stroke": "#ffffff", "markerSize": 4, "lineWidth": 2 },
+        { "colour": "#ffffff", "stroke": "#555555", "markerSize": 4, "lineWidth": 2 },
+        { "colour": "#0b6b57", "stroke": "#ffffff", "markerSize": 4, "lineWidth": 2 }
       ]
     },
     "goc-blue": {
@@ -176,7 +178,7 @@
       "shape": "circle",
       "colour": "#444444",
       "stroke": "#ffffff",
-      "markerSize": 10,
+      "markerSize": 4,
       "lineWidth": 2,
       "markerSizeCustom": false,
       "lineWidthCustom": false,
@@ -191,7 +193,7 @@
       "shape": "square",
       "colour": "#ffffff",
       "stroke": "#555555",
-      "markerSize": 10,
+      "markerSize": 4,
       "lineWidth": 2,
       "markerSizeCustom": false,
       "lineWidthCustom": false,

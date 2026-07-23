@@ -260,7 +260,9 @@
             label.getAttribute("data-layout-id"),
             label.getAttribute("data-label-name") || label.textContent.replace(/\s+/g, " ").trim()
           ]));
-          const labelFontSizes = mapLabels.map(label => Number(label.getAttribute("font-size")) || 0);
+          const labelFontSizes = mapLabels.flatMap(label => Array.from(label.querySelectorAll(".label-line"))
+            .map(line => Number(line.getAttribute("font-size")) || 0)
+            .filter(Boolean));
           const rects = labelBackgrounds.map(getRect);
           const labelRects = labelBackgrounds.map((node, index) => ({
             name: labelTexts.get(node.getAttribute("data-layout-id")) || `label ${index}`,
