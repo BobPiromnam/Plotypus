@@ -391,9 +391,8 @@ test("project snapshots preserve unified annotation content and strip chart meta
 
   assert.deepEqual(snapshot.rows[0].content, content);
   assert.equal(snapshot.rows[0].labelBorder, true);
-  assert.equal(snapshot.rows[0].chart, "none");
-  assert.equal(Array.isArray(snapshot.rows[0].chartSlices), true);
-  assert.equal(snapshot.rows[0].chartSlices.length, 0);
+  assert.equal(Object.hasOwn(snapshot.rows[0], "chart"), false);
+  assert.equal(Object.hasOwn(snapshot.rows[0], "chartSlices"), false);
   assert.equal(Object.hasOwn(snapshot.rows[0], "labelBlocks"), false);
   assert.equal(Object.hasOwn(snapshot.rows[0], "labelImage"), false);
   assert.equal(Object.hasOwn(snapshot.rows[0], "bullets"), false);

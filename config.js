@@ -128,7 +128,7 @@
     tableFields: ["name", "footnote", "type", "lon", "lat"],
     layoutDefaults: {
       bookSizeInput: "letter",
-      imageSizeInput: "full",
+      imageSizeInput: "two-thirds",
       labelSizeInput: 12,
       mapScaleInput: 100,
       markerSizeInput: 4,

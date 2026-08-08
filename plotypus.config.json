@@ -44,7 +44,7 @@
   },
   "defaults": {
     "bookSize": "letter",
-    "imageSize": "full",
+    "imageSize": "two-thirds",
     "printLabelSize": 12,
     "mapScale": 100,
     "defaultMarkerSize": 4,

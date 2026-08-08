@@ -78,8 +78,6 @@
         labelStyle: row.labelStyle || "compact",
         content: Array.isArray(row.content) ? row.content : [],
         labelBorder: Boolean(row.labelBorder),
-        chart: "none",
-        chartSlices: [],
         hideLine: row.hideLine,
         elbowLeader: Boolean(row.elbowLeader),
         labelMaxChars: row.labelMaxChars || ""

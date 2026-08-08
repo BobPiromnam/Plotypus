@@ -3,9 +3,10 @@ param(
   [int]$Height = 1000,
   [int]$VirtualTimeBudgetMs = 7000,
   [int]$ScreenshotDelayMs = 12000,
+  [int]$BrowserTimeoutMs = 0,
   [ValidateSet("", "preview", "projects", "categories", "regions", "translate", "quality")]
   [string]$Workspace = "",
-  [ValidateSet("", "startup", "map-details", "csv-map", "point-catalog", "confirmation", "shortcuts", "export-menu", "add-data-menu", "project-load-error")]
+  [ValidateSet("", "startup", "map-details", "csv-map", "point-catalog", "point-selection", "confirmation", "shortcuts", "export-menu", "add-data-menu", "project-load-error")]
   [string]$Dialog = "",
   [ValidateSet("projects", "regions")]
   [string]$CatalogOrigin = "projects",
@@ -20,6 +21,20 @@ $ErrorActionPreference = "Stop"
 
 if ($MeasurePerformance -and -not $LoadSample) {
   throw "-MeasurePerformance requires -LoadSample so the render paths have representative data."
+}
+
+if ($BrowserTimeoutMs -lt 0) {
+  throw "-BrowserTimeoutMs must be zero (automatic) or a positive number of milliseconds."
+}
+
+$resolvedBrowserTimeoutMs = if ($BrowserTimeoutMs -gt 0) {
+  $BrowserTimeoutMs
+} elseif ($MeasurePerformance) {
+  180000
+} elseif ($LoadSample -and -not $Dialog) {
+  120000
+} else {
+  30000
 }
 
 $repoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
@@ -91,11 +106,14 @@ try {
     "--virtual-time-budget=$VirtualTimeBudgetMs"
   )
   $dumpArgs = $commonArgs + @("--window-size=$Width,$Height", "--dump-dom", $smokeUrl)
+  $dumpStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
   $dumpProcess = Start-Process -FilePath $browser -ArgumentList $dumpArgs -NoNewWindow -PassThru -RedirectStandardOutput $domPath -RedirectStandardError $errPath
-  if (-not $dumpProcess.WaitForExit(30000)) {
+  if (-not $dumpProcess.WaitForExit($resolvedBrowserTimeoutMs)) {
     Stop-Process -Id $dumpProcess.Id -Force -ErrorAction SilentlyContinue
-    throw "Browser shell DOM smoke timed out. See $errPath"
+    $dumpStopwatch.Stop()
+    throw "Browser shell DOM smoke timed out after $($dumpStopwatch.ElapsedMilliseconds) ms (limit $resolvedBrowserTimeoutMs ms; sample=$([bool]$LoadSample); performance=$([bool]$MeasurePerformance); workspace='$Workspace'; dialog='$Dialog'). See $errPath"
   }
+  $dumpStopwatch.Stop()
   $dumpProcess.WaitForExit()
   if ($null -ne $dumpProcess.ExitCode -and $dumpProcess.ExitCode -ne 0) { throw "Browser shell smoke failed with exit code $($dumpProcess.ExitCode). See $errPath" }
 
@@ -118,9 +136,9 @@ try {
       $smokeUrl
     )
     $shotProcess = Start-Process -FilePath $browser -ArgumentList $shotArgs -NoNewWindow -PassThru
-    if (-not $shotProcess.WaitForExit(30000)) {
+    if (-not $shotProcess.WaitForExit($resolvedBrowserTimeoutMs)) {
       Stop-Process -Id $shotProcess.Id -Force -ErrorAction SilentlyContinue
-      throw "Browser shell screenshot timed out."
+      throw "Browser shell screenshot timed out after $resolvedBrowserTimeoutMs ms."
     }
     $shotProcess.WaitForExit()
     if ($null -ne $shotProcess.ExitCode -and $shotProcess.ExitCode -ne 0) { throw "Browser shell screenshot failed with exit code $($shotProcess.ExitCode)." }
@@ -143,6 +161,9 @@ try {
     status = $result.status
     failures = $result.failures
     checks = $result.checks
+    performance = $result.performance
+    browserElapsedMs = $dumpStopwatch.ElapsedMilliseconds
+    browserTimeoutMs = $resolvedBrowserTimeoutMs
     screenshot = if ($SkipScreenshot) { $null } elseif ($ScreenshotCopyPath) { $copyPath } else { $screenshotPath }
     dom = $domPath
   }

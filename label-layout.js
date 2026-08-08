@@ -531,22 +531,34 @@
       return score;
     }
 
-    function chooseBestCandidate(item, placed, settings, mapBounds, points = placed, perimeterCandidateMap = new Map()) {
+    function createCandidatePlacementMap(points, settings, mapBounds, perimeterCandidateMap = new Map()) {
+      return new Map(points.map(item => [
+        getLabelKey(item),
+        createLabelCandidates(item, settings, mapBounds, perimeterCandidateMap.get(getLabelKey(item)))
+          .map(candidate => makeLabelPlacement(item, candidate))
+      ]));
+    }
+
+    function candidatePlacementsForItem(item, settings, mapBounds, perimeterCandidateMap, candidatePlacementMap) {
+      const cached = candidatePlacementMap && candidatePlacementMap.get(getLabelKey(item));
+      if (cached) return cached;
+      return createLabelCandidates(item, settings, mapBounds, perimeterCandidateMap.get(getLabelKey(item)))
+        .map(candidate => makeLabelPlacement(item, candidate));
+    }
+
+    function chooseBestCandidate(item, placed, settings, mapBounds, points = placed, perimeterCandidateMap = new Map(), candidatePlacementMap = null) {
       const preferred = preferredSide(item, settings, mapBounds);
-      const candidates = createLabelCandidates(item, settings, mapBounds, perimeterCandidateMap.get(getLabelKey(item)));
-      return candidates
-        .map(candidate => {
-          const label = makeLabelPlacement(item, candidate);
+      return candidatePlacementsForItem(item, settings, mapBounds, perimeterCandidateMap, candidatePlacementMap)
+        .map(label => {
           return { label, score: scoreCandidate(label, placed, settings, mapBounds, preferred, points) };
         })
         .sort((a, b) => a.score - b.score)[0].label;
     }
 
-    function candidateLabelsForItem(item, placed, settings, mapBounds, points, perimeterCandidateMap = new Map()) {
+    function candidateLabelsForItem(item, placed, settings, mapBounds, points, perimeterCandidateMap = new Map(), candidatePlacementMap = null) {
       const preferred = preferredSide(item, settings, mapBounds);
-      return createLabelCandidates(item, settings, mapBounds, perimeterCandidateMap.get(getLabelKey(item)))
-        .map(candidate => {
-          const label = makeLabelPlacement(item, candidate);
+      return candidatePlacementsForItem(item, settings, mapBounds, perimeterCandidateMap, candidatePlacementMap)
+        .map(label => {
           return {
             label,
             localScore: scoreCandidate(label, placed, settings, mapBounds, preferred, points)
@@ -575,6 +587,40 @@
         const others = placed.filter((_, otherIndex) => otherIndex !== index);
         return score + scoreCandidate(label, others, settings, mapBounds, preferredSide(label, settings, mapBounds), points);
       }, 0);
+    }
+
+    function pairPlacementPenalty(candidateLabel, label, settings) {
+      const overlap = rectOverlapArea(labelRect(candidateLabel), labelRect(label));
+      return countCandidateCrossings(candidateLabel, [label]) * weights.leaderLineCrossing
+        + sideCrowdingPenalty(candidateLabel, [label], settings)
+        + verticalOrderPenalty(candidateLabel, [label])
+        + (overlap ? weights.labelOverlapBase + overlap * weights.labelOverlapArea : 0);
+    }
+
+    function intrinsicPlacementScore(label, settings, mapBounds, points, cache = null) {
+      if (cache && cache.has(label)) return cache.get(label);
+      const score = scoreCandidate(label, [], settings, mapBounds, preferredSide(label, settings, mapBounds), points);
+      if (cache) cache.set(label, score);
+      return score;
+    }
+
+    function scoreLayoutReplacement(placed, index, replacement, settings, mapBounds, points, currentScore = null, intrinsicScoreCache = null) {
+      const current = placed[index];
+      if (!current || !replacement) return Number.isFinite(currentScore) ? currentScore : scoreLayout(placed, settings, mapBounds, points);
+
+      const baselineScore = Number.isFinite(currentScore)
+        ? currentScore
+        : scoreLayout(placed, settings, mapBounds, points);
+      const others = placed.filter((_, otherIndex) => otherIndex !== index);
+      const currentIntrinsic = intrinsicPlacementScore(current, settings, mapBounds, points, intrinsicScoreCache);
+      const replacementIntrinsic = intrinsicPlacementScore(replacement, settings, mapBounds, points, intrinsicScoreCache);
+      const currentPairPenalty = others.reduce((score, label) => score + pairPlacementPenalty(current, label, settings), 0);
+      const replacementPairPenalty = others.reduce((score, label) => score + pairPlacementPenalty(replacement, label, settings), 0);
+
+      // scoreLayout evaluates each pair once from each label's perspective.
+      return baselineScore
+        + replacementIntrinsic - currentIntrinsic
+        + 2 * (replacementPairPenalty - currentPairPenalty);
     }
 
     function shouldRouteDenseLeader(label, settings) {
@@ -874,7 +920,7 @@
       return best;
     }
 
-    function optimizeDenseLayoutWithLocalSearch(placed, points, settings, mapBounds, perimeterCandidateMap = new Map()) {
+    function optimizeDenseLayoutWithLocalSearch(placed, points, settings, mapBounds, perimeterCandidateMap = new Map(), candidatePlacementMap = null, intrinsicScoreCache = null) {
       if (!layoutOptimizationNeeded(points, settings)) return placed;
 
       let best = placed.slice();
@@ -891,13 +937,13 @@
           if (index < 0) continue;
 
           const others = best.filter((_, otherIndex) => otherIndex !== index);
-          const candidates = candidateLabelsForItem(best[index], others, settings, mapBounds, points, perimeterCandidateMap)
+          const candidates = candidateLabelsForItem(best[index], others, settings, mapBounds, points, perimeterCandidateMap, candidatePlacementMap)
             .slice(0, maxCandidatesPerLabel);
 
           for (const candidate of candidates) {
             const trial = best.slice();
             trial[index] = candidate;
-            const trialScore = scoreLayout(trial, settings, mapBounds, points);
+            const trialScore = scoreLayoutReplacement(best, index, candidate, settings, mapBounds, points, bestScore, intrinsicScoreCache);
             if (trialScore + 0.1 < bestScore) {
               best = trial;
               bestScore = trialScore;
@@ -913,12 +959,12 @@
       return best;
     }
 
-    function optimizeDenseLayoutWithAnnealing(placed, points, settings, mapBounds, perimeterCandidateMap = new Map()) {
+    function optimizeDenseLayoutWithAnnealing(placed, points, settings, mapBounds, perimeterCandidateMap = new Map(), candidatePlacementMap = null, intrinsicScoreCache = null) {
       if (!layoutOptimizationNeeded(points, settings) || placed.length < 4) return placed;
 
       const candidateLists = placed.map((label, index) => {
         const others = placed.filter((_, otherIndex) => otherIndex !== index);
-        const candidates = candidateLabelsForItem(label, others, settings, mapBounds, points, perimeterCandidateMap)
+        const candidates = candidateLabelsForItem(label, others, settings, mapBounds, points, perimeterCandidateMap, candidatePlacementMap)
           .slice(0, points.length >= 18 ? 56 : 42);
         if (!candidates.some(candidate => sameLabelPlacement(candidate, label))) candidates.unshift(label);
         return candidates;
@@ -944,7 +990,7 @@
 
         const trial = current.slice();
         trial[labelIndex] = candidate;
-        const trialScore = scoreLayout(trial, settings, mapBounds, points);
+        const trialScore = scoreLayoutReplacement(current, labelIndex, candidate, settings, mapBounds, points, currentScore, intrinsicScoreCache);
         const progress = iterations <= 1 ? 1 : iteration / (iterations - 1);
         const temperature = startTemperature * Math.pow(endTemperature / startTemperature, progress);
         const acceptWorse = Math.exp((currentScore - trialScore) / Math.max(1, temperature)) > random();
@@ -969,11 +1015,13 @@
 
     function layoutLabelsWithGreedyCandidates(points, settings, mapBounds) {
       const perimeterCandidateMap = createPerimeterCandidateMap(points, settings, mapBounds);
+      const candidatePlacementMap = createCandidatePlacementMap(points, settings, mapBounds, perimeterCandidateMap);
+      const intrinsicScoreCache = new WeakMap();
       const ordered = points.slice().sort((a, b) => comparePlacementOrder(a, b, points, settings));
       let placed = [];
 
       ordered.forEach(item => {
-        placed.push(chooseBestCandidate(item, placed, settings, mapBounds, points, perimeterCandidateMap));
+        placed.push(chooseBestCandidate(item, placed, settings, mapBounds, points, perimeterCandidateMap, candidatePlacementMap));
       });
 
       for (let pass = 0; pass < 4; pass += 1) {
@@ -981,7 +1029,7 @@
         for (let i = 0; i < placed.length; i += 1) {
           const current = placed[i];
           const others = placed.filter((_, index) => index !== i);
-          const improved = chooseBestCandidate(current, others, settings, mapBounds, points, perimeterCandidateMap);
+          const improved = chooseBestCandidate(current, others, settings, mapBounds, points, perimeterCandidateMap, candidatePlacementMap);
           const currentScore = scoreCandidate(current, others, settings, mapBounds, preferredSide(current, settings, mapBounds), points);
           const improvedScore = scoreCandidate(improved, others, settings, mapBounds, preferredSide(current, settings, mapBounds), points);
           if (improvedScore + 0.1 < currentScore) {
@@ -992,12 +1040,12 @@
         if (!changed) break;
       }
 
-      placed = optimizeDenseLayoutWithLocalSearch(placed, points, settings, mapBounds, perimeterCandidateMap);
-      placed = optimizeDenseLayoutWithAnnealing(placed, points, settings, mapBounds, perimeterCandidateMap);
+      placed = optimizeDenseLayoutWithLocalSearch(placed, points, settings, mapBounds, perimeterCandidateMap, candidatePlacementMap, intrinsicScoreCache);
+      placed = optimizeDenseLayoutWithAnnealing(placed, points, settings, mapBounds, perimeterCandidateMap, candidatePlacementMap, intrinsicScoreCache);
       placed = optimizeOrderedSideBands(placed, points, settings, mapBounds);
 
       const byKey = new Map(placed.map(label => [getLabelKey(label), label]));
-      return points.map(point => byKey.get(getLabelKey(point)) || chooseBestCandidate(point, [], settings, mapBounds, points, perimeterCandidateMap));
+      return points.map(point => byKey.get(getLabelKey(point)) || chooseBestCandidate(point, [], settings, mapBounds, points, perimeterCandidateMap, candidatePlacementMap));
     }
 
     function layoutLabels(points, settings, mapBounds) {
@@ -1050,6 +1098,7 @@
       compatibleSideOrder,
       countSideOrderInversions,
       createCandidateForSide,
+      createCandidatePlacementMap,
       createLabelCandidates,
       createOrderPreservingHorizontalSlots,
       createOrderPreservingVerticalSlots,
@@ -1073,6 +1122,7 @@
       rememberLabelPositions,
       scoreCandidate,
       scoreLayout,
+      scoreLayoutReplacement,
       sameLabelPlacement,
       weights
     });

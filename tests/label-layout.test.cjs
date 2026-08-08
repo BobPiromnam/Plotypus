@@ -11,7 +11,7 @@ function loadFactory() {
   return context.window.PLOTYPUS_LABEL_LAYOUT;
 }
 
-function createPolicies() {
+function createPolicies(overrides = {}) {
   return loadFactory().create({
     clamp: (value, min, max) => Math.max(min, Math.min(max, value)),
     clampLabelBaseline: (value, _label, min, max) => Math.max(min, Math.min(max, value)),
@@ -39,7 +39,8 @@ function createPolicies() {
     rectsOverlap: () => false,
     referenceSideOptions: () => [],
     segmentIntersectsRect: () => false,
-    segmentsCross: () => false
+    segmentsCross: () => false,
+    ...overrides
   });
 }
 
@@ -96,4 +97,38 @@ test("candidate generation is deterministic and keeps perimeter slots", () => {
     repeated.map(candidate => `${candidate.side}:${candidate.x}:${candidate.y}`)
   );
   assert.equal(policies.makeLabelPlacement(item, candidates[1]).labelSide, candidates[1].side);
+});
+
+test("one-label score delta matches a complete layout rescore", () => {
+  const overlapArea = (a, b) => Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0))
+    * Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0));
+  const toRect = label => ({
+    x0: label.labelX,
+    y0: label.labelY - 12,
+    x1: label.labelX + 50,
+    y1: label.labelY,
+    centerX: label.labelX + 25,
+    centerY: label.labelY - 6
+  });
+  const policies = createPolicies({
+    labelBackgroundRect: toRect,
+    labelRect: toRect,
+    rectOverlapArea: overlapArea,
+    segmentsCross: () => true
+  });
+  const settings = { width: 300, height: 220, labelSize: 12, mapScale: 100, layoutObstacles: [] };
+  const bounds = { x0: 80, y0: 60, x1: 220, y1: 160 };
+  const placed = [
+    { rowId: "a", name: "Alpha", x: 90, y: 80, labelX: 22, labelY: 72, labelSide: "left" },
+    { rowId: "b", name: "Beta", x: 120, y: 95, labelX: 42, labelY: 66, labelSide: "left" },
+    { rowId: "c", name: "Gamma", x: 180, y: 120, labelX: 224, labelY: 126, labelSide: "right" }
+  ];
+  const replacement = { ...placed[1], labelX: 226, labelY: 96, labelSide: "right" };
+  const baseline = policies.scoreLayout(placed, settings, bounds, placed);
+  const incremental = policies.scoreLayoutReplacement(placed, 1, replacement, settings, bounds, placed, baseline);
+  const trial = placed.slice();
+  trial[1] = replacement;
+  const complete = policies.scoreLayout(trial, settings, bounds, placed);
+
+  assert.ok(Math.abs(incremental - complete) < 1e-6, `${incremental} !== ${complete}`);
 });

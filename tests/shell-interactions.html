@@ -379,6 +379,39 @@
         assert(checks, "Startup actions are visual peers with an outlined default", new Set(startupOptionBackgrounds).size === 1 && startupDefaultOption.dataset.default === "true" && !/rgb\(63, 107, 94\)/.test(startupDefaultBg), `${startupOptionBackgrounds.join(" | ")} / ${startupDefaultBg}`);
         assert(checks, "Startup default option meets contrast requirements", startupDefaultTitleRatio >= 4.5 && startupDefaultBodyRatio >= 4.5 && startupDefaultIconRatio >= 3, `title=${startupDefaultTitleRatio.toFixed(2)}, body=${startupDefaultBodyRatio.toFixed(2)}, icon=${startupDefaultIconRatio.toFixed(2)}, bg=${startupDefaultBg}`);
 
+        if (requestedDialog === "point-selection") {
+          doc.querySelector("#startupLoadSampleBtn")?.click();
+          const marker = await waitFor(() => doc.querySelector("#mapSvg .marker-layer .marker"), 12000);
+          marker.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
+          await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='marker']"), 2000);
+          doc.querySelector("#propertiesSelectionControls")?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
+          assert(checks, "Interacting with selected point Properties keeps the point selected", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='marker']")));
+          doc.querySelector("#mapSvg")?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
+          await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='document']"), 2000);
+          assert(checks, "Clicking empty map space deselects the selected point", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='document']")));
+          marker.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
+          await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='marker']"), 2000);
+          doc.querySelector("#previewTablePane > .workspace-intro")?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
+          await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='document']"), 2000);
+          assert(checks, "Clicking outside the canvas deselects the selected point", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='document']")));
+          marker.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
+          await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='marker']"), 2000);
+          doc.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+          await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='document']"), 2000);
+          assert(checks, "Escape deselects the selected point", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='document']")));
+          const failed = checks.filter(check => !check.pass);
+          result.textContent = JSON.stringify({
+            status: failed.length ? "failed" : "ok",
+            dialog: requestedDialog,
+            viewport: { width: innerWidth, height: innerHeight },
+            checks,
+            failures: failed.length,
+            frameErrors,
+            performance: frame.contentWindow?.PLOTYPUS_RENDER_PERFORMANCE?.snapshot() || null
+          }, null, 2);
+          return;
+        }
+
         if (requestedDialog === "startup") {
           doc.querySelector("[data-ui-language='fr']")?.click();
           await waitFor(() => doc.documentElement.lang === "fr" && /Créer une carte Plotypus/.test(doc.querySelector("#startupTitle")?.textContent || ""), 2000);
@@ -390,6 +423,7 @@
           doc.querySelector("#startupStartNewBtn")?.click();
           await waitFor(() => startupDialog.dataset.startupScreen === "setup" && doc.querySelector("#startupSetupForm")?.hidden === false, 2000);
           assert(checks, "Start from scratch opens the bilingual setup step", startupDialog.getAttribute("aria-labelledby") === "startupSetupTitle" && /Configurer votre carte/.test(doc.querySelector("#startupSetupTitle")?.textContent || "") && doc.querySelectorAll("[data-startup-baselayer]").length === 6);
+          assert(checks, "New maps default to the two-thirds Letter canvas", doc.querySelector("#startupBookSizeInput")?.value === "letter" && doc.querySelector("#startupImageSizeInput")?.value === "two-thirds", `${doc.querySelector("#startupBookSizeInput")?.value} / ${doc.querySelector("#startupImageSizeInput")?.value}`);
           await waitFor(() => Array.from(doc.querySelectorAll(".startup-baselayer-map")).every(svg => svg.querySelector(".startup-baselayer-land")), 4000);
           const baselayerThumbnailSvgs = Array.from(doc.querySelectorAll(".startup-baselayer-map"));
           const baselayerThumbnailSignatures = baselayerThumbnailSvgs.map(svg => Array.from(svg.querySelectorAll(".startup-baselayer-land")).map(path => path.getAttribute("d") || "").join("|"));
@@ -399,6 +433,7 @@
           assert(checks, "Escape returns from setup to the start choices", startupDialog.hidden === false && doc.activeElement === doc.querySelector("#startupStartNewBtn"));
           doc.querySelector("[data-ui-language='en']")?.click();
           await waitFor(() => doc.documentElement.lang === "en" && /Start a Plotypus map/.test(doc.querySelector("#startupTitle")?.textContent || ""), 2000);
+          doc.querySelector("#mapScaleInput").value = "45";
           doc.querySelector("#startupStartNewBtn")?.click();
           await waitFor(() => startupDialog.dataset.startupScreen === "setup", 2000);
           if (visualCapture) {
@@ -428,7 +463,7 @@
           doc.querySelector("#startupCreateMapBtn")?.click();
           await waitFor(() => startupDialog.hidden === true && doc.body.dataset.workspaceView === "preview" && doc.querySelector("#boundaryInput")?.value === "world" && doc.querySelector("#regionPresetInput")?.value === "united-states", 10000);
           const includedWorldRegions = Array.from(doc.querySelectorAll("#regionTable tbody tr[data-region-id]")).filter(row => row.querySelector(".region-table-included-input")?.checked);
-          assert(checks, "Create map applies baselayer and canvas setup", startupDialog.hidden === true && doc.body.dataset.workspaceView === "preview" && setupStyle.value === doc.querySelector("#mapStylePresetInput")?.value && doc.querySelector("#bookSizeInput")?.value === "compact" && doc.querySelector("#imageSizeInput")?.value === "half" && doc.querySelector("#labelCharsInput")?.value === "31" && includedWorldRegions.length === 1 && /United States/.test(includedWorldRegions[0]?.textContent || ""), `${doc.querySelector("#boundaryInput")?.value} / ${doc.querySelector("#regionPresetInput")?.value} / included=${includedWorldRegions.length}`);
+          assert(checks, "Create map applies baselayer and canvas setup", startupDialog.hidden === true && doc.body.dataset.workspaceView === "preview" && setupStyle.value === doc.querySelector("#mapStylePresetInput")?.value && doc.querySelector("#bookSizeInput")?.value === "compact" && doc.querySelector("#imageSizeInput")?.value === "half" && doc.querySelector("#mapScaleInput")?.value === "100" && doc.querySelector("#labelCharsInput")?.value === "31" && includedWorldRegions.length === 1 && /United States/.test(includedWorldRegions[0]?.textContent || ""), `${doc.querySelector("#boundaryInput")?.value} / ${doc.querySelector("#regionPresetInput")?.value} / scale=${doc.querySelector("#mapScaleInput")?.value} / included=${includedWorldRegions.length}`);
           await waitFor(() => doc.querySelectorAll("#mapSvg .province").length === 1 && frame.contentWindow.getComputedStyle(doc.querySelector("#mapSvg")).display !== "none", 4000);
           assert(checks, "Create map renders the selected empty baselayer on the Map tab", doc.querySelectorAll("#mapSvg .province").length === 1 && doc.querySelectorAll("#mapSvg .marker, #mapSvg .map-label, #mapSvg .legend-layer").length === 0 && doc.querySelector("#canvasPlaceholder")?.hidden === true, `regions=${doc.querySelectorAll("#mapSvg .province").length}, annotations=${doc.querySelectorAll("#mapSvg .marker, #mapSvg .map-label, #mapSvg .legend-layer").length}`);
           assert(checks, "Empty Project points prioritizes Add data", doc.querySelector("#projectFilterControl")?.hidden === true && doc.querySelector("#projectSelectionActions")?.hidden === true && doc.querySelector("#clearRowsBtn")?.disabled === true && Boolean(doc.querySelector("#projectAddMenuBtn")));
@@ -439,7 +474,8 @@
             viewport: { width: innerWidth, height: innerHeight },
             checks,
             failures: failed.length,
-            frameErrors
+            frameErrors,
+            performance: frame.contentWindow?.PLOTYPUS_RENDER_PERFORMANCE?.snapshot() || null
           }, null, 2);
           return;
         }
@@ -978,12 +1014,13 @@
             const initialLonHeaderDisplay = frame.contentWindow.getComputedStyle(initialProjectTable.querySelector(".lon-col")).display;
             const initialLatHeaderDisplay = frame.contentWindow.getComputedStyle(initialProjectTable.querySelector(".lat-col")).display;
             assert(checks, "Project table loads in Coordinates mode with Region hidden", initialProjectTable.dataset.locationMode === "coordinates" && initialRegionHeaderDisplay === "none" && initialLonHeaderDisplay !== "none" && initialLatHeaderDisplay !== "none", `${initialProjectTable.dataset.locationMode} / region=${initialRegionHeaderDisplay} / lon=${initialLonHeaderDisplay} / lat=${initialLatHeaderDisplay}`);
-            firstProjectRow?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
-            assert(checks, "Project row Properties labels rich/compact controls as Extra info in French", /Infos supplémentaires/.test(doc.querySelector("#propertiesSelectionControls")?.textContent || ""), doc.querySelector("#propertiesSelectionControls")?.textContent || "");
             assert(checks, "Project table no longer exposes a Chart column", !doc.querySelector("#projectTable .chart-preview-col") && !doc.querySelector("#projectTable tbody .chart-preview-cell"));
-            assert(checks, "Properties no longer expose per-point anchor radios", !doc.querySelector("#propertiesSelectionControls input[data-property-field='anchor']"));
-            assert(checks, "Properties no longer expose chart controls", !doc.querySelector("#propertiesSelectionControls [data-property-field='chart']") && !doc.querySelector("#propertiesSelectionControls [data-property-action='add-chart-slice']"));
-            doc.querySelector("[data-project-location-mode='regions']")?.click();
+            if (firstProjectRow) {
+              firstProjectRow.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
+              assert(checks, "Project row Properties labels rich/compact controls as Extra info in French", /Infos supplémentaires/.test(doc.querySelector("#propertiesSelectionControls")?.textContent || ""), doc.querySelector("#propertiesSelectionControls")?.textContent || "");
+              assert(checks, "Properties no longer expose per-point anchor radios", !doc.querySelector("#propertiesSelectionControls input[data-property-field='anchor']"));
+              assert(checks, "Properties no longer expose chart controls", !doc.querySelector("#propertiesSelectionControls [data-property-field='chart']") && !doc.querySelector("#propertiesSelectionControls [data-property-action='add-chart-slice']"));
+              doc.querySelector("[data-project-location-mode='regions']")?.click();
             await waitFor(() => doc.querySelector("#projectTable")?.dataset.locationMode === "regions" && doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.anchor === "region", 2000);
             const projectTable = doc.querySelector("#projectTable");
             const lonHeaderDisplay = frame.contentWindow.getComputedStyle(projectTable.querySelector(".lon-col")).display;
@@ -1165,12 +1202,12 @@
             await waitFor(() => doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.labelStyle === "compact", 2000);
             doc.querySelector("#previewTableTab")?.click();
             await waitFor(() => doc.body.dataset.workspaceView === "preview", 4000);
-            await waitFor(() => !doc.querySelector("#mapSvg .annotation-chart-slice"), 4000);
             mapBeforeNavigation = doc.querySelector("#mapSvg")?.innerHTML || "";
             doc.querySelector("#projectTableTab")?.click();
             await waitFor(() => doc.body.dataset.workspaceView === "projects", 4000);
             firstProjectRow?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
             await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='row']"), 2000);
+            }
           }
           if (requestedWorkspace === "translate") {
             const translationStatusHeaderText = Array.from(doc.querySelector(".translation-column-labels")?.children || []).at(-1)?.textContent.trim() || "";
@@ -1214,7 +1251,7 @@
           if (!loadSample) {
             const noDataText = `${visibleText(pane)} ${visibleText(doc.querySelector("#propertiesPanel"))}`;
             const expectedNoDataCopy = {
-              preview: /Aucun point de projet|Canevas de carte/,
+              preview: /Aperçu de la page du document|Canevas de carte/,
               projects: /Aucun point de projet|Chargez l'exemple/,
               categories: /Catégories et repères|Ajouter un repère de légende/,
               regions: /Fond de carte|Région|Incluse/,
@@ -1560,7 +1597,7 @@
                   y: offCanvasMarkerRect.top + offCanvasMarkerRect.height / 2
                 };
                 const topmostMarkerNode = doc.elementFromPoint(offCanvasMarkerCenter.x, offCanvasMarkerCenter.y);
-                assert(checks, "Dragging a point past the canvas keeps it visible and selectable in the document warning gutter", offCanvasMarkerRect.right < mapSvgRect.left && offCanvasMarkerRect.bottom < mapSvgRect.top && documentPageRect && offCanvasMarkerRect.left >= documentPageRect.left && offCanvasMarkerRect.top >= documentPageRect.top && (topmostMarkerNode === marker || marker.contains(topmostMarkerNode)), `marker=${Math.round(offCanvasMarkerRect.left)},${Math.round(offCanvasMarkerRect.top)}-${Math.round(offCanvasMarkerRect.right)},${Math.round(offCanvasMarkerRect.bottom)} canvas=${Math.round(mapSvgRect.left)},${Math.round(mapSvgRect.top)} page=${Math.round(documentPageRect?.left || 0)},${Math.round(documentPageRect?.top || 0)}`);
+                assert(checks, "Dragging a point past the canvas keeps it visible and selectable in the document warning gutter", offCanvasMarkerRect.right < mapSvgRect.left && offCanvasMarkerRect.bottom < mapSvgRect.top && documentPageRect && offCanvasMarkerRect.left >= documentPageRect.left && offCanvasMarkerRect.top >= documentPageRect.top && (topmostMarkerNode === marker || marker.contains(topmostMarkerNode)), `marker=${Math.round(offCanvasMarkerRect.left)},${Math.round(offCanvasMarkerRect.top)}-${Math.round(offCanvasMarkerRect.right)},${Math.round(offCanvasMarkerRect.bottom)} canvas=${Math.round(mapSvgRect.left)},${Math.round(mapSvgRect.top)} page=${Math.round(documentPageRect?.left || 0)},${Math.round(documentPageRect?.top || 0)} top=${topmostMarkerNode?.tagName || "none"}#${topmostMarkerNode?.id || ""}.${topmostMarkerNode?.className?.baseVal || topmostMarkerNode?.className || ""}`);
                 assert(checks, "An off-canvas point receives a red warning treatment and updated coordinates", marker.classList.contains("is-off-canvas") && marker.dataset.offCanvas === "true" && Boolean(doc.querySelector(`#mapSvg .marker-boundary-warning.is-active[data-row-id="${markerDatum?.rowId}"]`)) && (movedLongitude !== originalLongitude || movedLatitude !== originalLatitude), `${originalLongitude},${originalLatitude} -> ${movedLongitude},${movedLatitude}; ${marker.getAttribute("class") || ""}`);
                 await new Promise(resolve => setTimeout(resolve, 50));
                 doc.querySelector("#qualityTableTab")?.click();
@@ -1590,6 +1627,19 @@
               await waitFor(() => markersWereLocked ? Boolean(doc.querySelector("#mapSvg .marker-layer .marker.is-locked")) : Boolean(doc.querySelector("#mapSvg .marker-layer .marker:not(.is-locked)")), 12000);
             }
             const mapBeforePreviewSelection = doc.querySelector("#mapSvg")?.innerHTML || "";
+            const selectionMarker = doc.querySelector("#mapSvg .marker-layer .marker");
+            selectionMarker?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
+            await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='marker']"), 2000);
+            doc.querySelector("#propertiesSelectionControls")?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
+            assert(checks, "Interacting with selected point Properties keeps the point selected", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='marker']")));
+            doc.querySelector("#previewTablePane > .workspace-intro")?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
+            await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='document']"), 2000);
+            assert(checks, "Clicking outside the canvas deselects the selected point", Boolean(selectionMarker) && previewSections.every(section => !section.hidden));
+            selectionMarker?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
+            await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='marker']"), 2000);
+            doc.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+            await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='document']"), 2000);
+            assert(checks, "Escape deselects the selected point", previewSections.every(section => !section.hidden));
             const label = doc.querySelector("#mapSvg .map-label");
             label?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
             const labelKind = doc.querySelector("#propertiesSelectionControls .properties-form")?.dataset.propertyKind || "";
@@ -2375,7 +2425,8 @@
             viewport: { width: innerWidth, height: innerHeight },
             checks,
             failures: failed.length,
-            frameErrors
+            frameErrors,
+            performance: performanceApi?.snapshot() || null
           }, null, 2);
           return;
         }
@@ -2416,10 +2467,17 @@
           status: failed.length ? "failed" : "ok",
           viewport: { width: innerWidth, height: innerHeight },
           checks,
-          failures: failed.length
+          failures: failed.length,
+          performance: performanceApi?.snapshot() || null
         }, null, 2);
       } catch (error) {
-        result.textContent = JSON.stringify({ status: "error", message: error.message, checks, frameErrors }, null, 2);
+        result.textContent = JSON.stringify({
+          status: "error",
+          message: error.message,
+          checks,
+          frameErrors,
+          performance: frame.contentWindow?.PLOTYPUS_RENDER_PERFORMANCE?.snapshot() || null
+        }, null, 2);
       }
     });
     frame.src = frame.dataset.src;

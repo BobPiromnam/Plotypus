@@ -217,7 +217,7 @@
     .filter(field => field !== "priority");
   const layoutDefaults = appConfig.layoutDefaults || {
     bookSizeInput: "letter",
-    imageSizeInput: "full",
+    imageSizeInput: "two-thirds",
     labelSizeInput: 12,
     mapScaleInput: 100,
     markerSizeInput: 4,
@@ -805,11 +805,6 @@
     getLanguageLayoutState().manualBoxPositions = manualBoxPositions;
   }
 
-  function setCurrentManualLayoutHistory(value = []) {
-    manualLayoutHistory = Array.isArray(value) ? value : [];
-    getLanguageLayoutState().history = manualLayoutHistory;
-  }
-
   function activateLanguageLayoutState(language, fallbackScale = null) {
     const state = getLanguageLayoutState(language);
     manualLabelPositions = state.manualLabelPositions;
@@ -985,13 +980,6 @@
     updateUndoButtonState();
     refreshDocumentPropertiesIfActive();
     return true;
-  }
-
-  function clearManualLayoutHistory() {
-    if (!manualLayoutHistory.length) return;
-    setCurrentManualLayoutHistory([]);
-    updateUndoButtonState();
-    refreshDocumentPropertiesIfActive();
   }
 
   function updateUndoButtonState() {
@@ -1813,21 +1801,8 @@
     return { width: size * ratio, height: size };
   }
 
-  function hasAnnotationContent(value) {
-    return normalizeAnnotationContent(value).length > 0;
-  }
-
   function annotationArrayToDataset(value) {
     return JSON.stringify(Array.isArray(value) ? value : []);
-  }
-
-  function normalizeChart(value) {
-    return "none";
-  }
-
-
-  function normalizeChartSlices(_value) {
-    return [];
   }
 
   function normalizeRegionStatus(value) {
@@ -1898,8 +1873,6 @@
       labelStyle: normalizeLabelStyle(row && row.labelStyle),
       content: normalizeAnnotationContent(row && row.content),
       labelBorder: toBoolean(row && row.labelBorder),
-      chart: normalizeChart(row && row.chart),
-      chartSlices: normalizeChartSlices(row && row.chartSlices),
       hideLine: toBoolean(getField(row, csvColumnAliases.hideLine)),
       elbowLeader: toBoolean(row && row.elbowLeader),
       labelMaxChars: normalizeLabelMaxCharsOverride(row && row.labelMaxChars)
@@ -1943,7 +1916,7 @@
   }
 
   function addRow(
-    row = { name: "", nameFr: "", footnote: "", type: getDefaultCategory().id, lon: "", lat: "", anchor: "coord", region: "", labelStyle: "compact", content: [], labelBorder: false, chart: "none", chartSlices: [], hideLine: false, elbowLeader: false, labelMaxChars: "" },
+    row = { name: "", nameFr: "", footnote: "", type: getDefaultCategory().id, lon: "", lat: "", anchor: "coord", region: "", labelStyle: "compact", content: [], labelBorder: false, hideLine: false, elbowLeader: false, labelMaxChars: "" },
     options = {}
   ) {
     const tr = document.createElement("tr");
@@ -1957,8 +1930,6 @@
     tr.dataset.labelStyle = normalizeLabelStyle(row.labelStyle);
     tr.dataset.content = annotationArrayToDataset(normalizeAnnotationContent(row.content));
     tr.dataset.labelBorder = row.labelBorder ? "true" : "false";
-    tr.dataset.chart = normalizeChart(row.chart);
-    tr.dataset.chartSlices = annotationArrayToDataset(normalizeChartSlices(row.chartSlices));
     tr.dataset.coordLon = formatProjectCoordinate(row.lon);
     tr.dataset.coordLat = formatProjectCoordinate(row.lat);
     const numericRowId = Number(rowId);
@@ -2438,8 +2409,6 @@
       labelStyle: normalizeLabelStyle(tr.dataset.labelStyle),
       content: normalizeAnnotationContent(tr.dataset.content),
       labelBorder: tr.dataset.labelBorder === "true",
-      chart: normalizeChart(tr.dataset.chart),
-      chartSlices: normalizeChartSlices(tr.dataset.chartSlices),
       hideLine: tr.querySelector(".hide-line-input").checked,
       elbowLeader: tr.querySelector(".elbow-leader-input")?.checked || false,
       labelMaxChars: normalizeLabelMaxCharsOverride(tr.dataset.labelMaxChars)
@@ -2476,15 +2445,13 @@
     if (field === "labelStyle") tr.dataset.labelStyle = normalizeLabelStyle(value);
     if (field === "content") tr.dataset.content = annotationArrayToDataset(normalizeAnnotationContent(value));
     if (field === "labelBorder") tr.dataset.labelBorder = value ? "true" : "false";
-    if (field === "chart") tr.dataset.chart = normalizeChart(value);
-    if (field === "chartSlices") tr.dataset.chartSlices = annotationArrayToDataset(normalizeChartSlices(value));
     if (field === "hideLine") tr.querySelector(".hide-line-input").checked = Boolean(value);
     if (field === "elbowLeader") tr.querySelector(".elbow-leader-input").checked = Boolean(value);
     if (field === "labelMaxChars") tr.dataset.labelMaxChars = normalizeLabelMaxCharsOverride(value);
     updateRowTitles(tr);
     updateRowAnnotationPreview(tr);
     if (field === "lon" || field === "lat" || field === "anchor" || field === "region") syncCoordinateClearButtons(tr);
-    if (options.refreshTableUx !== false && (["lon", "lat", "anchor", "region", "labelStyle", "content", "chart", "chartSlices"].includes(field) || (field === "name" && activeDataTable !== "translate"))) scheduleProjectTableUxRefresh();
+    if (options.refreshTableUx !== false && (["lon", "lat", "anchor", "region", "labelStyle", "content"].includes(field) || (field === "name" && activeDataTable !== "translate"))) scheduleProjectTableUxRefresh();
     return readRowElement(tr);
   }
 
@@ -2758,9 +2725,9 @@
     if (label.startsWith("label move: ")) {
       return t("status.undo.labelMove", { label: label.slice("label move: ".length) || t("status.unnamedPoint") });
     }
-    const boxMatch = String(label).match(/^box:(legend|callouts|chart):(reset|move|resize)$/);
+    const boxMatch = String(label).match(/^box:(legend|callouts):(reset|move|resize)$/);
     if (boxMatch) {
-      const objectKey = boxMatch[1] === "chart" ? "properties.annotation.chartPie" : `properties.furniture.${boxMatch[1]}`;
+      const objectKey = `properties.furniture.${boxMatch[1]}`;
       return t("status.undo.furnitureAction", {
         label: t(objectKey),
         action: t(`status.undo.action.${boxMatch[2]}`)
@@ -2778,7 +2745,7 @@
   }
 
   function getBoxHistoryLabel(key, action) {
-    const object = key === "legend" || key === "callouts" ? key : String(key).startsWith("chart:") ? "chart" : "";
+    const object = key === "legend" || key === "callouts" ? key : "";
     return object ? `box:${object}:${action}` : action;
   }
 
@@ -2963,20 +2930,9 @@
         }
         return [];
       });
-      const chartEntries = normalizeChart(row.chart) === "pie"
-        ? normalizeChartSlices(row.chartSlices).map((slice, index) => ({
-          id: `chart-slice:${row.rowId}:${index}`,
-          group: "annotations",
-          groupLabel: t("translate.group.annotations"),
-          ref: slice.label.en || "",
-          fr: slice.label.fr || "",
-          rowId: row.rowId,
-          index,
-          kind: "chart-slice"
-        }))
-        : [];
-      return contentEntries.concat(chartEntries);
-    });    const categoryEntries = categorySettings.map(category => ({
+      return contentEntries;
+    });
+    const categoryEntries = categorySettings.map(category => ({
       id: `category:${category.id}`,
       group: "categories",
       groupLabel: t("translate.group.categories"),
@@ -3074,18 +3030,7 @@
         }
         updateProjectRowField(rowId, "content", content);
       }
-    } else if (kind === "chart-slice") {
-      const parts = String(entryId || "").split(":");
-      const rowId = parts[1];
-      const index = Number(parts[2]);
-      const row = readRowElement(getRowElementById(rowId));
-      if (row && Number.isInteger(index)) {
-        const slices = normalizeChartSlices(row.chartSlices);
-        if (slices[index]) {
-          slices[index].label[editingFrench ? "fr" : "en"] = nextValue;
-          updateProjectRowField(rowId, "chartSlices", slices);
-        }
-      }    } else if (kind === "category") {
+    } else if (kind === "category") {
       const category = categorySettings.find(item => item.id === id);
       if (category) category[editingFrench ? "labelFr" : "label"] = nextValue;
     } else if (kind === "chrome" && chromeTranslations[id]) {
@@ -4262,15 +4207,6 @@
     refreshMapPropertiesIfActive();
   }
 
-  function applyRegionColourSet(colours = getCurrentRegionColourSet(), shouldRender = true) {
-    if (!canadaGeo || !Array.isArray(canadaGeo.features)) return;
-    canadaGeo.features.forEach((feature, index) => {
-      regionFills[getRegionId(feature, index)] = colours[index % colours.length];
-    });
-    renderRegionControls();
-    if (shouldRender) scheduleRender();
-  }
-
   function renderMapStyleOptions() {
     els.mapStylePresetInput.innerHTML = Object.keys(mapStylePresets).map(presetId => {
       const preset = mapStylePresets[presetId];
@@ -5283,6 +5219,12 @@
 
   function chooseFeasibleMapLayoutContext(visibleGeo, rows, baseSettings, options = {}) {
     const requestedMapScale = normalizeMapScale(baseSettings.mapScale);
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return {
+        ...createMapLayoutContext(visibleGeo, [], { ...baseSettings, mapScale: requestedMapScale }),
+        requestedMapScale
+      };
+    }
     // "Fit map + labels" may grow or shrink the baselayer. Searching only
     // downward from the current value leaves previously undersized maps stuck.
     const maxScale = mapScaleRange.max;
@@ -5296,12 +5238,13 @@
       const labelRows = context.mappedRows.filter(row => row.name);
       settings.layoutObstacles = getLayoutBoxObstacles(settings, context.calloutRows);
       const feasibility = assessPerimeterFeasibility(labelRows, settings, context.mapBounds, settings.layoutObstacles);
-      const placementQuality = feasibility.feasible
-        ? measurePlacementQuality(layoutLabels(labelRows, settings, context.mapBounds, {
+      const placed = feasibility.feasible
+        ? layoutLabels(labelRows, settings, context.mapBounds, {
           applyManual: options.ignoreManualPositions !== true
-        }), settings)
+        })
         : null;
-      const candidate = { ...context, settings, feasibility, placementQuality, requestedMapScale };
+      const placementQuality = placed ? measurePlacementQuality(placed, settings) : null;
+      const candidate = { ...context, settings, feasibility, placementQuality, placed, requestedMapScale };
       if (isBetterScaleFallback(candidate, fallback)) fallback = candidate;
       if (feasibility.feasible && placementQualityAcceptable(placementQuality)) {
         return candidate;
@@ -5337,8 +5280,6 @@
       row.labelStyle || "compact",
       JSON.stringify(row.content || []),
       row.labelBorder ? 1 : 0,
-      row.chart || "none",
-      JSON.stringify(row.chartSlices || []),
       row.hideLine ? 1 : 0,
       row.elbowLeader ? 1 : 0,
       row.labelMaxChars || ""
@@ -5430,15 +5371,16 @@
   }
 
   function computeLanguageLayout(visibleGeo, rows, baseSettings, resizeMap, options = {}) {
-    const layoutContext = resizeMap
+    const selectedLayoutContext = resizeMap
       ? chooseFeasibleMapLayoutContext(visibleGeo, rows, baseSettings, options)
       : createMapLayoutContext(visibleGeo, rows, baseSettings);
+    const { placed: precomputedPlaced = null, ...layoutContext } = selectedLayoutContext;
     const settings = layoutContext.settings;
     settings.layoutObstacles = getLayoutBoxObstacles(settings, layoutContext.calloutRows);
     const labelRows = layoutContext.mappedRows.filter(row => row.name);
-    const placed = layoutLabels(labelRows, settings, layoutContext.mapBounds, {
-      applyManual: options.ignoreManualPositions !== true
-    });
+    const placed = precomputedPlaced || layoutLabels(labelRows, settings, layoutContext.mapBounds, {
+        applyManual: options.ignoreManualPositions !== true
+      });
     return { settings, layoutContext, placed };
   }
 
@@ -6275,6 +6217,31 @@
     syncPropertiesLabelHighlight(selection);
   }
 
+  function isPointPropertiesSelection(selection = activePropertiesSelection) {
+    return Boolean(selection && selection.rowId && ["marker", "label"].includes(selection.kind));
+  }
+
+  function clearPointPropertiesSelection() {
+    if (!isPointPropertiesSelection()) return false;
+    activePropertiesSelection = null;
+    activeQualityLocateTarget = null;
+    qualityLocateIndex = -1;
+    clearQualityLocateHighlight();
+    renderPropertiesForActiveState();
+    return true;
+  }
+
+  function isPointSelectionInteractionTarget(target) {
+    if (!(target instanceof Element)) return false;
+    return Boolean(target.closest([
+      "#propertiesPanel",
+      "#mapSvg .marker",
+      "#mapSvg .map-label",
+      "#mapSvg .map-label-background",
+      "#mapSvg .rich-label-image"
+    ].join(", ")));
+  }
+
   function setPreviewPropertySectionsVisible(isVisible) {
     [els.previewDisplayPropertiesSection, els.previewInteractionPropertiesSection].forEach(section => {
       if (section) section.hidden = !isVisible;
@@ -6381,8 +6348,7 @@
       "#mapSvg .map-label-background",
       "#mapSvg .leader-line",
       "#mapSvg .leader-casing",
-      "#mapSvg .rich-label-image",
-      "#mapSvg .annotation-chart"
+      "#mapSvg .rich-label-image"
     ].join(", ")).forEach(node => {
       node.classList.toggle("is-properties-selected", Boolean(layoutId) && node.dataset.layoutId === layoutId);
     });
@@ -6522,10 +6488,6 @@
     return properties.renderProjectDataPropertyControls({ summary, qualityMetricItem, escapeHtml, iconSvg, t });
   }
 
-  function setProjectDataPropertiesContext(selection = activePropertiesSelection) {
-    renderPropertiesForActiveState(selection && selection.rowId ? { ...selection, kind: "row" } : { kind: "project-data" });
-  }
-
   function renderRowPropertyControls(row, options = {}) {
     const labelKey = options.labelKey || getLabelKey(row);
     const canResetLabel = Boolean(options.manual);
@@ -6645,16 +6607,8 @@
     renderPropertiesForActiveState({ kind: "category", id: activeCategoryId });
   }
 
-  function setQualityPropertiesContext() {
-    renderPropertiesForActiveState({ kind: "quality" });
-  }
-
   function setMapPropertiesContext() {
     renderPropertiesForActiveState({ kind: "map" });
-  }
-
-  function setTranslationPropertiesContext() {
-    renderPropertiesForActiveState({ kind: "translation" });
   }
 
   function renderPropertiesForActiveState(selection = activePropertiesSelection) {
@@ -8017,7 +7971,6 @@
     });
     attachLabelDragging(labels);
     drawRichLabelImages(svg, placed, settings);
-    drawAnnotationCharts(svg, placed, settings, mapBounds);
 
     if (settings.showCallouts && calloutRows.length) drawCallouts(svg, calloutRows, settings, mapBounds);
     if (settings.showLegend && rows.length) drawLegend(svg, settings, mapBounds);
@@ -8175,63 +8128,6 @@
       .attr("height", imageHeight);
   }
 
-  function getAnnotationChartLayout(row, settings) {
-    const key = `chart:${row.rowId}`;
-    const fallbackDimensions = { width: 92, height: 92 };
-    const constraints = { minWidth: 68, minHeight: 68, maxWidth: 170, maxHeight: 170 };
-    const dimensions = getBoxDimensions(key, fallbackDimensions, constraints, settings);
-    const fallback = row.labelSide === "left"
-      ? { x: row.labelX - dimensions.width - 18, y: row.labelY + row.lineHeight * 0.35 }
-      : { x: row.labelX + 18, y: row.labelY + row.lineHeight * 0.35 };
-    const position = getBoxPosition(key, fallback, dimensions, settings);
-    return { key, dimensions, constraints, position };
-  }
-
-  function drawAnnotationCharts(svg, placed, settings, mapBounds) {
-    const chartRows = placed
-      .filter(row => normalizeChart(row.chart) === "pie")
-      .map(row => ({ row, slices: normalizeChartSlices(row.chartSlices).filter(slice => slice.value > 0) }))
-      .filter(item => item.slices.length > 0);
-    if (!chartRows.length) return;
-    const layer = svg.append("g").attr("class", "annotation-chart-layer");
-    chartRows.forEach(({ row, slices }) => {
-      const layout = getAnnotationChartLayout(row, settings);
-      const { key, dimensions, constraints, position } = layout;
-      const label = t("properties.annotation.chartPie");
-      const group = layer.append("g")
-        .attr("class", "annotation-chart movable-map-box")
-        .attr("data-layout-id", row.layoutId)
-        .attr("transform", translatePosition(position))
-        .on("click", event => {
-          event.stopPropagation();
-          setRowPropertiesContext("label", row, { labelKey: row.labelKey, manual: Boolean(manualLabelPositions[row.labelKey]) });
-        });
-      group.append("rect")
-        .attr("class", "annotation-chart-box")
-        .attr("x", 0)
-        .attr("y", 0)
-        .attr("width", dimensions.width)
-        .attr("height", dimensions.height)
-        .attr("rx", 4);
-      const radius = Math.max(18, Math.min(dimensions.width, dimensions.height) / 2 - 10);
-      const cx = dimensions.width / 2;
-      const cy = dimensions.height / 2;
-      const arc = d3.arc().innerRadius(0).outerRadius(radius);
-      const pie = d3.pie().sort(null).value(slice => slice.value);
-      group.append("g")
-        .attr("transform", `translate(${cx},${cy})`)
-        .selectAll("path")
-        .data(pie(slices))
-        .join("path")
-        .attr("class", "annotation-chart-slice")
-        .attr("d", arc)
-        .attr("fill", d => d.data.color)
-        .attr("stroke", "#ffffff")
-        .attr("stroke-width", 1.2);
-      attachBoxDragging(group, key, position, dimensions, settings, label, mapBounds);
-      attachBoxControls(group, key, position, dimensions, constraints, settings, label, mapBounds, null);
-    });
-  }
   function appendSuperscript(textSelection, value, labelSize) {
     textSelection.append("tspan")
       .attr("class", "label-footnote")
@@ -8987,6 +8883,14 @@
       closeShortcutsOverlay();
       return;
     }
+    if (event.key === "Escape" && isPointPropertiesSelection() && !getOpenDialogElement()) {
+      event.preventDefault();
+      clearPointPropertiesSelection();
+      if (propertiesDrawerMedia.matches && document.body.classList.contains("properties-open")) {
+        setPropertiesDrawerOpen(false, { restoreFocus: true });
+      }
+      return;
+    }
     if (event.key === "Escape" && propertiesDrawerMedia.matches && document.body.classList.contains("properties-open")) {
       event.preventDefault();
       setPropertiesDrawerOpen(false, { restoreFocus: true });
@@ -8996,6 +8900,11 @@
     event.preventDefault();
     if (els.shortcutsOverlay && !els.shortcutsOverlay.hidden) closeShortcutsOverlay();
     else openShortcutsOverlay();
+  }
+
+  function getOpenDialogElement() {
+    return [els.confirmationDialog, els.startupDialog, els.csvMapDialog, els.pointCatalogDialog, els.mapDetailsDialog]
+      .find(dialog => dialog && !dialog.hidden) || null;
   }
 
   function syncCategorySettingsFromControls() {
@@ -9645,7 +9554,7 @@
           resizeState.height = nextDimensions.height;
           saveManualBoxState(key, nextPosition, nextDimensions);
           group.attr("transform", translatePosition(nextPosition));
-          group.select(".legend-box, .callout-box, .annotation-chart-box")
+          group.select(".legend-box, .callout-box")
             .attr("width", nextDimensions.width)
             .attr("height", nextDimensions.height);
           positionBoxControls(group, nextDimensions);
@@ -10395,6 +10304,11 @@
       emptyBaselayerPreviewEnabled = true;
       applyMapStylePreset(els.startupMapStyleInput.value, { render: false });
       applyImageSizePreset(els.startupBookSizeInput.value, els.startupImageSizeInput.value);
+      const defaultMapScale = normalizeMapScale(layoutDefaults.mapScaleInput);
+      els.mapScaleInput.value = defaultMapScale;
+      ["en", "fr"].forEach(language => {
+        languageLayoutStates[language].mapScale = defaultMapScale;
+      });
       els.labelCharsInput.value = normalizeLabelMaxChars(els.startupLabelCharsInput.value);
       saveLayoutPreferences();
       await changeBoundary(boundary);
@@ -11456,7 +11370,7 @@
     on(els.bulkClearCoordinatesBtn, "click", clearSelectedCoordinateCells);
     document.addEventListener("keydown", handleGlobalKeyboardShortcuts);
     document.addEventListener("keydown", event => {
-      const openDialogElement = [els.confirmationDialog, els.startupDialog, els.csvMapDialog, els.pointCatalogDialog, els.mapDetailsDialog].find(dialog => dialog && !dialog.hidden);
+      const openDialogElement = getOpenDialogElement();
       if (!openDialogElement) return;
       if (event.key === "Escape") {
         event.preventDefault();
@@ -11490,6 +11404,9 @@
       }
       if (mapScaleControlsVisible && els.mapHost && !els.mapHost.contains(event.target)) {
         hideMapScaleControls();
+      }
+      if (isPointPropertiesSelection() && !isPointSelectionInteractionTarget(event.target)) {
+        clearPointPropertiesSelection();
       }
     });
     [

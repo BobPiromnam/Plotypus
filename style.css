@@ -4116,14 +4116,8 @@ body[data-workspace-view="preview"] .map-host {
   stroke-width: 5;
 }
 
-.rich-label-image.is-properties-selected,
-.annotation-chart.is-properties-selected {
+.rich-label-image.is-properties-selected {
   filter: drop-shadow(0 2px 4px color-mix(in srgb, var(--accent) 38%, transparent));
-}
-
-.annotation-chart.is-properties-selected .annotation-chart-box {
-  stroke: var(--accent);
-  stroke-width: 2;
 }
 
 
@@ -5690,10 +5684,6 @@ body[data-workspace-view="projects"] .add-actions > button,
 body[data-workspace-view="projects"] .selection-actions > button,
 body[data-workspace-view="projects"] .selection-actions > select {
   min-width: 112px;
-}
-
-body[data-workspace-view="projects"] #projectImportCsvBtn {
-  display: none;
 }
 
 body[data-workspace-view="projects"] [data-table-actions="projects"] {
@@ -7615,10 +7605,6 @@ button.catalog-card:hover {
     min-width: 146px;
   }
 
-  body[data-workspace-view="projects"] #projectImportCsvBtn {
-    display: none;
-  }
-
   .workspace-nav .table-tab {
     padding-inline: 9px;
     font-size: var(--text-ui);
@@ -7954,8 +7940,7 @@ body[data-workspace-view="projects"] #projectTable .annotation-preview-cell span
 }
 
 .annotation-block-controls,
-.annotation-bullet-item,
-.chart-slice-row {
+.annotation-bullet-item {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -7984,53 +7969,20 @@ body[data-workspace-view="projects"] #projectTable .annotation-preview-cell span
 }
 
 .annotation-block-controls button,
-.annotation-bullet-item button,
-.chart-slice-row button {
+.annotation-bullet-item button {
   min-width: 32px;
   min-height: 32px;
   padding-inline: var(--space-2);
 }
 
-.annotation-bullet-items,
-.annotation-chart-editor {
+.annotation-bullet-items {
   display: grid;
   gap: var(--space-3);
 }
 
-.annotation-bullet-item textarea,
-.chart-slice-row input[type="text"] {
+.annotation-bullet-item textarea {
   flex: 1 1 auto;
   min-width: 0;
-}
-
-.chart-slice-row input[type="color"] {
-  flex: 0 0 42px;
-  width: 42px;
-  min-width: 42px;
-  padding: 2px;
-}
-
-.chart-slice-row input[type="number"] {
-  flex: 0 0 78px;
-  width: 78px;
-}
-
-.annotation-chart-box {
-  fill: var(--panel, #fff);
-  stroke: var(--ink, #2d2a26);
-  stroke-width: 1.2;
-  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.16));
-}
-
-.annotation-chart-slice {
-  stroke: #fff;
-  stroke-width: 1;
-}
-
-.annotation-chart-title {
-  fill: var(--ink, #2d2a26);
-  font-weight: 700;
-  pointer-events: none;
 }
 
 .annotation-image-editor {
