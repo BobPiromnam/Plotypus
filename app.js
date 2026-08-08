@@ -404,7 +404,15 @@
     propertiesToggleBtn: document.querySelector("#propertiesToggleBtn"),
     frMetaWarning: document.querySelector("#frMetaWarning"),
     startupDialog: document.querySelector("#startupDialog"),
+    startupStartScreen: document.querySelector("#startupStartScreen"),
     startupStartNewBtn: document.querySelector("#startupStartNewBtn"),
+    startupSetupForm: document.querySelector("#startupSetupForm"),
+    startupBaselayerOptions: Array.from(document.querySelectorAll("[data-startup-baselayer]")),
+    startupMapStyleInput: document.querySelector("#startupMapStyleInput"),
+    startupBookSizeInput: document.querySelector("#startupBookSizeInput"),
+    startupImageSizeInput: document.querySelector("#startupImageSizeInput"),
+    startupLabelCharsInput: document.querySelector("#startupLabelCharsInput"),
+    startupCreateMapBtn: document.querySelector("#startupCreateMapBtn"),
     mapDetailsDialog: document.querySelector("#mapDetailsDialog"),
     mapDetailsForm: document.querySelector("#mapDetailsForm"),
     mapTitleEnInput: document.querySelector("#mapTitleEnInput"),
@@ -484,6 +492,7 @@
   let activeTranslationEntryId = "";
   let activePointCatalogView = "presets";
   let startupDialogDismissed = false;
+  let emptyBaselayerPreviewEnabled = false;
   let selectedPointCatalogPresets = new Set();
   const selectableProjectCellFields = ["name", "footnote", "type", "region", "lon", "lat", "status", "hideLine"];
 
@@ -2163,15 +2172,16 @@
 
   function updatePreviewState() {
     const hasRows = getRows().length > 0;
+    const showMap = hasRows || emptyBaselayerPreviewEnabled;
     const issueRows = getCoordinateIssueRows();
     if (els.mapHost) {
-      els.mapHost.classList.toggle("is-empty-preview", !hasRows);
+      els.mapHost.classList.toggle("is-empty-preview", !showMap);
     }
     if (els.previewEmptyState) {
-      els.previewEmptyState.hidden = hasRows;
+      els.previewEmptyState.hidden = showMap;
     }
     if (els.canvasPlaceholder) {
-      els.canvasPlaceholder.hidden = hasRows;
+      els.canvasPlaceholder.hidden = showMap;
       updateCanvasPlaceholderSize();
     }
     if (els.canvasToolbar) {
@@ -2825,6 +2835,7 @@
     renderImageSizeOptions();
     renderFontOptions();
     renderMapStyleOptions();
+    renderStartupSetupSelectOptions();
     renderRegionPresetOptions();
     updateCanvasToolbar();
     syncUiLanguageControls(nextLanguage);
@@ -3385,6 +3396,164 @@
     const book = getBookSizePreset();
     els.imageSizeInput.value = book.sizes.some(size => size.value === imageSizeValue) ? imageSizeValue : layoutDefaults.imageSizeInput;
     updateCanvasPlaceholderSize();
+  }
+
+  function renderStartupImageSizeOptions(imageSizeValue = els.startupImageSizeInput?.value) {
+    if (!els.startupBookSizeInput || !els.startupImageSizeInput) return;
+    const bookValue = imageSizePresets[els.startupBookSizeInput.value]
+      ? els.startupBookSizeInput.value
+      : layoutDefaults.bookSizeInput;
+    const book = getBookSizePreset(bookValue);
+    els.startupImageSizeInput.innerHTML = book.sizes.map(size => (
+      `<option value="${escapeHtml(size.value)}">${escapeHtml(formatImageSizeOption(size))}</option>`
+    )).join("");
+    els.startupImageSizeInput.value = book.sizes.some(size => size.value === imageSizeValue)
+      ? imageSizeValue
+      : (book.sizes.some(size => size.value === layoutDefaults.imageSizeInput) ? layoutDefaults.imageSizeInput : book.sizes[0].value);
+  }
+
+  function renderStartupSetupSelectOptions(options = {}) {
+    if (!els.startupSetupForm) return;
+    const useAppValues = options.useAppValues === true;
+    const mapStyleValue = useAppValues ? currentMapStylePreset : els.startupMapStyleInput.value;
+    const bookSizeValue = useAppValues ? els.bookSizeInput.value : els.startupBookSizeInput.value;
+    const imageSizeValue = useAppValues ? els.imageSizeInput.value : els.startupImageSizeInput.value;
+
+    els.startupMapStyleInput.innerHTML = Object.keys(mapStylePresets).map(presetId => (
+      `<option value="${escapeHtml(presetId)}">${escapeHtml(getMapStylePresetLabel(presetId, mapStylePresets[presetId]))}</option>`
+    )).join("");
+    els.startupMapStyleInput.value = Object.prototype.hasOwnProperty.call(mapStylePresets, mapStyleValue)
+      ? mapStyleValue
+      : defaultMapStylePreset;
+
+    els.startupBookSizeInput.innerHTML = Object.entries(imageSizePresets).map(([value, preset]) => (
+      `<option value="${escapeHtml(value)}">${escapeHtml(tOr(`properties.size.book.${value}`, preset.label || value))}</option>`
+    )).join("");
+    els.startupBookSizeInput.value = imageSizePresets[bookSizeValue] ? bookSizeValue : layoutDefaults.bookSizeInput;
+    renderStartupImageSizeOptions(imageSizeValue);
+  }
+
+  function selectStartupBaselayerOption(selectedOption, options = {}) {
+    if (!selectedOption) return;
+    els.startupBaselayerOptions.forEach(option => {
+      const selected = option === selectedOption;
+      option.dataset.selected = String(selected);
+      option.setAttribute("aria-checked", String(selected));
+      option.tabIndex = selected ? 0 : -1;
+    });
+    if (options.focus === true) selectedOption.focus({ preventScroll: true });
+  }
+
+  function getStartupBaselayerOption(boundary, preset) {
+    const exact = els.startupBaselayerOptions.find(option => (
+      option.dataset.boundary === boundary && option.dataset.regionPreset === preset
+    ));
+    if (exact) return exact;
+    return els.startupBaselayerOptions.find(option => (
+      option.dataset.boundary === boundary && option.dataset.regionPreset === "all"
+    )) || els.startupBaselayerOptions[0];
+  }
+
+  let startupBaselayerThumbnailGeometries = null;
+  let startupBaselayerThumbnailsRendered = false;
+  let startupBaselayerThumbnailsLoading = null;
+
+  function getStartupBaselayerThumbnailGeometries() {
+    if (startupBaselayerThumbnailGeometries) return startupBaselayerThumbnailGeometries;
+    const localBoundaries = window.PLOTYPUS_LOCAL_BOUNDARIES || {};
+    const canada = localBoundaries.canada
+      ? normalizeBoundaryGeoJson(localBoundaries.canada, boundarySources.canada || {})
+      : null;
+    const world = localBoundaries.world;
+    if (!canada || !world || !Array.isArray(world.features)) return null;
+    const featureCollection = features => ({ type: "FeatureCollection", features });
+    startupBaselayerThumbnailGeometries = {
+      canada,
+      "north-america": featureCollection(world.features.filter(feature => worldFeatureMatchesPreset(feature, "north-america"))),
+      "united-states": featureCollection(world.features.filter(feature => worldFeatureMatchesPreset(feature, "united-states"))),
+      world,
+      europe: featureCollection(world.features.filter(feature => worldFeatureMatchesPreset(feature, "europe") && getFeatureCountryCode(feature) !== "RUS")),
+      arctic: featureCollection(world.features.filter(feature => worldFeatureMatchesPreset(feature, "arctic")))
+    };
+    return startupBaselayerThumbnailGeometries;
+  }
+
+  function createStartupBaselayerThumbnailProjection(visual, geometry) {
+    const d3 = window.d3;
+    const extent = [[8, 5], [172, 67]];
+    if (visual === "arctic") {
+      return d3.geoAzimuthalEquidistant()
+        .rotate([0, -90])
+        .clipAngle(89.5)
+        .fitExtent(extent, { type: "Sphere" });
+    }
+
+    let projection;
+    if (visual === "canada") projection = d3.geoConicConformal().parallels([49, 77]).rotate([96, 0]);
+    else if (visual === "north-america") projection = d3.geoConicConformal().parallels([20, 60]).rotate([100, 0]);
+    else if (visual === "united-states") projection = d3.geoAlbersUsa();
+    else if (visual === "europe") projection = d3.geoMercator();
+    else projection = d3.geoEqualEarth();
+
+    let fitGeometry = geometry;
+    if (visual === "north-america") {
+      const compactNorthAmerica = geometry.features.filter(feature => getFeatureCountryCode(feature) !== "GRL");
+      if (compactNorthAmerica.length) fitGeometry = { type: "FeatureCollection", features: compactNorthAmerica };
+    }
+    return projection.fitExtent(extent, fitGeometry);
+  }
+
+  async function renderStartupBaselayerThumbnails() {
+    if (!window.d3 || startupBaselayerThumbnailsRendered) return;
+    if (startupBaselayerThumbnailsLoading) return startupBaselayerThumbnailsLoading;
+    startupBaselayerThumbnailsLoading = Promise.all(
+      [boundarySources.canada, boundarySources.world]
+        .filter(Boolean)
+        .map(source => loadLocalBoundary(source).catch(error => {
+          console.warn(`Could not load the bundled ${source.label} baselayer thumbnail.`, error);
+          return null;
+        }))
+    );
+    await startupBaselayerThumbnailsLoading;
+    startupBaselayerThumbnailsLoading = null;
+    const geometries = getStartupBaselayerThumbnailGeometries();
+    if (!geometries) return;
+    let renderedCount = 0;
+    document.querySelectorAll(".startup-baselayer-preview[data-baselayer-visual]").forEach(preview => {
+      const visual = preview.dataset.baselayerVisual;
+      const geometry = geometries[visual];
+      const svg = preview.querySelector(".startup-baselayer-map");
+      if (!svg || !geometry || !Array.isArray(geometry.features) || !geometry.features.length) return;
+      const projection = createStartupBaselayerThumbnailProjection(visual, geometry);
+      const path = window.d3.geoPath(projection);
+      if (typeof path.digits === "function") path.digits(1);
+      const selection = window.d3.select(svg);
+      selection.selectAll("*").remove();
+      if (visual === "world" || visual === "arctic") {
+        selection.append("path")
+          .datum({ type: "Sphere" })
+          .attr("class", "startup-baselayer-ocean")
+          .attr("d", path);
+        selection.append("path")
+          .datum(window.d3.geoGraticule10())
+          .attr("class", "startup-baselayer-graticule")
+          .attr("d", path);
+      }
+      selection.selectAll("path.startup-baselayer-land")
+        .data(geometry.features)
+        .join("path")
+        .attr("class", "startup-baselayer-land")
+        .attr("d", path);
+      renderedCount += 1;
+    });
+    startupBaselayerThumbnailsRendered = renderedCount === Object.keys(geometries).length;
+  }
+
+  function syncStartupSetupControls() {
+    if (!els.startupSetupForm) return;
+    renderStartupSetupSelectOptions({ useAppValues: true });
+    els.startupLabelCharsInput.value = normalizeLabelMaxChars(els.labelCharsInput.value);
+    selectStartupBaselayerOption(getStartupBaselayerOption(currentBoundary, els.regionPresetInput?.value || "all"));
   }
 
   function normalizeLayoutPreferences(preferences = {}) {
@@ -4060,6 +4229,18 @@
     return String(props.continent || "").trim().toLowerCase();
   }
 
+  function getFeatureCountryCode(feature) {
+    const props = feature && feature.properties ? feature.properties : {};
+    return String(props.iso_a3 || props.adm0_a3 || props.ADM0_A3 || "").trim().toUpperCase();
+  }
+
+  function worldFeatureMatchesPreset(feature, preset) {
+    const countryCode = getFeatureCountryCode(feature);
+    if (preset === "united-states") return countryCode === "USA";
+    if (preset === "arctic") return ["CAN", "FIN", "GRL", "ISL", "NOR", "RUS", "SWE", "USA"].includes(countryCode);
+    return regionMatchesPreset(getFeatureContinent(feature), getWorldPresetContinents(preset));
+  }
+
   function applyRegionPreset(preset) {
     if (!canadaGeo || !Array.isArray(canadaGeo.features) || !preset) return;
     if (preset === "all") {
@@ -4068,11 +4249,12 @@
       return;
     }
 
-    const presetNames = currentBoundary === "world" ? getWorldPresetContinents(preset) : getRegionPresetNames(preset);
+    const presetNames = currentBoundary === "world" ? [] : getRegionPresetNames(preset);
     canadaGeo.features.forEach((feature, index) => {
       const id = getRegionId(feature, index);
-      const matchValue = currentBoundary === "world" ? getFeatureContinent(feature) : getRegionName(feature, index);
-      regionVisibility[id] = regionMatchesPreset(matchValue, presetNames);
+      regionVisibility[id] = currentBoundary === "world"
+        ? worldFeatureMatchesPreset(feature, preset)
+        : regionMatchesPreset(getRegionName(feature, index), presetNames);
     });
     renderRegionControls();
     els.regionPresetInput.value = preset;
@@ -7838,7 +8020,7 @@
     drawAnnotationCharts(svg, placed, settings, mapBounds);
 
     if (settings.showCallouts && calloutRows.length) drawCallouts(svg, calloutRows, settings, mapBounds);
-    if (settings.showLegend) drawLegend(svg, settings, mapBounds);
+    if (settings.showLegend && rows.length) drawLegend(svg, settings, mapBounds);
     if (mapScaleControlsVisible) drawMapScaleControls(svg, settings, mapBounds);
     completeQualityRefreshFromRender();
     updateStatus(rows, mappedRows, calloutRows, report, true);
@@ -10035,6 +10217,7 @@
       try {
         const rawProject = projectIo.parseProjectJson(reader.result);
         const project = validateAndNormalizeProject(rawProject);
+        emptyBaselayerPreviewEnabled = true;
 
         if (rawProject.mapDetails && typeof rawProject.mapDetails === "object") {
           Object.keys(mapDetails).forEach(key => { mapDetails[key] = String(rawProject.mapDetails[key] || ""); });
@@ -10107,8 +10290,33 @@
     return getTableRows().length > 0;
   }
 
+  function setStartupScreen(screenName, options = {}) {
+    const showSetup = screenName === "setup";
+    els.startupStartScreen.hidden = showSetup;
+    els.startupSetupForm.hidden = !showSetup;
+    els.startupDialog.dataset.startupScreen = showSetup ? "setup" : "start";
+    els.startupDialog.setAttribute("aria-labelledby", showSetup ? "startupSetupTitle" : "startupTitle");
+    els.startupDialog.setAttribute("aria-describedby", showSetup ? "startupSetupSubtitle" : "startupSubtitle");
+    if (options.focus === false) return;
+    const focusTarget = showSetup
+      ? els.startupBaselayerOptions.find(option => option.dataset.selected === "true")
+      : els.startupStartNewBtn;
+    focusTarget?.focus({ preventScroll: true });
+  }
+
+  function showStartupSetupScreen() {
+    syncStartupSetupControls();
+    setStartupScreen("setup");
+    renderStartupBaselayerThumbnails();
+  }
+
+  function showStartupStartScreen() {
+    setStartupScreen("start");
+  }
+
   function openStartupDialogIfEmpty() {
     if (startupDialogDismissed || hasProjectStartupInformation()) return;
+    setStartupScreen("start", { focus: false });
     openDialog(els.startupDialog, els.previewTableTab);
     els.startupStartNewBtn?.focus({ preventScroll: true });
   }
@@ -10116,6 +10324,7 @@
   function closeStartupDialog() {
     startupDialogDismissed = true;
     closeDialog(els.startupDialog);
+    setStartupScreen("start", { focus: false });
   }
 
   function getDialogByCloseKey(key) {
@@ -10131,15 +10340,23 @@
   }
 
   function handleStartupDialogClick(event) {
+    if (event.target.closest("[data-startup-back]")) {
+      showStartupStartScreen();
+      return;
+    }
+    const baselayerOption = event.target.closest("[data-startup-baselayer]");
+    if (baselayerOption) {
+      selectStartupBaselayerOption(baselayerOption);
+      return;
+    }
     const button = event.target.closest("[data-startup-action]");
     if (!button) return;
     const action = button.dataset.startupAction;
-    closeStartupDialog();
     if (action === "new") {
-      setActiveDataTab("projects");
-      setStatusMessage(t("status.startupNewProject"), "ok");
+      showStartupSetupScreen();
       return;
     }
+    closeStartupDialog();
     if (action === "open") {
       els.projectInput.click();
       return;
@@ -10151,6 +10368,44 @@
     if (action === "csv") {
       setActiveDataTab("projects");
       els.csvInput.click();
+    }
+  }
+
+  function handleStartupBaselayerKeydown(event) {
+    const option = event.currentTarget;
+    if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const currentIndex = els.startupBaselayerOptions.indexOf(option);
+    let nextIndex = currentIndex;
+    if (event.key === "Home") nextIndex = 0;
+    else if (event.key === "End") nextIndex = els.startupBaselayerOptions.length - 1;
+    else if (event.key === "ArrowLeft" || event.key === "ArrowUp") nextIndex = (currentIndex - 1 + els.startupBaselayerOptions.length) % els.startupBaselayerOptions.length;
+    else nextIndex = (currentIndex + 1) % els.startupBaselayerOptions.length;
+    selectStartupBaselayerOption(els.startupBaselayerOptions[nextIndex], { focus: true });
+  }
+
+  async function handleStartupSetupSubmit(event) {
+    event.preventDefault();
+    const selectedBaselayer = els.startupBaselayerOptions.find(option => option.dataset.selected === "true") || els.startupBaselayerOptions[0];
+    const boundary = selectedBaselayer?.dataset.boundary || "canada";
+    const regionPreset = selectedBaselayer?.dataset.regionPreset || "all";
+    els.startupCreateMapBtn.disabled = true;
+    els.startupSetupForm.setAttribute("aria-busy", "true");
+    try {
+      emptyBaselayerPreviewEnabled = true;
+      applyMapStylePreset(els.startupMapStyleInput.value, { render: false });
+      applyImageSizePreset(els.startupBookSizeInput.value, els.startupImageSizeInput.value);
+      els.labelCharsInput.value = normalizeLabelMaxChars(els.startupLabelCharsInput.value);
+      saveLayoutPreferences();
+      await changeBoundary(boundary);
+      applyRegionPreset(regionPreset);
+      setActiveDataTab("preview");
+      els.startupDialog._returnFocus = els.previewTableTab;
+      setStatusMessage(t("status.startupNewProject"), "ok");
+      closeStartupDialog();
+    } finally {
+      els.startupCreateMapBtn.disabled = false;
+      els.startupSetupForm.removeAttribute("aria-busy");
     }
   }
 
@@ -11016,6 +11271,9 @@
       propertiesDrawerMedia.addListener(syncResponsivePropertiesState);
     }
     on(els.startupDialog, "click", handleStartupDialogClick);
+    on(els.startupSetupForm, "submit", handleStartupSetupSubmit);
+    on(els.startupBookSizeInput, "change", () => renderStartupImageSizeOptions());
+    els.startupBaselayerOptions.forEach(option => on(option, "keydown", handleStartupBaselayerKeydown));
     on(els.mapDetailsForm, "submit", saveMapDetails);
     on(els.mapDetailsForm, "input", updateMapDetailsDraftState);
     on(els.confirmCsvMapBtn, "click", confirmCsvMapping);
@@ -11203,12 +11461,14 @@
       if (event.key === "Escape") {
         event.preventDefault();
         if (openDialogElement === els.confirmationDialog) resolveConfirmationDialog(false);
+        else if (openDialogElement === els.startupDialog && els.startupDialog.dataset.startupScreen === "setup") showStartupStartScreen();
         else if (openDialogElement === els.startupDialog) closeStartupDialog();
         else closeDialog(openDialogElement);
         return;
       }
       if (event.key === "Tab") {
-        const focusable = Array.from(openDialogElement.querySelectorAll('button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+        const focusable = Array.from(openDialogElement.querySelectorAll('button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+          .filter(element => !element.closest("[hidden]"));
         if (!focusable.length) return;
         const first = focusable[0];
         const last = focusable[focusable.length - 1];
@@ -11506,6 +11766,7 @@
     syncCompactFurnitureAvailability();
     renderRegionPresetOptions();
     renderMapStyleOptions();
+    syncStartupSetupControls();
     renderCategoryEditors();
     setRows([], [], { render: false, resetProperties: false });
     applyUiLanguage(getSavedUiLanguagePreference(), { persist: false, renderMap: false });

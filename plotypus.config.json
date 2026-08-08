@@ -95,6 +95,8 @@
       { "value": "asia", "label": "Asia", "labelFr": "Asie" },
       { "value": "europe", "label": "Europe", "labelFr": "Europe" },
       { "value": "north-america", "label": "North America", "labelFr": "Amérique du Nord" },
+      { "value": "united-states", "label": "United States", "labelFr": "États-Unis" },
+      { "value": "arctic", "label": "Arctic countries", "labelFr": "Pays de l'Arctique" },
       { "value": "oceania", "label": "Oceania", "labelFr": "Océanie" },
       { "value": "south-america", "label": "South America", "labelFr": "Amérique du Sud" }
     ]

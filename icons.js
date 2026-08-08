@@ -221,6 +221,9 @@
       '<path d="m6 6 12 12"/>',
       '<path d="m18 6-12 12"/>'
     ],
+    "chevron-left": [
+      '<path d="m15 19-7-7 7-7"/>'
+    ],
     "external-link": [
       '<path d="M14 4h6v6"/>',
       '<path d="m10 14 10-10"/>',

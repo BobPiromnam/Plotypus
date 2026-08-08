@@ -84,7 +84,7 @@ function getAllReferencedJsI18nKeys(i18n) {
 }
 
 function getSourceDictionaryKeys(locale) {
-  const source = fs.readFileSync(path.join(repoRoot, "i18n.js"), "utf8");
+  const source = fs.readFileSync(path.join(repoRoot, "i18n.js"), "utf8").replace(/\r\n/g, "\n");
   const marker = `${locale}: Object.freeze({`;
   const start = source.indexOf(marker);
   assert.notEqual(start, -1, `Could not find ${locale} source dictionary`);

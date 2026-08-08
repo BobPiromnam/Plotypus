@@ -525,39 +525,148 @@
     </aside>
   </main>
 
-  <div id="startupDialog" class="app-dialog startup-dialog" role="dialog" aria-modal="true" aria-labelledby="startupTitle" hidden>
+  <div id="startupDialog" class="app-dialog startup-dialog" role="dialog" aria-modal="true" aria-labelledby="startupTitle" aria-describedby="startupSubtitle" hidden>
     <div class="dialog-scrim" data-dialog-close="startup"></div>
     <div class="dialog-card startup-dialog-card">
-      <header class="dialog-header">
-        <div class="dialog-title-row">
-          <span class="dialog-title-icon" data-icon="map" aria-hidden="true"></span>
-          <div>
-            <h2 id="startupTitle" data-i18n="dialog.startup.title">Start a Plotypus map</h2>
-            <p data-i18n="dialog.startup.subtitle">Choose how to begin. Start blank, open a saved Plotypus file, load the sample, or import CSV data.</p>
+      <section id="startupStartScreen" class="startup-screen" data-startup-screen="start">
+        <header class="dialog-header startup-dialog-header">
+          <div class="dialog-title-row">
+            <span class="dialog-title-icon" data-icon="map" aria-hidden="true"></span>
+            <div>
+              <h2 id="startupTitle" data-i18n="dialog.startup.title">Start a Plotypus map</h2>
+              <p id="startupSubtitle" data-i18n="dialog.startup.subtitle">Pick a starting point. You can change everything later.</p>
+            </div>
+          </div>
+          <button type="button" class="icon-button dialog-close" data-dialog-close="startup" aria-label="Close startup options" data-i18n-aria-label="dialog.startup.close" data-icon="x"></button>
+        </header>
+        <div class="dialog-body startup-dialog-body">
+          <div class="startup-choice-groups">
+            <section class="startup-choice-section" aria-labelledby="startupNewGroupTitle">
+              <h3 id="startupNewGroupTitle" class="startup-section-label" data-i18n="dialog.startup.newGroupTitle">New map</h3>
+              <div class="startup-options">
+                <button id="startupStartNewBtn" type="button" class="startup-option" data-startup-action="new" data-default="true" data-icon="plus" data-dialog-initial-focus>
+                  <span class="startup-option-copy">
+                    <span class="startup-option-title-row">
+                      <strong data-i18n="dialog.startup.newTitle">Start from scratch</strong>
+                      <span class="startup-default-chip" data-i18n="dialog.startup.default">Default</span>
+                    </span>
+                    <span class="startup-option-body" data-i18n="dialog.startup.newBody">Choose a baselayer and canvas, then add points.</span>
+                  </span>
+                </button>
+                <button id="startupImportCsvBtn" type="button" class="startup-option" data-startup-action="csv" data-icon="upload">
+                  <span class="startup-option-copy">
+                    <strong data-i18n="dialog.startup.csvTitle">Import a data file</strong>
+                    <span class="startup-option-body" data-i18n="dialog.startup.csvBody">CSV, TSV, or text. Map columns and compose labels on import.</span>
+                  </span>
+                </button>
+              </div>
+            </section>
+            <section class="startup-choice-section" aria-labelledby="startupExistingGroupTitle">
+              <h3 id="startupExistingGroupTitle" class="startup-section-label" data-i18n="dialog.startup.existingGroupTitle">Open existing</h3>
+              <div class="startup-options">
+                <button id="startupOpenProjectBtn" type="button" class="startup-option" data-startup-action="open" data-icon="folder-open">
+                  <span class="startup-option-copy">
+                    <strong data-i18n="dialog.startup.openTitle">Open a saved project</strong>
+                    <span class="startup-option-body" data-i18n="dialog.startup.openBody">Continue from a Plotypus .json file.</span>
+                  </span>
+                </button>
+                <button id="startupLoadSampleBtn" type="button" class="startup-option" data-startup-action="sample" data-icon="table">
+                  <span class="startup-option-copy">
+                    <strong data-i18n="dialog.startup.sampleTitle">Explore the sample</strong>
+                    <span class="startup-option-body" data-i18n="dialog.startup.sampleBody">A finished Canada infrastructure map to learn from.</span>
+                  </span>
+                </button>
+              </div>
+            </section>
           </div>
         </div>
-        <button type="button" class="icon-button dialog-close" data-dialog-close="startup" aria-label="Close startup options" data-i18n-aria-label="dialog.startup.close" data-icon="x"></button>
-      </header>
-      <div class="dialog-body startup-dialog-body">
-        <div class="startup-options" role="list">
-          <button id="startupStartNewBtn" type="button" class="startup-option primary-action" data-startup-action="new" data-icon="plus" data-dialog-initial-focus>
-            <strong data-i18n="dialog.startup.newTitle">Start new</strong>
-            <span data-i18n="dialog.startup.newBody">Begin with an empty Project points table.</span>
-          </button>
-          <button id="startupOpenProjectBtn" type="button" class="startup-option" data-startup-action="open" data-icon="folder-open">
-            <strong data-i18n="dialog.startup.openTitle">Open Plotypus file</strong>
-            <span data-i18n="dialog.startup.openBody">Continue from a saved .json project file.</span>
-          </button>
-          <button id="startupLoadSampleBtn" type="button" class="startup-option" data-startup-action="sample" data-icon="table">
-            <strong data-i18n="dialog.startup.sampleTitle">Load sample</strong>
-            <span data-i18n="dialog.startup.sampleBody">Use the included Canada infrastructure sample.</span>
-          </button>
-          <button id="startupImportCsvBtn" type="button" class="startup-option" data-startup-action="csv" data-icon="upload">
-            <strong data-i18n="dialog.startup.csvTitle">Import CSV</strong>
-            <span data-i18n="dialog.startup.csvBody">Map columns from a CSV, TSV, or text file.</span>
-          </button>
+        <footer class="startup-privacy-note">
+          <span class="startup-info-icon" aria-hidden="true">i</span>
+          <span data-i18n="dialog.startup.privacy">Everything runs offline. Nothing you open or import leaves this machine.</span>
+        </footer>
+      </section>
+
+      <form id="startupSetupForm" class="startup-screen startup-setup-screen" data-startup-screen="setup" hidden>
+        <header class="dialog-header startup-setup-header">
+          <div class="dialog-title-row">
+            <button type="button" class="icon-button startup-back-icon" data-startup-back aria-label="Back to start" data-i18n-aria-label="dialog.startup.setupBack" data-icon="chevron-left"></button>
+            <div>
+              <h2 id="startupSetupTitle" data-i18n="dialog.startup.setupTitle">Set up your map</h2>
+              <p id="startupSetupSubtitle" data-i18n="dialog.startup.setupSubtitle">Pick where it is centred and how it prints. You can edit all of this later in Document properties.</p>
+            </div>
+          </div>
+          <span class="startup-step-label" data-i18n="dialog.startup.setupStep">Step 2 of 2</span>
+        </header>
+        <div class="dialog-body startup-setup-body">
+          <section class="startup-setup-section startup-baselayer-section" aria-labelledby="startupBaselayerHeading">
+            <h3 id="startupBaselayerHeading" class="startup-section-label" data-i18n="dialog.startup.baselayerHeading">Baselayer</h3>
+            <p class="startup-section-help" data-i18n="dialog.startup.baselayerBody">Choose the boundaries your project points will sit on.</p>
+            <div class="startup-baselayer-grid" role="radiogroup" aria-labelledby="startupBaselayerHeading">
+              <button type="button" class="startup-baselayer-option" role="radio" aria-checked="true" data-selected="true" data-startup-baselayer data-boundary="canada" data-region-preset="all">
+                <span class="startup-baselayer-preview" data-baselayer-visual="canada"><svg class="startup-baselayer-map" viewBox="0 0 180 72" preserveAspectRatio="xMidYMid meet" aria-hidden="true"></svg></span>
+                <strong data-i18n="dialog.startup.baselayer.canada">Canada</strong>
+                <small data-i18n="dialog.startup.baselayer.canadaMeta">10 provinces - 3 territories</small>
+              </button>
+              <button type="button" class="startup-baselayer-option" role="radio" aria-checked="false" data-selected="false" data-startup-baselayer data-boundary="world" data-region-preset="north-america">
+                <span class="startup-baselayer-preview" data-baselayer-visual="north-america"><svg class="startup-baselayer-map" viewBox="0 0 180 72" preserveAspectRatio="xMidYMid meet" aria-hidden="true"></svg></span>
+                <strong data-i18n="dialog.startup.baselayer.northAmerica">North America</strong>
+                <small data-i18n="dialog.startup.baselayer.northAmericaMeta">North American countries</small>
+              </button>
+              <button type="button" class="startup-baselayer-option" role="radio" aria-checked="false" data-selected="false" data-startup-baselayer data-boundary="world" data-region-preset="united-states">
+                <span class="startup-baselayer-preview" data-baselayer-visual="united-states"><svg class="startup-baselayer-map" viewBox="0 0 180 72" preserveAspectRatio="xMidYMid meet" aria-hidden="true"></svg></span>
+                <strong data-i18n="dialog.startup.baselayer.unitedStates">United States</strong>
+                <small data-i18n="dialog.startup.baselayer.unitedStatesMeta">Country outline</small>
+              </button>
+              <button type="button" class="startup-baselayer-option" role="radio" aria-checked="false" data-selected="false" data-startup-baselayer data-boundary="world" data-region-preset="all">
+                <span class="startup-baselayer-preview" data-baselayer-visual="world"><svg class="startup-baselayer-map" viewBox="0 0 180 72" preserveAspectRatio="xMidYMid meet" aria-hidden="true"></svg></span>
+                <strong data-i18n="dialog.startup.baselayer.world">World</strong>
+                <small data-i18n="dialog.startup.baselayer.worldMeta">Equal Earth projection</small>
+              </button>
+              <button type="button" class="startup-baselayer-option" role="radio" aria-checked="false" data-selected="false" data-startup-baselayer data-boundary="world" data-region-preset="europe">
+                <span class="startup-baselayer-preview" data-baselayer-visual="europe"><svg class="startup-baselayer-map" viewBox="0 0 180 72" preserveAspectRatio="xMidYMid meet" aria-hidden="true"></svg></span>
+                <strong data-i18n="dialog.startup.baselayer.europe">Europe</strong>
+                <small data-i18n="dialog.startup.baselayer.europeMeta">European countries</small>
+              </button>
+              <button type="button" class="startup-baselayer-option" role="radio" aria-checked="false" data-selected="false" data-startup-baselayer data-boundary="world" data-region-preset="arctic">
+                <span class="startup-baselayer-preview" data-baselayer-visual="arctic"><svg class="startup-baselayer-map" viewBox="0 0 180 72" preserveAspectRatio="xMidYMid meet" aria-hidden="true"></svg></span>
+                <strong data-i18n="dialog.startup.baselayer.arctic">Arctic</strong>
+                <small data-i18n="dialog.startup.baselayer.arcticMeta">Northern countries</small>
+              </button>
+            </div>
+          </section>
+
+          <section class="startup-setup-section startup-canvas-section" aria-labelledby="startupCanvasHeading">
+            <div>
+              <h3 id="startupCanvasHeading" class="startup-section-label" data-i18n="dialog.startup.canvasHeading">Canvas</h3>
+              <div class="startup-setup-fields">
+                <label>
+                  <span data-i18n="dialog.startup.mapStyle">Map style</span>
+                  <select id="startupMapStyleInput"><option value="goc-green">GoC green</option></select>
+                </label>
+                <label>
+                  <span data-i18n="dialog.startup.pagePreset">Page preset</span>
+                  <select id="startupBookSizeInput"><option value="letter">8.5 x 11</option></select>
+                </label>
+                <label>
+                  <span data-i18n="dialog.startup.canvasSize">Canvas size</span>
+                  <select id="startupImageSizeInput"><option value="full">Full page (612 x 750)</option></select>
+                </label>
+                <label>
+                  <span data-i18n="dialog.startup.labelChars">Default characters per line</span>
+                  <span class="startup-inline-field">
+                    <input id="startupLabelCharsInput" type="number" min="12" max="42" step="1" value="24" />
+                    <small data-i18n="dialog.startup.labelCharsHelp">Where labels wrap. Change this per label later.</small>
+                  </span>
+                </label>
+              </div>
+            </div>
+            <footer class="startup-setup-actions">
+              <button id="startupSetupBackBtn" type="button" data-startup-back data-i18n="dialog.startup.back">Back</button>
+              <button id="startupCreateMapBtn" type="submit" class="primary-action" data-i18n="dialog.startup.create">Create map</button>
+            </footer>
+          </section>
         </div>
-      </div>
+      </form>
     </div>
   </div>
   <div id="mapDetailsDialog" class="app-dialog" role="dialog" aria-modal="true" aria-labelledby="mapDetailsTitle" hidden>
