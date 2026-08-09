@@ -22,6 +22,7 @@
     const requestedWorkspace = params.get("workspace") || "";
     const requestedDialog = params.get("dialog") || "";
     const loadSample = params.get("sample") === "1";
+    const tableLayoutOnly = params.get("tableLayout") === "1";
     const measurePerformance = params.get("performance") === "1";
     const visualCapture = params.get("visual") === "1";
     const seededCanvasZoom = Number(params.get("canvasZoom"));
@@ -67,6 +68,438 @@
       result.dataset.checkCount = String(checks.length);
     }
 
+    function isRenderedLayoutElement(element) {
+      if (!element) return false;
+      const style = element.ownerDocument.defaultView.getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+    }
+
+    function elementContentBounds(element) {
+      if (!element) return null;
+      const range = element.ownerDocument.createRange();
+      range.selectNodeContents(element);
+      const rect = range.getBoundingClientRect();
+      range.detach?.();
+      return rect;
+    }
+
+    function selectOptionTextFit(select, optionText, arrowAllowance = 0) {
+      if (!select || !optionText) return { pass: false, detail: "select or option missing" };
+      const doc = select.ownerDocument;
+      const view = doc.defaultView;
+      const style = view.getComputedStyle(select);
+      const probe = doc.createElement("span");
+      probe.textContent = optionText;
+      probe.style.position = "fixed";
+      probe.style.left = "-10000px";
+      probe.style.top = "0";
+      probe.style.whiteSpace = "nowrap";
+      probe.style.font = style.font;
+      probe.style.fontFamily = style.fontFamily;
+      probe.style.fontSize = style.fontSize;
+      probe.style.fontWeight = style.fontWeight;
+      probe.style.letterSpacing = style.letterSpacing;
+      probe.style.textTransform = style.textTransform;
+      doc.body.append(probe);
+      const textWidth = probe.getBoundingClientRect().width;
+      probe.remove();
+      const paddingLeft = parseFloat(style.paddingLeft) || 0;
+      const paddingRight = parseFloat(style.paddingRight) || 0;
+      // These selects reserve their arrow inside computed right padding, so the
+      // default probe must not add that affordance a second time.
+      const requiredWidth = textWidth + paddingLeft + paddingRight + arrowAllowance;
+      return {
+        pass: requiredWidth <= select.clientWidth + 1,
+        detail: `${optionText}: text=${Math.round(textWidth)}, padding=${paddingLeft}/${paddingRight}, arrow=${arrowAllowance}, required=${Math.round(requiredWidth)}, available=${select.clientWidth}`
+      };
+    }
+
+    function semanticTableLayout(table, { utilitySelectors = [], bodyTextSelectors = [], minimumWidth = 0, expectedInlinePadding = 16 } = {}) {
+      if (!table) return { pass: false, detail: "table missing" };
+      const view = table.ownerDocument.defaultView;
+      const wrapper = table.closest(".table-wrap, .csv-preview-table-wrap");
+      const tableRect = table.getBoundingClientRect();
+      const tableStyle = view.getComputedStyle(table);
+      const headers = Array.from(table.querySelectorAll("thead th")).filter(isRenderedLayoutElement);
+      const headerMetrics = headers.map(header => {
+        const rect = header.getBoundingClientRect();
+        const style = view.getComputedStyle(header);
+        const paddingLeft = parseFloat(style.paddingLeft) || 0;
+        const paddingRight = parseFloat(style.paddingRight) || 0;
+        const contentRect = elementContentBounds(header);
+        const contentFits = !contentRect || contentRect.width <= 0 || (
+          contentRect.left >= rect.left + paddingLeft - 1
+          && contentRect.right <= rect.right - paddingRight + 1
+        );
+        return {
+          label: header.textContent.trim().replace(/\s+/g, " "),
+          paddingLeft,
+          paddingRight,
+          pass: header.scrollWidth <= header.clientWidth + 1 && contentFits
+        };
+      });
+      const headersFit = headers.length > 0 && headerMetrics.every(metric => metric.pass);
+      const headerPaddingIsConsistent = headerMetrics.every(metric => (
+        metric.paddingLeft >= 8
+        && metric.paddingRight >= 8
+        && Math.abs(metric.paddingLeft - metric.paddingRight) <= 1
+        && Math.abs(metric.paddingLeft - expectedInlinePadding) <= 1
+        && Math.abs(metric.paddingRight - expectedInlinePadding) <= 1
+      ));
+      const firstRow = table.querySelector("tbody tr");
+      const bodyTextMetrics = bodyTextSelectors.map(selector => {
+        const element = firstRow?.querySelector(selector);
+        if (!isRenderedLayoutElement(element)) return null;
+        const style = view.getComputedStyle(element);
+        const paddingLeft = parseFloat(style.paddingLeft) || 0;
+        const paddingRight = parseFloat(style.paddingRight) || 0;
+        const reservesNativeArrow = element.matches("select");
+        return {
+          selector,
+          pass: Math.abs(paddingLeft - expectedInlinePadding) <= 1
+            && (reservesNativeArrow ? paddingRight >= expectedInlinePadding : Math.abs(paddingRight - expectedInlinePadding) <= 1),
+          detail: `${selector}:${paddingLeft}/${paddingRight}${reservesNativeArrow ? ":select" : ""}`
+        };
+      }).filter(Boolean);
+      const expectedRenderedBodyTextCount = bodyTextSelectors.filter(selector => isRenderedLayoutElement(firstRow?.querySelector(selector))).length;
+      const bodyTextPaddingIsConsistent = bodyTextMetrics.length === expectedRenderedBodyTextCount && bodyTextMetrics.length > 0 && bodyTextMetrics.every(metric => metric.pass);
+      const utilityMetrics = utilitySelectors.map(selector => {
+        const header = table.querySelector(`thead ${selector}`);
+        if (!isRenderedLayoutElement(header)) return null;
+        const cell = firstRow?.cells?.[header.cellIndex];
+        if (!isRenderedLayoutElement(cell)) return { selector, pass: false, detail: "cell missing" };
+        const cellRect = cell.getBoundingClientRect();
+        const children = Array.from(cell.children).filter(isRenderedLayoutElement);
+        const childrenFit = children.every(child => {
+          const rect = child.getBoundingClientRect();
+          return rect.left >= cellRect.left - 1 && rect.right <= cellRect.right + 1;
+        });
+        return {
+          selector,
+          pass: cell.scrollWidth <= cell.clientWidth + 1 && childrenFit,
+          detail: `${Math.round(cell.scrollWidth)}/${Math.round(cell.clientWidth)}`
+        };
+      }).filter(Boolean);
+      const parsedMinimumWidth = parseFloat(tableStyle.minWidth) || 0;
+      const wrapperStyle = wrapper ? view.getComputedStyle(wrapper) : null;
+      const wrapperCanScroll = Boolean(wrapper && ["auto", "scroll"].includes(wrapperStyle.overflowX));
+      const shouldScrollAtNarrowWidth = view.innerWidth <= 1080 && tableRect.width > (wrapper?.clientWidth || 0) + 1;
+      const horizontalOverflowIsContained = Boolean(wrapper)
+        && wrapperCanScroll
+        && tableRect.width >= parsedMinimumWidth - 1
+        && (!shouldScrollAtNarrowWidth || wrapper.scrollWidth > wrapper.clientWidth + 1)
+        && table.ownerDocument.documentElement.scrollWidth <= table.ownerDocument.documentElement.clientWidth + 1;
+      const minimumWidthIsEnforced = parsedMinimumWidth >= minimumWidth && tableRect.width >= parsedMinimumWidth - 1;
+      return {
+        headersFit,
+        headerPaddingIsConsistent,
+        bodyTextPaddingIsConsistent,
+        utilityColumnsFit: utilityMetrics.length === utilitySelectors.filter(selector => isRenderedLayoutElement(table.querySelector(`thead ${selector}`))).length && utilityMetrics.every(metric => metric.pass),
+        minimumWidthIsEnforced,
+        horizontalOverflowIsContained,
+        pass: headersFit && headerPaddingIsConsistent && bodyTextPaddingIsConsistent && utilityMetrics.every(metric => metric.pass) && minimumWidthIsEnforced && horizontalOverflowIsContained,
+        detail: `headers=${headerMetrics.map(metric => `${metric.label}:${metric.pass ? "fit" : "clip"}@${metric.paddingLeft}/${metric.paddingRight}`).join(" | ")}; body=${bodyTextMetrics.map(metric => metric.detail).join(" | ")}; utility=${utilityMetrics.map(metric => `${metric.selector}:${metric.detail}`).join(" | ")}; table=${Math.round(tableRect.width)}/${parsedMinimumWidth}; wrapper=${wrapper ? `${wrapper.scrollWidth}/${wrapper.clientWidth}:${wrapperStyle.overflowX}` : "missing"}`
+      };
+    }
+
+    function projectRegionsModeLayout(table, { utilitySelectors = [], bodyTextSelectors = [] } = {}) {
+      if (!table) return { pass: false, detail: "table missing" };
+      const originalMode = table.getAttribute("data-location-mode");
+      const originalRowState = Array.from(table.querySelectorAll("tbody tr[data-row-id]"))
+        .map(row => `${row.dataset.rowId || ""}:${row.dataset.anchor || ""}:${row.dataset.region || ""}`)
+        .join("|");
+      let metrics;
+      let regionHeaderIsVisible = false;
+      let regionSelectIsVisible = false;
+      let coordinateHeadersAreHidden = false;
+      try {
+        table.dataset.locationMode = "regions";
+        metrics = semanticTableLayout(table, {
+          utilitySelectors,
+          bodyTextSelectors,
+          minimumWidth: 1530
+        });
+        regionHeaderIsVisible = isRenderedLayoutElement(table.querySelector(".region-col"));
+        regionSelectIsVisible = isRenderedLayoutElement(table.querySelector("tbody .region-input"));
+        coordinateHeadersAreHidden = [".lon-col", ".lat-col"].every(selector => !isRenderedLayoutElement(table.querySelector(selector)));
+      } finally {
+        if (originalMode === null) table.removeAttribute("data-location-mode");
+        else table.setAttribute("data-location-mode", originalMode);
+      }
+      const restoredRowState = Array.from(table.querySelectorAll("tbody tr[data-row-id]"))
+        .map(row => `${row.dataset.rowId || ""}:${row.dataset.anchor || ""}:${row.dataset.region || ""}`)
+        .join("|");
+      const modeWasRestored = table.getAttribute("data-location-mode") === originalMode;
+      const rowStateWasPreserved = restoredRowState === originalRowState;
+      return {
+        ...metrics,
+        regionHeaderIsVisible,
+        regionSelectIsVisible,
+        coordinateHeadersAreHidden,
+        modeWasRestored,
+        rowStateWasPreserved,
+        pass: Boolean(metrics?.pass)
+          && regionHeaderIsVisible
+          && regionSelectIsVisible
+          && coordinateHeadersAreHidden
+          && modeWasRestored
+          && rowStateWasPreserved,
+        detail: `${metrics?.detail || "metrics missing"}; regions=${regionHeaderIsVisible}/${regionSelectIsVisible}; coordinatesHidden=${coordinateHeadersAreHidden}; restored=${modeWasRestored}/${rowStateWasPreserved}`
+      };
+    }
+
+    function translationGridLayout(doc) {
+      const view = doc.defaultView;
+      const header = doc.querySelector(".translation-column-labels");
+      const row = doc.querySelector(".translation-row[data-entry-id]");
+      const pane = doc.querySelector("#translateTablePane");
+      const workbench = doc.querySelector(".translate-workbench");
+      if (!header || !row || !pane || !workbench) return { pass: false, detail: "translation grid missing" };
+      const isStacked = view.innerWidth <= 760;
+      const headerCells = Array.from(header.children);
+      const rowCells = Array.from(row.children);
+      const headerMetrics = isStacked ? [] : headerCells.map((cell, index) => {
+        const rect = cell.getBoundingClientRect();
+        const rowRect = rowCells[index]?.getBoundingClientRect();
+        const style = view.getComputedStyle(cell);
+        const paddingLeft = parseFloat(style.paddingLeft) || 0;
+        const paddingRight = parseFloat(style.paddingRight) || 0;
+        const contentRect = elementContentBounds(cell);
+        const isEmptyIndex = index === 0 && !cell.textContent.trim();
+        const trackAligned = index === 3
+          ? Boolean(rowRect) && Math.abs((rect.left + rect.right) / 2 - (rowRect.left + rowRect.right) / 2) <= 2
+          : Boolean(rowRect) && Math.abs(rect.left - rowRect.left) <= 2 && Math.abs(rect.right - rowRect.right) <= 2;
+        return {
+          index,
+          pass: trackAligned
+            && (isEmptyIndex || (
+              Math.abs(paddingLeft - 16) <= 1
+              && Math.abs(paddingRight - 16) <= 1
+              && Math.abs(paddingLeft - paddingRight) <= 1
+              && cell.scrollWidth <= cell.clientWidth + 1
+              && (!contentRect || contentRect.width <= 0 || (contentRect.left >= rect.left + paddingLeft - 1 && contentRect.right <= rect.right - paddingRight + 1))
+            )),
+          detail: `${index}:${Math.round(rect.width)}/${Math.round(rowRect?.width || 0)}@${paddingLeft}/${paddingRight}`
+        };
+      });
+      const textControls = Array.from(row.querySelectorAll(".translation-input"));
+      const rowPaddingIsConsistent = textControls.length === 2 && textControls.every(control => {
+        const style = view.getComputedStyle(control);
+        const paddingLeft = parseFloat(style.paddingLeft) || 0;
+        const paddingRight = parseFloat(style.paddingRight) || 0;
+        return Math.abs(paddingLeft - 16) <= 1 && Math.abs(paddingRight - 16) <= 1 && Math.abs(paddingLeft - paddingRight) <= 1;
+      });
+      const status = row.querySelector(".translation-status");
+      const statusRect = status?.getBoundingClientRect();
+      const rowRect = row.getBoundingClientRect();
+      const rowStyle = view.getComputedStyle(row);
+      const rowPaddingLeft = parseFloat(rowStyle.paddingLeft) || 0;
+      const rowPaddingRight = parseFloat(rowStyle.paddingRight) || 0;
+      const statusTrackRect = isStacked
+        ? { left: rowRect.left + rowPaddingLeft, right: rowRect.right - rowPaddingRight }
+        : { left: rowRect.right - rowPaddingRight - 180, right: rowRect.right - rowPaddingRight };
+      const statusStyle = status ? view.getComputedStyle(status) : null;
+      const statusPaddingLeft = parseFloat(statusStyle?.paddingLeft) || 0;
+      const statusPaddingRight = parseFloat(statusStyle?.paddingRight) || 0;
+      const utilityColumnsFit = Boolean(statusRect && statusTrackRect)
+        && status.scrollWidth <= status.clientWidth + 1
+        && statusPaddingLeft >= 8
+        && statusPaddingRight >= 8
+        && Math.abs(statusPaddingLeft - statusPaddingRight) <= 1
+        && statusRect.left >= statusTrackRect.left - 1
+        && statusRect.right <= statusTrackRect.right + 1;
+      const workbenchStyle = view.getComputedStyle(workbench);
+      const paneStyle = view.getComputedStyle(pane);
+      const workbenchRect = workbench.getBoundingClientRect();
+      const parsedMinimumWidth = parseFloat(workbenchStyle.minWidth) || 0;
+      const minimumWidthIsEnforced = isStacked
+        ? workbench.scrollWidth <= pane.clientWidth + 1
+        : workbench.scrollWidth >= 904 && header.getBoundingClientRect().width <= workbench.scrollWidth + 1;
+      const shouldScrollAtNarrowWidth = view.innerWidth <= 1080 && workbench.scrollWidth > pane.clientWidth + 1;
+      const horizontalOverflowIsContained = ["auto", "scroll"].includes(paneStyle.overflowX)
+        && (!shouldScrollAtNarrowWidth || pane.scrollWidth > pane.clientWidth + 1)
+        && doc.documentElement.scrollWidth <= doc.documentElement.clientWidth + 1;
+      const stackedLayoutIsSafe = !isStacked || (
+        view.getComputedStyle(header).display === "none"
+        && view.getComputedStyle(row).gridTemplateColumns.split(" ").length === 1
+        && row.scrollWidth <= row.clientWidth + 1
+      );
+      return {
+        headersFit: isStacked ? stackedLayoutIsSafe : headerMetrics.length === 4 && headerMetrics.every(metric => metric.pass),
+        rowPaddingIsConsistent,
+        utilityColumnsFit,
+        minimumWidthIsEnforced,
+        horizontalOverflowIsContained,
+        pass: (isStacked ? stackedLayoutIsSafe : headerMetrics.length === 4 && headerMetrics.every(metric => metric.pass)) && rowPaddingIsConsistent && utilityColumnsFit && minimumWidthIsEnforced && horizontalOverflowIsContained,
+        detail: `mode=${isStacked ? "stacked" : "columns"}; tracks=${headerMetrics.map(metric => metric.detail).join(" | ")}; min=${parsedMinimumWidth}; workbench=${Math.round(workbenchRect.width)}:${workbench.scrollWidth}; pane=${pane.scrollWidth}/${pane.clientWidth}:${paneStyle.overflowX}; status=${status ? `${status.scrollWidth}/${status.clientWidth}` : "missing"}`
+      };
+    }
+
+    function csvPreviewTableFixtureLayout(doc, language = "en", locationMode = "coordinates") {
+      const view = doc.defaultView;
+      const useRegions = locationMode === "regions";
+      const copy = language === "fr"
+        ? {
+          labels: ["Nom du projet", "Type", "Longitude", "Latitude", "Région", "État"],
+          name: "Projet d'infrastructure",
+          type: "Stratégies de transformation",
+          region: "Colombie-Britannique",
+          status: "Cartographié"
+        }
+        : {
+          labels: ["Project name", "Type", "Longitude", "Latitude", "Region", "Status"],
+          name: "Infrastructure project",
+          type: "Transformative Strategies",
+          region: "British Columbia",
+          status: "Mapped"
+        };
+      const fixture = doc.createElement("div");
+      fixture.className = "csv-preview-table-wrap";
+      fixture.setAttribute("data-table-layout-fixture", "csv-preview");
+      fixture.style.position = "fixed";
+      fixture.style.left = "-10000px";
+      fixture.style.top = "0";
+      fixture.style.width = "520px";
+      fixture.style.opacity = "0";
+      fixture.style.pointerEvents = "none";
+      fixture.innerHTML = `
+        <table class="csv-preview-table" data-location-mode="${locationMode}">
+          <thead><tr>
+            <th class="csv-preview-name-col">${copy.labels[0]}</th>
+            <th class="csv-preview-type-col">${copy.labels[1]}</th>
+            ${useRegions
+              ? `<th class="csv-preview-region-col">${copy.labels[4]}</th>`
+              : `<th class="csv-preview-coordinate-col">${copy.labels[2]}</th><th class="csv-preview-coordinate-col">${copy.labels[3]}</th>`}
+            <th class="csv-preview-status-col">${copy.labels[5]}</th>
+          </tr></thead>
+          <tbody><tr>
+            <td class="csv-preview-name-cell">${copy.name}</td>
+            <td class="csv-preview-type-cell">${copy.type}</td>
+            ${useRegions
+              ? `<td class="csv-preview-region-cell">${copy.region}</td>`
+              : `<td class="csv-preview-coordinate-cell">-123.456</td><td class="csv-preview-coordinate-cell">49.2827</td>`}
+            <td class="csv-preview-status-cell"><span class="csv-preview-badge" data-state="mapped">${copy.status}</span></td>
+          </tr></tbody>
+        </table>
+      `;
+      doc.body.append(fixture);
+      const table = fixture.querySelector("table");
+      const metrics = semanticTableLayout(table, {
+        utilitySelectors: [".csv-preview-status-col"],
+        bodyTextSelectors: [
+          ".csv-preview-name-cell",
+          ".csv-preview-type-cell",
+          useRegions ? ".csv-preview-region-cell" : ".csv-preview-coordinate-cell",
+          ".csv-preview-status-cell"
+        ],
+        minimumWidth: 0
+      });
+      const columnMinimums = [
+        [".csv-preview-name-col", 320],
+        [".csv-preview-type-col", 260],
+        [useRegions ? ".csv-preview-region-col" : ".csv-preview-coordinate-col", useRegions ? 260 : 190],
+        [".csv-preview-status-col", 280]
+      ];
+      const columnsRespectMinimums = columnMinimums.every(([selector, minimum]) => table.querySelector(selector)?.getBoundingClientRect().width >= minimum - 1);
+      const tableUsesContentWidth = view.getComputedStyle(table).tableLayout === "auto"
+        && table.getBoundingClientRect().width > fixture.clientWidth + 1
+        && fixture.scrollWidth > fixture.clientWidth + 1;
+      metrics.pass = metrics.pass && columnsRespectMinimums && tableUsesContentWidth;
+      metrics.detail += `; mode=${locationMode}; columns=${columnMinimums.map(([selector]) => `${selector}:${Math.round(table.querySelector(selector)?.getBoundingClientRect().width || 0)}`).join(" | ")}; layout=${view.getComputedStyle(table).tableLayout}`;
+      fixture.remove();
+      return metrics;
+    }
+
+    async function runFocusedTableLayoutChecks(doc, checks, workspace) {
+      const appWidth = doc.defaultView.innerWidth;
+      const uiEnglishButton = doc.querySelector("[data-ui-language='en']");
+      const uiFrenchButton = doc.querySelector("[data-ui-language='fr']");
+      const useUiLanguage = async language => {
+        const button = language === "fr" ? uiFrenchButton : uiEnglishButton;
+        button?.click();
+        await waitFor(() => doc.documentElement.lang === language, 2000);
+      };
+
+      if (workspace === "projects") {
+        const table = doc.querySelector("#projectTable");
+        const utilities = [".annotation-preview-col", ".status-col", ".line-col", ".select-col"];
+        const bodyText = [".name-input", ".type-input", ".annotation-preview-cell", ".region-input", ".lon-input", ".lat-input", ".status-cell"];
+        const authoringEnglish = doc.querySelector("[data-authoring-language='en']");
+        const authoringFrench = doc.querySelector("[data-authoring-language='fr']");
+        const checkLanguage = (language, minimumWidth) => {
+          const label = language === "fr" ? "French" : "English";
+          const metrics = semanticTableLayout(table, { utilitySelectors: utilities, bodyTextSelectors: bodyText, minimumWidth });
+          assert(checks, `${label} Project table headers fit with consistent inline padding`, metrics.headersFit && metrics.headerPaddingIsConsistent, metrics.detail);
+          assert(checks, `${label} Project row text uses the shared inline cell padding`, metrics.bodyTextPaddingIsConsistent, metrics.detail);
+          assert(checks, `${label} Project utility columns contain their controls and status text`, metrics.utilityColumnsFit, metrics.detail);
+          assert(checks, `${appWidth <= 1080 ? "1024px" : "Desktop"} ${language === "fr" ? "French " : ""}Project table ${language === "fr" ? "keeps horizontal overflow inside the table viewport" : "enforces its language-safe minimum width inside horizontal scrolling"}`, metrics.minimumWidthIsEnforced && metrics.horizontalOverflowIsContained, metrics.detail);
+          const typePattern = language === "fr" ? /Stratégies de transformation/ : /Transformative Strategies/;
+          const typeSelect = Array.from(table.querySelectorAll(".type-input")).find(select => typePattern.test(select.selectedOptions[0]?.textContent || ""));
+          const typeFit = selectOptionTextFit(typeSelect, typeSelect?.selectedOptions[0]?.textContent.trim());
+          assert(checks, `${label} built-in Project Type value fits inside its selected control`, typeFit.pass, typeFit.detail);
+          const regions = projectRegionsModeLayout(table, { utilitySelectors: utilities, bodyTextSelectors: bodyText });
+          assert(checks, `${label} Project Region-anchor columns fit without mutating row state`, regions.pass, regions.detail);
+          for (const locationMode of ["coordinates", "regions"]) {
+            const csv = csvPreviewTableFixtureLayout(doc, language, locationMode);
+            const modeLabel = locationMode === "regions" ? "Region-mode " : "";
+            assert(checks, `${label} ${modeLabel}CSV preview columns fit ${locationMode === "regions" ? "inside" : "with consistent padding and"} isolated horizontal scrolling`, csv.pass, csv.detail);
+          }
+        };
+        await useUiLanguage("en");
+        authoringEnglish?.click();
+        await waitFor(() => Array.from(table.querySelectorAll(".type-input")).some(select => /Transformative Strategies/.test(select.selectedOptions[0]?.textContent || "")), 2000);
+        checkLanguage("en", table.dataset.locationMode === "regions" ? 1530 : 1650);
+        await useUiLanguage("fr");
+        authoringFrench?.click();
+        await waitFor(() => Array.from(table.querySelectorAll(".type-input")).some(select => /Stratégies de transformation/.test(select.selectedOptions[0]?.textContent || "")), 2000);
+        checkLanguage("fr", table.dataset.locationMode === "regions" ? 1530 : 1650);
+        authoringEnglish?.click();
+        await useUiLanguage("en");
+        return;
+      }
+
+      if (workspace === "regions") {
+        const table = doc.querySelector("#regionTable");
+        const utilities = [".region-included-col", ".region-status-col", ".region-count-col", ".region-value-col", ".region-fill-col"];
+        const bodyText = [".region-table-name", ".region-status-input", ".region-count-cell", ".region-value-cell", ".region-fill-picker"];
+        const checkLanguage = language => {
+          const label = language === "fr" ? "French" : "English";
+          const metrics = semanticTableLayout(table, { utilitySelectors: utilities, bodyTextSelectors: bodyText, minimumWidth: 1430 });
+          assert(checks, `${label} Map baselayer headers fit with consistent inline padding`, metrics.headersFit && metrics.headerPaddingIsConsistent, metrics.detail);
+          assert(checks, `${label} Map baselayer row text uses the shared inline cell padding`, metrics.bodyTextPaddingIsConsistent, metrics.detail);
+          assert(checks, `${label} Map baselayer utility columns contain their controls and values`, metrics.utilityColumnsFit, metrics.detail);
+          assert(checks, `${appWidth <= 1080 ? "1024px" : "Desktop"} ${language === "fr" ? "French " : ""}Map baselayer ${language === "fr" ? "keeps horizontal overflow inside the table viewport" : "enforces its language-safe minimum width inside horizontal scrolling"}`, metrics.minimumWidthIsEnforced && metrics.horizontalOverflowIsContained, metrics.detail);
+          const status = table.querySelector(".region-status-input");
+          const longestLabel = language === "fr" ? "Conclu, pas en vigueur" : "Concluded, not in force";
+          const option = Array.from(status?.options || []).find(item => item.textContent.trim() === longestLabel);
+          const fit = selectOptionTextFit(status, option?.textContent.trim());
+          assert(checks, `${label} longest Region status value fits inside its select control`, fit.pass, fit.detail);
+        };
+        await useUiLanguage("en");
+        checkLanguage("en");
+        await useUiLanguage("fr");
+        await waitFor(() => /Fond de carte/.test(doc.querySelector("#regionTableTab")?.textContent || ""), 2000);
+        checkLanguage("fr");
+        await useUiLanguage("en");
+        return;
+      }
+
+      const checkTranslation = language => {
+        const label = language === "fr" ? "French" : "English";
+        const metrics = translationGridLayout(doc);
+        assert(checks, `${label} Translate columns align and fit with consistent inline padding`, metrics.headersFit && metrics.rowPaddingIsConsistent, metrics.detail);
+        assert(checks, `${label} Translate status stays inside its utility column`, metrics.utilityColumnsFit, metrics.detail);
+        assert(checks, `${appWidth <= 1080 ? "1024px" : "Desktop"} ${language === "fr" ? "French " : ""}Translate grid ${language === "fr" ? "stays contained without page overflow" : "keeps its language-safe width without page overflow"}`, metrics.minimumWidthIsEnforced && metrics.horizontalOverflowIsContained, metrics.detail);
+      };
+      await useUiLanguage("en");
+      checkTranslation("en");
+      await useUiLanguage("fr");
+      await waitFor(() => /Anglais/.test(doc.querySelector(".translation-column-labels")?.textContent || "") && /État/.test(doc.querySelector(".translation-column-labels")?.textContent || ""), 2000);
+      checkTranslation("fr");
+      await useUiLanguage("en");
+    }
+
     function floatingSurfaceState(surface, { boundary = null, hitTarget = null } = {}) {
       if (!surface) return { pass: false, detail: "surface missing" };
       const view = surface.ownerDocument.defaultView;
@@ -99,6 +532,43 @@
       return {
         pass: hasSize && isRendered && isContained && isTopmost,
         detail: `surface=${Math.round(rect.left)},${Math.round(rect.top)}-${Math.round(rect.right)},${Math.round(rect.bottom)} boundary=${Math.round(boundaryRect.left)},${Math.round(boundaryRect.top)}-${Math.round(boundaryRect.right)},${Math.round(boundaryRect.bottom)} top=${topNode?.tagName || "none"}#${topNode?.id || ""}.${topNode?.className?.baseVal || topNode?.className || ""} contained=${isTopmost} text=${String(topNode?.textContent || "").trim().slice(0, 40)}`
+      };
+    }
+
+    function leaderToggleLayout(root) {
+      const list = root?.querySelector(":scope > .leader-line-toggle-list");
+      if (!list) return { pass: false, detail: "toggle list missing" };
+      const listRect = list.getBoundingClientRect();
+      const rows = Array.from(list.querySelectorAll(":scope > .toolbar-check"));
+      const within = (inner, outer, tolerance = 1) => inner.left >= outer.left - tolerance
+        && inner.right <= outer.right + tolerance
+        && inner.top >= outer.top - tolerance
+        && inner.bottom <= outer.bottom + tolerance;
+      const metrics = rows.map(row => {
+        const label = row.querySelector(":scope > span");
+        const toggle = row.querySelector(":scope > input[type='checkbox']");
+        if (!label || !toggle) return { pass: false, detail: "label or switch missing" };
+        const rowRect = row.getBoundingClientRect();
+        const labelRect = label.getBoundingClientRect();
+        const toggleRect = toggle.getBoundingClientRect();
+        const rowStyle = row.ownerDocument.defaultView.getComputedStyle(row);
+        const labelStyle = row.ownerDocument.defaultView.getComputedStyle(label);
+        return {
+          pass: within(rowRect, listRect)
+            && within(toggleRect, rowRect)
+            && labelRect.right <= toggleRect.left - 5
+            && toggleRect.width >= 41
+            && toggleRect.height >= 23
+            && rowStyle.overflowX !== "clip"
+            && rowStyle.borderTopWidth === "0px"
+            && labelStyle.wordBreak === "normal"
+            && labelStyle.overflowWrap !== "anywhere",
+          detail: `${Math.round(rowRect.width)}x${Math.round(rowRect.height)} switch=${Math.round(toggleRect.width)}x${Math.round(toggleRect.height)} gap=${Math.round(toggleRect.left - labelRect.right)} overflow=${rowStyle.overflowX}/${labelStyle.overflowWrap} border=${rowStyle.borderTopWidth}`
+        };
+      });
+      return {
+        pass: rows.length > 0 && metrics.every(metric => metric.pass),
+        detail: metrics.map(metric => metric.detail).join(" | ")
       };
     }
 
@@ -153,6 +623,12 @@
       /\bExport CSV\b/i,
       /\bImport CSV\b/i,
       /\bMap details\b/i,
+      /\bApplication settings\b/i,
+      /\bPreferences for Plotypus on this browser\b/i,
+      /\bApplication language\b/i,
+      /\bChanges the Plotypus interface\b/i,
+      /\bProperties panel position\b/i,
+      /\bThis preference is saved in this browser\b/i,
       /\bProject points\b/i,
       /\bCategories & markers\b/i,
       /\bMap baselayer\b/i,
@@ -304,6 +780,49 @@
         await waitFor(() => doc.body.dataset.workspaceView === "preview");
         if (doc.fonts?.load) await doc.fonts.load('12px "IBM Plex Mono"');
         if (doc.fonts?.ready) await doc.fonts.ready;
+        if (tableLayoutOnly) {
+          if (!loadSample) throw new Error("tableLayout=1 requires sample=1");
+          const supportedWorkspaces = ["projects", "regions", "translate"];
+          if (!supportedWorkspaces.includes(requestedWorkspace)) {
+            throw new Error("tableLayout=1 requires workspace=projects, regions, or translate");
+          }
+          const startupDialog = await waitFor(() => {
+            const dialog = doc.querySelector("#startupDialog");
+            return dialog && dialog.hidden === false ? dialog : null;
+          }, 4000);
+          startupDialog.querySelector("#startupLoadSampleBtn")?.click();
+          await waitFor(() => startupDialog.hidden === true, 2000);
+          await waitFor(() => doc.querySelectorAll("#projectTable tbody tr[data-row-id]").length > 0, 12000);
+          const workspaceTargets = {
+            projects: ["#projectTableTab", "#projectTablePane"],
+            regions: ["#regionTableTab", "#regionTablePane"],
+            translate: ["#translateTableTab", "#translateTablePane"]
+          };
+          const [tabSelector, paneSelector] = workspaceTargets[requestedWorkspace];
+          doc.querySelector(tabSelector)?.click();
+          await waitFor(() => doc.body.dataset.workspaceView === requestedWorkspace, 2000);
+          if (requestedWorkspace === "translate") {
+            await waitFor(() => doc.querySelector(".translation-row[data-entry-id]"), 2000);
+          } else {
+            await waitFor(() => doc.querySelector(`${paneSelector} tbody tr`), 2000);
+          }
+          await new Promise(resolve => frame.contentWindow.requestAnimationFrame(resolve));
+          assert(checks, `${requestedWorkspace} workspace is active`, doc.querySelector(paneSelector)?.classList.contains("is-active") && !doc.querySelector(paneSelector)?.hidden);
+          assert(checks, "Sample rows are available", doc.querySelectorAll("#projectTable tbody tr[data-row-id]").length > 0);
+          await runFocusedTableLayoutChecks(doc, checks, requestedWorkspace);
+          const failed = checks.filter(check => !check.pass);
+          result.textContent = JSON.stringify({
+            status: failed.length ? "failed" : "ok",
+            mode: "table-layout",
+            workspace: requestedWorkspace,
+            viewport: { width: innerWidth, height: innerHeight },
+            checks,
+            failures: failed.length,
+            frameErrors,
+            performance: frame.contentWindow.PLOTYPUS_RENDER_PERFORMANCE?.snapshot() || null
+          }, null, 2);
+          return;
+        }
         assert(checks, "Bundled IBM Plex Mono is available offline", !doc.fonts || doc.fonts.check('12px "IBM Plex Mono"'));
         const rootStyle = frame.contentWindow.getComputedStyle(doc.documentElement);
         const bodyStyle = frame.contentWindow.getComputedStyle(doc.body);
@@ -445,7 +964,7 @@
         if (requestedDialog === "startup") {
           doc.querySelector("[data-ui-language='fr']")?.click();
           await waitFor(() => doc.documentElement.lang === "fr" && /Créer une carte Plotypus/.test(doc.querySelector("#startupTitle")?.textContent || ""), 2000);
-          assert(checks, "Top language toggle switches Startup dialog copy to French", /Partir de zéro/.test(startupDialog.textContent || "") && /Ouvrir un projet enregistré/.test(startupDialog.textContent || "") && /Explorer l'exemple/.test(startupDialog.textContent || "") && /Importer un fichier de données/.test(startupDialog.textContent || ""), startupDialog.textContent || "");
+          assert(checks, "Application language setting switches Startup dialog copy to French", /Partir de zéro/.test(startupDialog.textContent || "") && /Ouvrir un projet enregistré/.test(startupDialog.textContent || "") && /Explorer l'exemple/.test(startupDialog.textContent || "") && /Importer un fichier de données/.test(startupDialog.textContent || ""), startupDialog.textContent || "");
           assertNoRawUiKeys(checks, "Startup dialog does not show raw translation keys in French", startupDialog);
           assertNoKnownEnglishUi(checks, "Startup dialog does not show known English UI phrases in French", [startupDialog]);
           assertNoRawUiKeysInAttributes(checks, "Startup dialog attributes do not show raw translation keys in French", [startupDialog]);
@@ -699,7 +1218,7 @@
             assert(checks, "Accessibility publishing note remains visible", /not drawn in SVG or PNG exports/i.test(dialog.querySelector(".dialog-note")?.textContent || ""));
             doc.querySelector("[data-ui-language='fr']")?.click();
             await waitFor(() => doc.documentElement.lang === "fr" && /Détails de la carte/.test(doc.querySelector("#mapDetailsTitle")?.textContent || ""), 2000);
-            assert(checks, "Top language toggle switches Map details dialog copy to French", /Les deux langues sont requises/.test(dialog.querySelector(".dialog-note")?.textContent || "") && /Titre de la carte/.test(dialog.textContent || "") && /Enregistrer les détails de la carte/.test(dialog.textContent || ""), dialog.textContent || "");
+            assert(checks, "Application language setting switches Map details dialog copy to French", /Les deux langues sont requises/.test(dialog.querySelector(".dialog-note")?.textContent || "") && /Titre de la carte/.test(dialog.textContent || "") && /Enregistrer les détails de la carte/.test(dialog.textContent || ""), dialog.textContent || "");
             assertNoRawUiKeys(checks, "Map details dialog does not show raw translation keys in French", dialog);
             assertNoKnownEnglishUi(checks, "Map details dialog does not show known English UI phrases in French", [dialog]);
             assertNoRawUiKeysInAttributes(checks, "Map details dialog attributes do not show raw translation keys in French", [dialog]);
@@ -770,7 +1289,7 @@
             assert(checks, "Label elements can be deleted before import", doc.querySelectorAll(".labelElementCard").length === 1);
             doc.querySelector("[data-ui-language='fr']")?.click();
             await waitFor(() => doc.documentElement.lang === "fr" && /Associer les colonnes CSV/.test(doc.querySelector("#csvMapTitle")?.textContent || ""), 2000);
-            assert(checks, "Top language toggle switches CSV mapping dialog copy to French", /Champ Plotypus/.test(dialog.textContent || "") && /Colonne du CSV/.test(dialog.textContent || "") && /Nom anglais du projet/.test(dialog.textContent || "") && /Requis/.test(dialog.textContent || "") && /Non associé/.test(dialog.textContent || "") && /Importer les lignes associées/.test(dialog.textContent || ""), dialog.textContent || "");
+            assert(checks, "Application language setting switches CSV mapping dialog copy to French", /Champ Plotypus/.test(dialog.textContent || "") && /Colonne du CSV/.test(dialog.textContent || "") && /Nom anglais du projet/.test(dialog.textContent || "") && /Requis/.test(dialog.textContent || "") && /Non associé/.test(dialog.textContent || "") && /Importer les lignes associées/.test(dialog.textContent || ""), dialog.textContent || "");
             assertNoRawUiKeys(checks, "CSV mapping dialog does not show raw translation keys in French", dialog);
             assertNoKnownEnglishUi(checks, "CSV mapping dialog does not show known English UI phrases in French", [dialog], [/mapped-sample\.csv/i]);
             assertNoRawUiKeysInAttributes(checks, "CSV mapping dialog attributes do not show raw translation keys in French", [dialog]);
@@ -828,8 +1347,8 @@
             doc.querySelector("[data-ui-language='fr']")?.click();
             await waitFor(() => doc.documentElement.lang === "fr" && /Ajouter des points/.test(doc.querySelector("#pointCatalogTitle")?.textContent || ""), 2000);
             const catalogCountText = Array.from(doc.querySelectorAll(".catalog-card-count")).map(node => node.textContent.trim());
-            assert(checks, "Top language toggle switches Point catalog source tab to Quebec French", sourcesTab.textContent.trim() === "Importer un CSV", sourcesTab.textContent.trim());
-            assert(checks, "Top language toggle switches Point catalog copy to French", /Points de projet/.test(doc.querySelector("#pointCatalogScope")?.textContent || "") && /Capitales/.test(doc.querySelector("[data-catalog-preset='capitals'] strong")?.textContent || "") && catalogCountText.every(text => /^\d+ pts$/.test(text)), `${doc.querySelector("#pointCatalogScope")?.textContent || ""} | ${catalogCountText.join(", ")}`);
+            assert(checks, "Application language setting switches Point catalog source tab to Quebec French", sourcesTab.textContent.trim() === "Importer un CSV", sourcesTab.textContent.trim());
+            assert(checks, "Application language setting switches Point catalog copy to French", /Points de projet/.test(doc.querySelector("#pointCatalogScope")?.textContent || "") && /Capitales/.test(doc.querySelector("[data-catalog-preset='capitals'] strong")?.textContent || "") && catalogCountText.every(text => /^\d+ pts$/.test(text)), `${doc.querySelector("#pointCatalogScope")?.textContent || ""} | ${catalogCountText.join(", ")}`);
             assertNoRawUiKeys(checks, "Point catalog dialog does not show raw translation keys in French", dialog);
             assertNoKnownEnglishUi(checks, "Point catalog dialog does not show known English UI phrases in French", [dialog]);
             assertNoRawUiKeysInAttributes(checks, "Point catalog dialog attributes do not show raw translation keys in French", [dialog]);
@@ -915,7 +1434,7 @@
             assert(checks, "Shortcuts starts with a close control", doc.activeElement === doc.querySelector("#closeShortcutsBtn"));
             doc.querySelector("[data-ui-language='fr']")?.click();
             await waitFor(() => doc.documentElement.lang === "fr" && /Raccourcis/.test(doc.querySelector("#shortcutsTitle")?.textContent || ""), 2000);
-            assert(checks, "Top language toggle switches Shortcuts dialog copy to French", /Clavier/.test(dialog.textContent || "") && /Afficher ou masquer/.test(dialog.textContent || "") && /Fermer/.test(dialog.textContent || ""), dialog.textContent || "");
+            assert(checks, "Application language setting switches Shortcuts dialog copy to French", /Clavier/.test(dialog.textContent || "") && /Afficher ou masquer/.test(dialog.textContent || "") && /Fermer/.test(dialog.textContent || ""), dialog.textContent || "");
             assertNoRawUiKeys(checks, "Shortcuts dialog does not show raw translation keys in French", dialog);
             assertNoKnownEnglishUi(checks, "Shortcuts dialog does not show known English UI phrases in French", [dialog]);
             assertNoRawUiKeysInAttributes(checks, "Shortcuts dialog attributes do not show raw translation keys in French", [dialog]);
@@ -937,7 +1456,7 @@
             assert(checks, "Export menu exposes map and data commands", menu.getAttribute("role") === "menu" && Array.from(menu.querySelectorAll("[role='menuitem']")).length === 3 && Boolean(doc.querySelector("#ribbonExportCsvBtn")));
             doc.querySelector("[data-ui-language='fr']")?.click();
             await waitFor(() => doc.documentElement.lang === "fr" && /Exporter en PNG/.test(menu.textContent || ""), 2000);
-            assert(checks, "Top language toggle switches Export menu copy to French", /Sorties cartographiques/.test(menu.textContent || "") && /Image matricielle/.test(menu.textContent || "") && /Illustration vectorielle modifiable/.test(menu.textContent || "") && /Données modifiables des points de projet/.test(menu.textContent || ""), menu.textContent || "");
+            assert(checks, "Application language setting switches Export menu copy to French", /Sorties cartographiques/.test(menu.textContent || "") && /Image matricielle/.test(menu.textContent || "") && /Illustration vectorielle modifiable/.test(menu.textContent || "") && /Données modifiables des points de projet/.test(menu.textContent || ""), menu.textContent || "");
             assertNoRawUiKeys(checks, "Export menu does not show raw translation keys in French", menu);
             assertNoKnownEnglishUi(checks, "Export menu does not show known English UI phrases in French", [menu]);
             assertNoRawUiKeysInAttributes(checks, "Export menu attributes do not show raw translation keys in French", [menu]);
@@ -1058,6 +1577,9 @@
           const propertiesResizeHandle = doc.querySelector("#propertiesResizeHandle");
           const propertiesLeftInput = doc.querySelector("[data-properties-side-input][value='left']");
           const propertiesRightInput = doc.querySelector("[data-properties-side-input][value='right']");
+          const applicationSettingsButton = doc.querySelector("#applicationSettingsBtn");
+          const applicationSettingsMenu = doc.querySelector("#applicationSettingsMenu");
+          const applicationSettingsClose = doc.querySelector("#applicationSettingsCloseBtn");
           const workspaceElement = doc.querySelector(".workspace");
           const appWidth = frame.contentWindow.innerWidth;
           const summaryChips = Array.from(doc.querySelectorAll("#workspaceSummaryMetrics .workspace-summary-chip"));
@@ -1065,7 +1587,43 @@
           const regionSummaryLabel = doc.querySelector("#workspaceSummaryMetrics [data-summary-key='regions'] span");
           const workspaceTabs = Array.from(doc.querySelectorAll(".workspace-nav .table-tab"));
           assert(checks, "Every workspace tab has an accessible name", workspaceTabs.every(tab => Boolean((tab.getAttribute("aria-label") || tab.textContent || "").trim())));
-          assert(checks, "Properties defaults to the right with an accessible Configuration control", doc.body.dataset.propertiesSide === "right" && propertiesRightInput?.checked && propertiesRightInput?.closest("[role='radiogroup']")?.getAttribute("aria-labelledby") === "propertiesPositionLabel");
+          const applicationLanguageButtons = Array.from(doc.querySelectorAll("[data-ui-language]"));
+          const propertiesPositionInputs = Array.from(doc.querySelectorAll("[data-properties-side-input]"));
+          const settingsButtonRect = applicationSettingsButton?.getBoundingClientRect();
+          const headerRect = doc.querySelector(".app-ribbon")?.getBoundingClientRect();
+          assert(checks, "A top-right gear opens the general application settings", Boolean(applicationSettingsButton && applicationSettingsMenu && applicationSettingsClose) && applicationSettingsButton.dataset.icon === "settings" && applicationSettingsButton.getAttribute("aria-haspopup") === "dialog" && applicationSettingsButton.getAttribute("aria-controls") === "applicationSettingsMenu" && applicationSettingsButton.getAttribute("aria-expanded") === "false" && applicationSettingsMenu.hidden && settingsButtonRect.right <= headerRect.right + 1 && headerRect.right - settingsButtonRect.right <= 32, `trigger=${applicationSettingsButton?.outerHTML || "missing"}; right=${settingsButtonRect?.right || "missing"}/${headerRect?.right || "missing"}`);
+          assert(checks, "Application settings are the single source for interface language and Properties position", applicationLanguageButtons.length === 2 && applicationLanguageButtons.every(button => applicationSettingsMenu.contains(button)) && propertiesPositionInputs.length === 2 && propertiesPositionInputs.every(input => applicationSettingsMenu.contains(input)) && !doc.querySelector("#applicationConfigurationSection") && !doc.querySelector("#propertiesPanel [data-ui-language], #propertiesPanel [data-properties-side-input]"), `languages=${applicationLanguageButtons.length}; positions=${propertiesPositionInputs.length}; duplicate=${doc.querySelector("#applicationConfigurationSection")?.outerHTML || "none"}`);
+          assert(checks, "Properties defaults to the right with an accessible application setting", doc.body.dataset.propertiesSide === "right" && propertiesRightInput?.checked && propertiesRightInput?.closest("[role='radiogroup']")?.getAttribute("aria-labelledby") === "propertiesPositionLabel");
+          if (appWidth <= 1080) {
+            propertiesToggle?.click();
+            await waitFor(() => doc.body.classList.contains("properties-open") && !propertiesPanel.inert, 2000);
+          }
+          applicationSettingsButton?.focus();
+          applicationSettingsButton?.click();
+          await waitFor(() => applicationSettingsMenu?.hidden === false && applicationSettingsButton?.getAttribute("aria-expanded") === "true" && doc.activeElement === applicationLanguageButtons[0], 2000);
+          const settingsSurfaceState = floatingSurfaceState(applicationSettingsMenu, { hitTarget: applicationLanguageButtons[0] });
+          const settingsLanguageGroup = applicationLanguageButtons[0]?.closest("[role='group']");
+          assert(checks, "Application settings opens as an accessible non-modal dialog", applicationSettingsMenu?.getAttribute("role") === "dialog" && applicationSettingsMenu.getAttribute("aria-labelledby") === "applicationSettingsTitle" && applicationSettingsMenu.getAttribute("aria-describedby") === "applicationSettingsDescription" && applicationSettingsMenu.getAttribute("aria-modal") !== "true" && Boolean(doc.querySelector("#applicationSettingsTitle")?.textContent.trim()) && settingsLanguageGroup?.getAttribute("aria-labelledby") === "applicationLanguageLabel");
+          assert(checks, "Application settings starts focus on the active interface language", doc.activeElement === applicationLanguageButtons[0] && applicationLanguageButtons[0].dataset.uiLanguage === "en" && applicationLanguageButtons[0].getAttribute("aria-pressed") === "true", doc.activeElement?.outerHTML || "none");
+          if (appWidth <= 1080) {
+            assert(checks, "Opening application settings closes the responsive Properties drawer", propertiesPanel.inert && !doc.body.classList.contains("properties-open") && propertiesToggle?.getAttribute("aria-expanded") === "false", `inert=${propertiesPanel.inert}; open=${doc.body.classList.contains("properties-open")}; expanded=${propertiesToggle?.getAttribute("aria-expanded")}`);
+          }
+          assert(checks, `${appWidth <= 1080 ? "1024px" : "Desktop"} application settings stays fully visible without horizontal overflow`, settingsSurfaceState.pass && applicationSettingsMenu.scrollWidth <= applicationSettingsMenu.clientWidth + 1 && applicationSettingsMenu.getBoundingClientRect().right <= appWidth + 1, `${settingsSurfaceState.detail}; scroll=${applicationSettingsMenu.scrollWidth}/${applicationSettingsMenu.clientWidth}`);
+          dispatchKey(doc, "Escape");
+          await waitFor(() => applicationSettingsMenu?.hidden && applicationSettingsButton?.getAttribute("aria-expanded") === "false", 2000);
+          assert(checks, "Escape closes application settings and restores gear focus", doc.activeElement === applicationSettingsButton, doc.activeElement?.outerHTML || "none");
+          applicationSettingsButton?.click();
+          await waitFor(() => applicationSettingsMenu?.hidden === false, 2000);
+          doc.querySelector("#exportMenuBtn")?.click();
+          await waitFor(() => doc.querySelector("#exportMenu")?.hidden === false && applicationSettingsMenu?.hidden, 2000);
+          assert(checks, "Opening Export closes application settings", doc.querySelector("#exportMenuBtn")?.getAttribute("aria-expanded") === "true" && applicationSettingsButton?.getAttribute("aria-expanded") === "false");
+          applicationSettingsButton?.click();
+          await waitFor(() => applicationSettingsMenu?.hidden === false && doc.querySelector("#exportMenu")?.hidden, 2000);
+          assert(checks, "Opening application settings closes Export", applicationSettingsButton?.getAttribute("aria-expanded") === "true" && doc.querySelector("#exportMenuBtn")?.getAttribute("aria-expanded") === "false");
+          const applicationSettingsOutsideTarget = doc.querySelector("#workspaceSummary") || doc.querySelector(".workspace-nav-band");
+          applicationSettingsOutsideTarget?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true, cancelable: true }));
+          await waitFor(() => applicationSettingsMenu?.hidden && applicationSettingsButton?.getAttribute("aria-expanded") === "false", 2000);
+          assert(checks, "Clicking outside closes application settings", applicationSettingsMenu?.hidden && applicationSettingsButton?.getAttribute("aria-expanded") === "false");
           if (appWidth > 1080) {
             const initialPanelRect = propertiesPanel.getBoundingClientRect();
             const initialWorkspaceRect = workspaceElement.getBoundingClientRect();
@@ -1077,10 +1635,12 @@
             propertiesResizeHandle?.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }));
             await waitFor(() => Math.round(propertiesPanel.getBoundingClientRect().width) === (appWidth > 1280 ? 320 : 300), 2000);
           }
+          applicationSettingsButton?.click();
+          await waitFor(() => applicationSettingsMenu?.hidden === false, 2000);
           propertiesLeftInput?.click();
           await waitFor(() => doc.body.dataset.propertiesSide === "left" && propertiesLeftInput.checked, 2000);
           const savedLeftPropertiesPreference = JSON.parse(frame.contentWindow.localStorage.getItem("plotypus.propertiesPanel") || "{}");
-          assert(checks, "Properties can move left and saves the preference", savedLeftPropertiesPreference.side === "left" && propertiesPanel.nextElementSibling === workspaceElement);
+          assert(checks, "Properties can move left and saves the application preference without closing settings", savedLeftPropertiesPreference.side === "left" && propertiesPanel.nextElementSibling === workspaceElement && applicationSettingsMenu?.hidden === false && applicationSettingsButton?.getAttribute("aria-expanded") === "true");
           if (appWidth > 1080) {
             const leftPanelRect = propertiesPanel.getBoundingClientRect();
             const leftWorkspaceRect = workspaceElement.getBoundingClientRect();
@@ -1088,9 +1648,17 @@
           }
           const uiFrenchButton = doc.querySelector("[data-ui-language='fr']");
           const uiEnglishButton = doc.querySelector("[data-ui-language='en']");
+          const initialMapLanguage = doc.querySelector("#mapLanguageInput")?.value;
           uiFrenchButton?.click();
           await waitFor(() => doc.documentElement.lang === "fr" && doc.querySelector("#previewTableTab")?.textContent.trim() === "Carte", 2000);
-          assert(checks, "Top language toggle switches app chrome to French", doc.documentElement.lang === "fr" && doc.querySelector("#mapDetailsBtn")?.textContent.includes("Détails de la carte") && doc.querySelector("#exportMenuBtn")?.textContent.trim() === "Exporter" && doc.querySelector("#mapLanguageInput")?.value === "fr");
+          const savedFrenchUiPreference = JSON.parse(frame.contentWindow.localStorage.getItem("plotypus.uiLanguage") || "null");
+          assert(checks, "Application language switches app chrome to French and persists without closing settings", doc.documentElement.lang === "fr" && doc.querySelector("#mapDetailsBtn")?.textContent.includes("Détails de la carte") && doc.querySelector("#exportMenuBtn")?.textContent.trim() === "Exporter" && savedFrenchUiPreference === "fr" && uiFrenchButton?.getAttribute("aria-pressed") === "true" && applicationSettingsMenu?.hidden === false);
+          assert(checks, "Application settings copy and accessible names switch to French", /Paramètres de l’application/.test(applicationSettingsMenu?.textContent || "") && /Langue de l’application/.test(applicationSettingsMenu?.textContent || "") && /Position du panneau Propriétés/.test(applicationSettingsMenu?.textContent || "") && /Fermer les paramètres de l’application/.test(applicationSettingsClose?.getAttribute("aria-label") || ""), `${applicationSettingsMenu?.textContent || ""} | ${applicationSettingsClose?.getAttribute("aria-label") || ""}`);
+          assertNoRawUiKeys(checks, "Application settings does not show raw translation keys in French", applicationSettingsMenu);
+          assertNoKnownEnglishUi(checks, "Application settings does not show known English UI phrases in French", [applicationSettingsMenu]);
+          assert(checks, "Application language is independent from the dedicated map-output language", doc.querySelector("#mapLanguageInput")?.value === initialMapLanguage && doc.querySelector(`[data-map-language='${initialMapLanguage}']`)?.getAttribute("aria-pressed") === "true", `app=${doc.documentElement.lang}; map=${doc.querySelector("#mapLanguageInput")?.value}; initial=${initialMapLanguage}`);
+          dispatchKey(doc, "Escape");
+          await waitFor(() => applicationSettingsMenu?.hidden, 2000);
           const expectedFrenchIntroTitles = {
             preview: "Carte",
             projects: "Points de projet",
@@ -1100,20 +1668,24 @@
           };
           assert(checks, `${requestedWorkspace} page intro switches to French`, activeWorkspaceIntro?.querySelector("h2")?.textContent.trim() === expectedFrenchIntroTitles[requestedWorkspace] && Boolean(activeWorkspaceIntro?.querySelector("p")?.textContent.trim()), activeWorkspaceIntro?.textContent.trim() || "");
           if (requestedWorkspace === "preview") {
-            const expectedPropertiesCopy = ["Affichage", "Détails de la carte"];
+            const expectedPropertiesCopy = ["Boîtes", "Détails de la carte"];
             await waitFor(() => {
-              const text = `${doc.querySelector("#propertiesTitle")?.textContent || ""} ${doc.querySelector("#propertiesSubtitle")?.textContent || ""} ${doc.querySelector("#propertiesSelectionControls")?.textContent || ""}`;
+              const text = propertiesPanel?.textContent || "";
               return expectedPropertiesCopy.every(copy => text.includes(copy));
             }, 2000);
-            const translatedPropertiesText = `${doc.querySelector("#propertiesTitle")?.textContent || ""} ${doc.querySelector("#propertiesSubtitle")?.textContent || ""} ${doc.querySelector("#propertiesSelectionControls")?.textContent || ""}`;
-            assert(checks, "Top language toggle switches Properties copy to French", expectedPropertiesCopy.every(copy => translatedPropertiesText.includes(copy)), translatedPropertiesText);
+            const translatedPropertiesText = propertiesPanel?.textContent || "";
+            assert(checks, "Application language setting switches Properties copy to French", expectedPropertiesCopy.every(copy => translatedPropertiesText.includes(copy)), translatedPropertiesText);
             const frenchLeaderControls = doc.querySelector("#propertiesSelectionControls [data-leader-line-controls='global']");
-            assert(checks, "Global leader-line Properties expose localized French draft and Apply labels", Boolean(frenchLeaderControls) && /Traits de renvoi/.test(frenchLeaderControls.textContent || "") && /Masquer tous les traits de renvoi/.test(frenchLeaderControls.textContent || "") && /Épaisseur/.test(frenchLeaderControls.textContent || "") && /Aperçu/.test(frenchLeaderControls.textContent || "") && /Appliquer/.test(frenchLeaderControls.textContent || "") && /Couleur/.test(frenchLeaderControls.textContent || ""), frenchLeaderControls?.textContent.trim() || "missing");
+            const frenchLeaderWidthDraft = frenchLeaderControls?.querySelector("[data-leader-line-width-draft='global']");
+            const frenchLeaderWidthReadout = frenchLeaderControls?.querySelector("[data-leader-line-width-readout]");
+            assert(checks, "Global leader-line Properties expose localized French draft and Apply labels", Boolean(frenchLeaderControls) && /Traits de renvoi/.test(frenchLeaderControls.textContent || "") && /Masquer tous les traits de renvoi/.test(frenchLeaderControls.textContent || "") && /Épaisseur/.test(frenchLeaderControls.textContent || "") && /Aperçu/.test(frenchLeaderControls.textContent || "") && /Appliquer/.test(frenchLeaderControls.textContent || "") && /Couleur/.test(frenchLeaderControls.textContent || "") && /^\d+\.\d$/.test(frenchLeaderWidthDraft?.value || "") && /\d+,\d px/.test(frenchLeaderWidthReadout?.textContent || ""), frenchLeaderControls?.textContent.trim() || "missing");
+            const frenchLeaderToggleLayout = leaderToggleLayout(frenchLeaderControls);
+            assert(checks, "French leader-line toggle labels wrap cleanly without clipping their switches", frenchLeaderToggleLayout.pass, frenchLeaderToggleLayout.detail);
             const frenchLegendList = doc.querySelector("#categoryList");
             assert(checks, "Map Properties Legend list switches to French", doc.querySelector("#legendPropertiesTitle")?.textContent.trim() === "Légende" && /Projets soumis|Stratégies de transformation/.test(frenchLegendList?.textContent || ""), frenchLegendList?.textContent.trim() || "");
             const placeholderText = doc.querySelector("#canvasPlaceholder")?.textContent || "";
-            assert(checks, "Top language toggle switches empty canvas fallback to French", /Canevas de carte/.test(placeholderText) && /Canevas de \d+ x \d+ px/.test(placeholderText), placeholderText);
-            assert(checks, "Top language toggle switches canvas zoom readout to French", /^Canevas \d+%$/.test(doc.querySelector("#canvasZoomReadout")?.textContent.trim() || ""), doc.querySelector("#canvasZoomReadout")?.textContent.trim() || "");
+            assert(checks, "Application language setting switches empty canvas fallback to French", /Canevas de carte/.test(placeholderText) && /Canevas de \d+ x \d+ px/.test(placeholderText), placeholderText);
+            assert(checks, "Application language setting switches canvas zoom readout to French", /^Canevas \d+%$/.test(doc.querySelector("#canvasZoomReadout")?.textContent.trim() || ""), doc.querySelector("#canvasZoomReadout")?.textContent.trim() || "");
             const distanceGuidesInput = doc.querySelector("#showDistanceMarkersInput");
             if (distanceGuidesInput) {
               const nextDistanceState = !distanceGuidesInput.checked;
@@ -1126,15 +1698,15 @@
               await waitFor(() => {
                 const svgText = doc.querySelector("#mapSvg")?.textContent || "";
                 const qualityText = doc.querySelector("#canvasQualityPill")?.textContent || "";
-                return /Légende/.test(svgText) && /Repères sans coordonnées/.test(svgText) && /Chevauchements/.test(qualityText);
+                return /Legend/.test(svgText) && /No-coordinate callouts/.test(svgText) && /Chevauchements/.test(qualityText);
               }, 12000);
-              assert(checks, "Top language toggle switches generated map furniture to French", /Légende/.test(doc.querySelector("#mapSvg")?.textContent || "") && /Repères sans coordonnées/.test(doc.querySelector("#mapSvg")?.textContent || ""), doc.querySelector("#mapSvg")?.textContent || "");
-              assert(checks, "Top language toggle switches canvas quality pill to French", /Chevauchements/.test(doc.querySelector("#canvasQualityPill")?.textContent || "") && /Localiser/.test(doc.querySelector("#canvasQualityPill")?.textContent || ""), doc.querySelector("#canvasQualityPill")?.textContent || "");
+              assert(checks, "Application language leaves generated map furniture in the dedicated map-output language", /Legend/.test(doc.querySelector("#mapSvg")?.textContent || "") && /No-coordinate callouts/.test(doc.querySelector("#mapSvg")?.textContent || "") && !/Légende|Repères sans coordonnées/.test(doc.querySelector("#mapSvg")?.textContent || ""), doc.querySelector("#mapSvg")?.textContent || "");
+              assert(checks, "Application language switches the canvas quality pill to French", /Chevauchements/.test(doc.querySelector("#canvasQualityPill")?.textContent || "") && /Localiser/.test(doc.querySelector("#canvasQualityPill")?.textContent || ""), doc.querySelector("#canvasQualityPill")?.textContent || "");
             }
           }
           if (requestedWorkspace === "projects") {
             const projectToolbarText = `${doc.querySelector("#addRowBtn")?.textContent || ""} ${doc.querySelector("#addPointsBtn")?.textContent || ""} ${doc.querySelector("#clearRowsBtn")?.textContent || ""}`;
-            assert(checks, "Top language toggle switches Project toolbar copy to French", /Ligne/.test(projectToolbarText) && /Source/.test(projectToolbarText) && /Vider le tableau/.test(projectToolbarText), projectToolbarText);
+            assert(checks, "Application language setting switches Project toolbar copy to French", /Ligne/.test(projectToolbarText) && /Source/.test(projectToolbarText) && /Vider le tableau/.test(projectToolbarText), projectToolbarText);
             const firstProjectRow = doc.querySelector("#projectTable tbody tr[data-row-id]");
             const initialProjectTable = doc.querySelector("#projectTable");
             const initialRegionHeaderDisplay = frame.contentWindow.getComputedStyle(initialProjectTable.querySelector(".region-col")).display;
@@ -1346,7 +1918,7 @@
           if (requestedWorkspace === "translate") {
             const translationStatusHeaderText = Array.from(doc.querySelector(".translation-column-labels")?.children || []).at(-1)?.textContent.trim() || "";
             const translationStatusText = doc.querySelector(".translation-row .translation-status")?.textContent.trim() || "";
-            assert(checks, "Top language toggle switches Translation status copy to French", translationStatusHeaderText === "État" && ["Complet", "EN manquant", "FR manquant"].includes(translationStatusText), `${translationStatusHeaderText} / ${translationStatusText}`);
+            assert(checks, "Application language setting switches Translation status copy to French", translationStatusHeaderText === "État" && ["Complet", "EN manquant", "FR manquant"].includes(translationStatusText), `${translationStatusHeaderText} / ${translationStatusText}`);
             const firstFrenchTranslation = doc.querySelector(".translation-row .translation-fr-input");
             if (firstFrenchTranslation) {
               firstFrenchTranslation.value = "";
@@ -1358,7 +1930,7 @@
           }
           if (requestedWorkspace === "quality") {
             const qualityText = `${doc.querySelector("#qualitySummaryBanner")?.textContent || ""} ${doc.querySelector("#statusBox")?.textContent || ""}`;
-            assert(checks, "Top language toggle switches Map quality copy to French", /problèmes à réviser|Éléments à corriger|Localiser le premier|Vérification de la disposition mise à jour/.test(qualityText), qualityText);
+            assert(checks, "Application language setting switches Map quality copy to French", /problèmes à réviser|Éléments à corriger|Localiser le premier|Vérification de la disposition mise à jour/.test(qualityText), qualityText);
           }
           const rawPropertiesKeyPattern = /\b(?:properties|toolbar|dialog|region|quality|translate|status|project|table|settings|categories)\.[A-Za-z0-9_.-]+/;
           const frenchPropertiesText = doc.querySelector("#propertiesPanel")?.textContent || "";
@@ -1369,7 +1941,18 @@
               pane.querySelector(".translation-column-labels"),
               pane.querySelector("#exportLanguageNotice")
             ].filter(Boolean)
-            : [pane];
+            : requestedWorkspace === "preview"
+              ? [
+                pane.querySelector("#previewEmptyState"),
+                pane.querySelector("#previewErrorState"),
+                pane.querySelector(".document-preview-caption"),
+                pane.querySelector(".document-page-header"),
+                pane.querySelector("#canvasPlaceholder"),
+                pane.querySelector(".document-page-footer"),
+                pane.querySelector("#canvasToolbar"),
+                pane.querySelector("#canvasQualityPill")
+              ].filter(Boolean)
+              : [pane];
           const frenchWorkspaceUiRoots = [
             doc.querySelector(".app-ribbon.command-bar"),
             doc.querySelector(".workspace-nav"),
@@ -1447,9 +2030,16 @@
             assertNoRawUiKeys(checks, "French Delete selected cancellation does not show raw translation keys", doc.querySelector("#statusBox"));
             assertNoKnownEnglishUi(checks, "French Delete selected cancellation does not show known English UI phrases", [doc.querySelector("#statusBox")]);
           }
+          applicationSettingsButton?.click();
+          await waitFor(() => applicationSettingsMenu?.hidden === false && doc.activeElement === uiFrenchButton, 2000);
+          assert(checks, "Reopening application settings focuses the active French interface language", doc.activeElement === uiFrenchButton && uiFrenchButton?.getAttribute("aria-pressed") === "true", doc.activeElement?.outerHTML || "none");
           uiEnglishButton?.click();
           await waitFor(() => doc.documentElement.lang === "en" && doc.querySelector("#previewTableTab")?.textContent.trim() === "Map", 2000);
-          assert(checks, "Top language toggle switches app chrome back to English", doc.documentElement.lang === "en" && doc.querySelector("#mapDetailsBtn")?.textContent.includes("Map details") && doc.querySelector("#exportMenuBtn")?.textContent.trim() === "Export" && doc.querySelector("#mapLanguageInput")?.value === "en");
+          const savedEnglishUiPreference = JSON.parse(frame.contentWindow.localStorage.getItem("plotypus.uiLanguage") || "null");
+          assert(checks, "Application settings switches app chrome back to English without changing map output", doc.documentElement.lang === "en" && doc.querySelector("#mapDetailsBtn")?.textContent.includes("Map details") && doc.querySelector("#exportMenuBtn")?.textContent.trim() === "Export" && doc.querySelector("#mapLanguageInput")?.value === initialMapLanguage && savedEnglishUiPreference === "en" && uiEnglishButton?.getAttribute("aria-pressed") === "true" && applicationSettingsMenu?.hidden === false);
+          applicationSettingsClose?.click();
+          await waitFor(() => applicationSettingsMenu?.hidden && applicationSettingsButton?.getAttribute("aria-expanded") === "false", 2000);
+          assert(checks, "Application settings close button closes the dialog", applicationSettingsMenu?.hidden && applicationSettingsButton?.getAttribute("aria-expanded") === "false");
           const currentSummaryChips = Array.from(doc.querySelectorAll("#workspaceSummaryMetrics .workspace-summary-chip"));
           const currentVisibleSummaryChips = currentSummaryChips.filter(chip => chip.getBoundingClientRect().height > 0);
           const currentRegionSummaryLabel = doc.querySelector("#workspaceSummaryMetrics [data-summary-key='regions'] span");
@@ -1535,10 +2125,101 @@
             if (appWidth <= 1080) {
               assert(checks, "Opening a Legend item keeps the responsive Properties drawer open", doc.body.classList.contains("properties-open") && !propertiesPanel.inert);
             }
-            const firstLegendMarkerSize = doc.querySelector("#propertiesSelectionControls [data-category-field='markerSize']");
-            const firstLegendListPreview = firstLegendItem?.querySelector(".category-marker-preview");
-            const firstLegendPropertiesPreview = doc.querySelector("#propertiesSelectionControls .category-shape-option.is-selected .category-marker-preview");
-            assert(checks, "Legend list and category Properties use the same marker preview size", Boolean(firstLegendMarkerSize && firstLegendListPreview && firstLegendPropertiesPreview) && Number(firstLegendListPreview.dataset.markerSize) === Number(firstLegendMarkerSize.value) && Number(firstLegendPropertiesPreview.dataset.markerSize) === Number(firstLegendMarkerSize.value), `input=${firstLegendMarkerSize?.value || "missing"}, list=${firstLegendListPreview?.dataset.markerSize || "missing"}, properties=${firstLegendPropertiesPreview?.dataset.markerSize || "missing"}`);
+            let markerSizeRenderEventCount = 0;
+            const countMarkerSizeRenderEvent = event => {
+              if (event.detail?.kind === "render" && event.detail?.outputMode === "web") markerSizeRenderEventCount += 1;
+            };
+            frame.contentWindow.addEventListener("plotypus:render-performance", countMarkerSizeRenderEvent);
+            const markerSizeRenderCount = () => markerSizeRenderEventCount;
+            const firstLegendListPreview = () => doc.querySelector(`#categoryList [data-legend-item][data-category-id="${frame.contentWindow.CSS.escape(firstLegendId)}"] .category-marker-preview`);
+            const firstLegendPropertiesPreview = () => doc.querySelector("#propertiesSelectionControls .category-shape-option.is-selected .category-marker-preview");
+            let categoryMarkerEditor = doc.querySelector("#propertiesSelectionControls [data-marker-size-editor='category']");
+            let categoryMarkerDraft = categoryMarkerEditor?.querySelector("[data-marker-size-draft='category']");
+            let categoryMarkerApply = categoryMarkerEditor?.querySelector("[data-property-action='apply-marker-size']");
+            let categoryMarkerStatus = categoryMarkerEditor?.querySelector("[data-marker-size-draft-status]");
+            assert(checks, "Category Properties use an accessible integer marker Preview and explicit Apply", Boolean(categoryMarkerEditor && categoryMarkerDraft && categoryMarkerApply && categoryMarkerStatus) && categoryMarkerDraft.min === "4" && categoryMarkerDraft.max === "30" && categoryMarkerDraft.step === "1" && /^\d+$/.test(categoryMarkerDraft.value) && categoryMarkerDraft.getAttribute("aria-describedby") === categoryMarkerStatus.id && categoryMarkerEditor.dataset.draftState === "applied" && categoryMarkerApply.tagName === "BUTTON" && categoryMarkerApply.type === "button" && categoryMarkerApply.disabled && categoryMarkerEditor.querySelector(".marker-size-preview")?.getAttribute("aria-live") === "polite" && Number(categoryMarkerEditor.querySelector(".marker-size-preview-svg")?.dataset.markerSize) === Number(categoryMarkerDraft.value) && /Preview: \d+ px/.test(categoryMarkerEditor.querySelector("[data-marker-size-readout]")?.textContent || "") && Number(firstLegendListPreview()?.dataset.markerSize) === Number(categoryMarkerDraft.value) && Number(firstLegendPropertiesPreview()?.dataset.markerSize) === Number(categoryMarkerDraft.value) && categoryMarkerEditor.scrollWidth <= categoryMarkerEditor.clientWidth + 1 && doc.querySelector("#propertiesSelectionControls")?.scrollWidth <= doc.querySelector("#propertiesSelectionControls")?.clientWidth + 1 && !doc.querySelector("#propertiesSelectionControls [data-category-field='markerSize']"), categoryMarkerEditor?.outerHTML || "missing");
+            assert(checks, "Category marker-size Properties use clear English copy", /Marker/.test(categoryMarkerEditor?.textContent || "") && /Preview: \d+ px/.test(categoryMarkerEditor?.textContent || "") && /This matches the applied marker size\./.test(categoryMarkerEditor?.textContent || "") && /Apply/.test(categoryMarkerEditor?.textContent || ""), categoryMarkerEditor?.textContent.trim() || "missing");
+            doc.querySelector("[data-ui-language='fr']")?.click();
+            await waitFor(() => doc.documentElement.lang === "fr" && doc.querySelector("#categoryList [data-legend-item]"), 2000);
+            doc.querySelector(`#categoryList [data-legend-item][data-category-id="${frame.contentWindow.CSS.escape(firstLegendId)}"] .legend-item-select`)?.click();
+            await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-marker-size-editor='category']"), 2000);
+            const frenchCategoryMarkerEditor = doc.querySelector("#propertiesSelectionControls [data-marker-size-editor='category']");
+            assert(checks, "Category marker-size Properties localize their label, Preview, status, and Apply action", /Repère/.test(frenchCategoryMarkerEditor?.textContent || "") && /Aperçu\s*:\s*\d+ px/.test(frenchCategoryMarkerEditor?.textContent || "") && /Cette valeur correspond à la taille de repère appliquée\./.test(frenchCategoryMarkerEditor?.textContent || "") && /Appliquer/.test(frenchCategoryMarkerEditor?.textContent || ""), frenchCategoryMarkerEditor?.textContent.trim() || "missing");
+            assertNoRawUiKeys(checks, "Category marker-size Properties do not show raw translation keys in French", frenchCategoryMarkerEditor);
+            doc.querySelector("[data-ui-language='en']")?.click();
+            await waitFor(() => doc.documentElement.lang === "en" && doc.querySelector("#categoryList [data-legend-item]"), 2000);
+            doc.querySelector(`#categoryList [data-legend-item][data-category-id="${frame.contentWindow.CSS.escape(firstLegendId)}"] .legend-item-select`)?.click();
+            await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-marker-size-editor='category']"), 2000);
+            if (appWidth <= 1080 && propertiesPanel?.inert) {
+              propertiesToggle?.click();
+              await waitFor(() => doc.body.classList.contains("properties-open") && !propertiesPanel.inert && propertiesPanel.getBoundingClientRect().right <= appWidth + 1, 3000);
+            }
+            categoryMarkerEditor = doc.querySelector("#propertiesSelectionControls [data-marker-size-editor='category']");
+            categoryMarkerDraft = categoryMarkerEditor?.querySelector("[data-marker-size-draft='category']");
+            categoryMarkerApply = categoryMarkerEditor?.querySelector("[data-property-action='apply-marker-size']");
+            categoryMarkerStatus = categoryMarkerEditor?.querySelector("[data-marker-size-draft-status]");
+            if (loadSample && categoryMarkerEditor && categoryMarkerDraft) {
+              await waitFor(() => !doc.querySelector("#mapHost")?.classList.contains("is-rendering") && frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot().pending === false, 12000);
+              const originalCategoryMarkerSize = Number(categoryMarkerEditor.dataset.committedValue);
+              const testCategoryMarkerSize = originalCategoryMarkerSize === 30 ? 29 : Math.min(30, originalCategoryMarkerSize + 4);
+              const categoryMarkerDraftMapBefore = doc.querySelector("#mapSvg")?.innerHTML || "";
+              const categoryMarkerDraftRendersBefore = markerSizeRenderCount();
+              const categoryMarkerDraftQualityBefore = frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot();
+              const categoryMarkerUndoDisabledBeforeDraft = doc.querySelector("#ribbonUndoBtn")?.disabled;
+              const categoryMarkerListSizeBefore = Number(firstLegendListPreview()?.dataset.markerSize);
+              const categoryMarkerShapeSizeBefore = Number(firstLegendPropertiesPreview()?.dataset.markerSize);
+              categoryMarkerDraft.value = String(testCategoryMarkerSize);
+              categoryMarkerDraft.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
+              await waitFor(() => categoryMarkerEditor.dataset.draftState === "pending" && !categoryMarkerApply.disabled, 2000);
+              const categoryMarkerDraftQualityAfter = frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot();
+              assert(checks, "Category marker-size draft changes only its local Preview", Number(categoryMarkerEditor.querySelector(".marker-size-preview-svg")?.dataset.markerSize) === testCategoryMarkerSize && categoryMarkerEditor.querySelector("[data-marker-size-readout]")?.textContent.includes(`Preview: ${testCategoryMarkerSize} px`) && categoryMarkerStatus.textContent.includes(`Draft marker size: ${testCategoryMarkerSize} px`) && Number(categoryMarkerEditor.dataset.committedValue) === originalCategoryMarkerSize && Number(firstLegendListPreview()?.dataset.markerSize) === categoryMarkerListSizeBefore && Number(firstLegendPropertiesPreview()?.dataset.markerSize) === categoryMarkerShapeSizeBefore && (doc.querySelector("#mapSvg")?.innerHTML || "") === categoryMarkerDraftMapBefore && markerSizeRenderCount() === categoryMarkerDraftRendersBefore && categoryMarkerDraftQualityAfter?.requests === categoryMarkerDraftQualityBefore?.requests && categoryMarkerDraftQualityAfter?.completed === categoryMarkerDraftQualityBefore?.completed && categoryMarkerDraftQualityAfter?.revision === categoryMarkerDraftQualityBefore?.revision && doc.querySelector("#ribbonUndoBtn")?.disabled === categoryMarkerUndoDisabledBeforeDraft && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), `draft=${categoryMarkerDraft.value}; committed=${categoryMarkerEditor.dataset.committedValue}; renders=${categoryMarkerDraftRendersBefore}->${markerSizeRenderCount()}`);
+              categoryMarkerDraft.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+              assert(checks, "Category marker-size draft keeps its whole-pixel display without applying", categoryMarkerDraft.value === String(testCategoryMarkerSize) && markerSizeRenderCount() === categoryMarkerDraftRendersBefore, `input=${categoryMarkerDraft.value}; renders=${categoryMarkerDraftRendersBefore}->${markerSizeRenderCount()}`);
+              categoryMarkerDraft.value = String(originalCategoryMarkerSize);
+              categoryMarkerDraft.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
+              categoryMarkerDraft.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+              await waitFor(() => categoryMarkerEditor.dataset.draftState === "applied" && categoryMarkerApply.disabled, 2000);
+            }
+            let categoryWidthEditor = doc.querySelector("#propertiesSelectionControls [data-leader-line-width-editor='category']");
+            let categoryWidthDraft = categoryWidthEditor?.querySelector("[data-leader-line-width-draft='category']");
+            const categoryWidthApply = categoryWidthEditor?.querySelector("[data-property-action='apply-leader-line-width']");
+            const categoryWidthStatus = categoryWidthEditor?.querySelector("[data-leader-line-width-draft-status]");
+            assert(checks, "Category Properties use the full-width thickness Preview and Apply control", Boolean(categoryWidthEditor && categoryWidthDraft && categoryWidthApply && categoryWidthStatus) && categoryWidthDraft.min === "1" && categoryWidthDraft.max === "10" && categoryWidthDraft.step === "0.5" && /^\d+\.\d$/.test(categoryWidthDraft.value) && categoryWidthDraft.getAttribute("aria-describedby") === categoryWidthStatus.id && categoryWidthEditor.dataset.draftState === "applied" && categoryWidthApply.disabled && /Preview: \d+\.\d px/.test(categoryWidthEditor.querySelector("[data-leader-line-width-readout]")?.textContent || "") && categoryWidthEditor.querySelector(".leader-line-thickness-preview")?.getAttribute("aria-live") === "polite" && categoryWidthEditor.scrollWidth <= categoryWidthEditor.clientWidth + 1 && doc.querySelector("#propertiesSelectionControls")?.scrollWidth <= doc.querySelector("#propertiesSelectionControls")?.clientWidth + 1 && !doc.querySelector("#propertiesSelectionControls [data-category-field='lineWidth']"), categoryWidthEditor?.outerHTML || "missing");
+            if (loadSample && categoryWidthEditor && categoryWidthDraft) {
+              await waitFor(() => !doc.querySelector("#mapHost")?.classList.contains("is-rendering") && frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot().pending === false, 12000);
+              const categoryRenderCount = () => performanceApi?.snapshot().samples.length || 0;
+              const originalCategoryWidth = Number(categoryWidthEditor.dataset.committedValue);
+              const testCategoryWidth = originalCategoryWidth === 9.5 ? 10 : 9.5;
+              const testCategoryWidthInput = testCategoryWidth.toFixed(1);
+              const categoryLineIds = new Set(Array.from(doc.querySelectorAll("#mapSvg .leader-line"))
+                .filter(node => String(node.__data__?.type || "") === firstLegendId && String(node.__data__?.leaderLineWidth || "") === "")
+                .map(node => node.dataset.layoutId));
+              const initialCategoryLineWidths = new Map(Array.from(doc.querySelectorAll("#mapSvg .leader-line")).map(node => [node.dataset.layoutId, Number(node.getAttribute("stroke-width") || 0)]));
+              const categoryDraftMapBefore = doc.querySelector("#mapSvg")?.innerHTML || "";
+              const categoryDraftSamplesBefore = categoryRenderCount();
+              const categoryDraftQualityBefore = frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot();
+              categoryWidthDraft.value = testCategoryWidthInput;
+              categoryWidthDraft.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
+              await waitFor(() => categoryWidthEditor.dataset.draftState === "pending" && !categoryWidthEditor.querySelector("[data-property-action='apply-leader-line-width']")?.disabled, 2000);
+              const categoryDraftQualityAfter = frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot();
+              assert(checks, "Category thickness draft changes only its local preview", Number(categoryWidthEditor.querySelector("[data-leader-line-width-preview]")?.getAttribute("stroke-width")) === testCategoryWidth && categoryWidthEditor.querySelector("[data-leader-line-width-readout]")?.textContent.includes(`${testCategoryWidthInput} px`) && Number(categoryWidthEditor.dataset.committedValue) === originalCategoryWidth && (doc.querySelector("#mapSvg")?.innerHTML || "") === categoryDraftMapBefore && categoryRenderCount() === categoryDraftSamplesBefore && categoryDraftQualityAfter?.revision === categoryDraftQualityBefore?.revision && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), `draft=${categoryWidthDraft.value}; committed=${categoryWidthEditor.dataset.committedValue}; renders=${categoryDraftSamplesBefore}->${categoryRenderCount()}`);
+              categoryWidthDraft.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+              await waitFor(() => categoryWidthDraft.value === testCategoryWidthInput, 2000);
+              const categoryApplySamplesBefore = categoryRenderCount();
+              categoryWidthEditor.querySelector("[data-property-action='apply-leader-line-width']")?.click();
+              await waitFor(() => Number(doc.querySelector("#propertiesSelectionControls [data-leader-line-width-editor='category']")?.dataset.committedValue) === testCategoryWidth && categoryRenderCount() >= categoryApplySamplesBefore + 1 && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), 12000);
+              categoryWidthEditor = doc.querySelector("#propertiesSelectionControls [data-leader-line-width-editor='category']");
+              categoryWidthDraft = categoryWidthEditor?.querySelector("[data-leader-line-width-draft='category']");
+              const appliedCategoryLines = Array.from(doc.querySelectorAll("#mapSvg .leader-line"));
+              const affectedCategoryLines = appliedCategoryLines.filter(node => categoryLineIds.has(node.dataset.layoutId));
+              const unaffectedCategoryLines = appliedCategoryLines.filter(node => !categoryLineIds.has(node.dataset.layoutId) && initialCategoryLineWidths.has(node.dataset.layoutId));
+              assert(checks, "Category Apply redraws once and changes only inherited lines of that type", categoryLineIds.size > 0 && categoryRenderCount() === categoryApplySamplesBefore + 1 && affectedCategoryLines.every(node => Number(node.getAttribute("stroke-width") || 0) !== initialCategoryLineWidths.get(node.dataset.layoutId)) && unaffectedCategoryLines.every(node => Number(node.getAttribute("stroke-width") || 0) === initialCategoryLineWidths.get(node.dataset.layoutId)) && categoryWidthDraft?.value === testCategoryWidthInput && categoryWidthEditor?.dataset.draftState === "applied" && categoryWidthEditor?.querySelector("[data-property-action='apply-leader-line-width']")?.disabled && doc.activeElement === categoryWidthDraft, `ids=${categoryLineIds.size}; affected=${affectedCategoryLines.length}; renders=${categoryApplySamplesBefore}->${categoryRenderCount()}; focus=${doc.activeElement?.outerHTML || "none"}`);
+              const categoryUndoSamplesBefore = categoryRenderCount();
+              doc.querySelector("#ribbonUndoBtn")?.click();
+              await waitFor(() => Number(doc.querySelector("#propertiesSelectionControls [data-leader-line-width-editor='category']")?.dataset.committedValue) === originalCategoryWidth && categoryRenderCount() >= categoryUndoSamplesBefore + 1 && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), 12000);
+              categoryWidthEditor = doc.querySelector("#propertiesSelectionControls [data-leader-line-width-editor='category']");
+              assert(checks, "Undo restores the category thickness in one map update", categoryRenderCount() === categoryUndoSamplesBefore + 1 && categoryWidthEditor?.dataset.draftState === "applied" && Array.from(doc.querySelectorAll("#mapSvg .leader-line")).every(node => !initialCategoryLineWidths.has(node.dataset.layoutId) || Number(node.getAttribute("stroke-width") || 0) === initialCategoryLineWidths.get(node.dataset.layoutId)), `renders=${categoryUndoSamplesBefore}->${categoryRenderCount()}; committed=${categoryWidthEditor?.dataset.committedValue || "missing"}`);
+            }
             const legendBackButton = doc.querySelector("#propertiesSelectionControls [data-property-action='back-to-document']");
             legendBackButton?.click();
             await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='document']"), 2000);
@@ -1551,21 +2232,37 @@
             assert(checks, "Page and canvas presets identify inches and pixels", Array.from(pagePresetProxy?.options || []).every(option => /″$/.test(option.textContent.trim())) && Array.from(canvasSizeProxy?.options || []).every(option => /\(\d+\s*x\s*\d+\s*px\)$/.test(option.textContent.trim())), `${pagePresetProxy?.selectedOptions[0]?.textContent || "missing"} / ${canvasSizeProxy?.selectedOptions[0]?.textContent || "missing"}`);
             assert(checks, "Canvas-size guidance points users to the document-page preview", /document page/i.test(doc.querySelector("#propertiesSelectionControls")?.textContent || ""));
             assert(checks, "Document Properties expose default label line length", Boolean(doc.querySelector("#propertiesSelectionControls [data-layout-proxy='labelCharsInput']")));
-            const markerSizeProxy = doc.querySelector("#propertiesSelectionControls [data-layout-proxy='markerSizeInput']");
             const markerSizeInput = doc.querySelector("#markerSizeInput");
-            assert(checks, "Document Properties expose a shared default marker size of 4", Boolean(markerSizeProxy && markerSizeInput && markerSizeProxy.value === "4" && markerSizeInput.value === "4" && markerSizeProxy.min === "4" && markerSizeProxy.max === "20"), `proxy=${markerSizeProxy?.value || "missing"}, source=${markerSizeInput?.value || "missing"}`);
-            if (markerSizeProxy && markerSizeInput) {
-              const originalMarkerSize = markerSizeInput.value;
-              const updatedMarkerSize = originalMarkerSize === "12" ? "11" : "12";
-              markerSizeProxy.value = updatedMarkerSize;
-              markerSizeProxy.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
-              await waitFor(() => markerSizeInput.value === updatedMarkerSize && doc.querySelector("#propertiesSelectionControls [data-layout-proxy='markerSizeInput']")?.value === updatedMarkerSize, 4000);
-              const categoryMarkerSizes = Array.from(doc.querySelectorAll("#categoryList .category-marker-preview")).map(preview => preview.dataset.markerSize);
-              assert(checks, "Changing the Document default marker size updates shared default categories", categoryMarkerSizes.length > 0 && categoryMarkerSizes.every(value => value === updatedMarkerSize), categoryMarkerSizes.join(", "));
-              const refreshedMarkerSizeProxy = doc.querySelector("#propertiesSelectionControls [data-layout-proxy='markerSizeInput']");
-              refreshedMarkerSizeProxy.value = originalMarkerSize;
-              refreshedMarkerSizeProxy.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
-              await waitFor(() => markerSizeInput.value === originalMarkerSize, 4000);
+            let globalMarkerEditor = doc.querySelector("#propertiesSelectionControls [data-marker-size-editor='global']");
+            let globalMarkerDraft = globalMarkerEditor?.querySelector("[data-marker-size-draft='global']");
+            let globalMarkerApply = globalMarkerEditor?.querySelector("[data-property-action='apply-marker-size']");
+            let globalMarkerStatus = globalMarkerEditor?.querySelector("[data-marker-size-draft-status]");
+            assert(checks, "Document Properties expose an accessible integer marker Preview and explicit Apply", Boolean(globalMarkerEditor && globalMarkerDraft && globalMarkerApply && globalMarkerStatus && markerSizeInput) && globalMarkerDraft.value === markerSizeInput.value && globalMarkerDraft.min === "4" && globalMarkerDraft.max === "20" && globalMarkerDraft.step === "1" && /^\d+$/.test(globalMarkerDraft.value) && globalMarkerDraft.getAttribute("aria-describedby") === globalMarkerStatus.id && globalMarkerEditor.dataset.draftState === "applied" && globalMarkerApply.tagName === "BUTTON" && globalMarkerApply.type === "button" && globalMarkerApply.disabled && globalMarkerEditor.querySelector(".marker-size-preview")?.getAttribute("aria-live") === "polite" && Number(globalMarkerEditor.querySelector(".marker-size-preview-svg")?.dataset.markerSize) === Number(globalMarkerDraft.value) && /Preview: \d+ px/.test(globalMarkerEditor.querySelector("[data-marker-size-readout]")?.textContent || "") && globalMarkerEditor.scrollWidth <= globalMarkerEditor.clientWidth + 1 && doc.querySelector("#propertiesSelectionControls")?.scrollWidth <= doc.querySelector("#propertiesSelectionControls")?.clientWidth + 1, globalMarkerEditor?.outerHTML || "missing");
+            assert(checks, "Document marker-size Properties use clear English copy", /Default marker size/.test(globalMarkerEditor?.textContent || "") && /Preview: \d+ px/.test(globalMarkerEditor?.textContent || "") && /This matches the applied marker size\./.test(globalMarkerEditor?.textContent || "") && /Apply/.test(globalMarkerEditor?.textContent || ""), globalMarkerEditor?.textContent.trim() || "missing");
+            if (loadSample && globalMarkerEditor && globalMarkerDraft && markerSizeInput) {
+              await waitFor(() => !doc.querySelector("#mapHost")?.classList.contains("is-rendering") && frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot().pending === false, 12000);
+              const originalGlobalMarkerSize = Number(globalMarkerEditor.dataset.committedValue);
+              const testGlobalMarkerSize = originalGlobalMarkerSize === 20 ? 19 : Math.min(20, originalGlobalMarkerSize + 4);
+              const globalMarkerDraftMapBefore = doc.querySelector("#mapSvg")?.innerHTML || "";
+              const globalMarkerDraftRendersBefore = markerSizeRenderCount();
+              const globalMarkerDraftQualityBefore = frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot();
+              const globalMarkerUndoDisabledBeforeDraft = doc.querySelector("#ribbonUndoBtn")?.disabled;
+              const globalMarkerCategorySizesBefore = Array.from(doc.querySelectorAll("#categoryList .category-marker-preview")).map(preview => preview.dataset.markerSize);
+              globalMarkerDraft.value = "3";
+              globalMarkerDraft.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
+              await waitFor(() => globalMarkerEditor.dataset.draftState === "invalid", 2000);
+              assert(checks, "Invalid Document marker-size draft stays local and disables Apply", globalMarkerDraft.getAttribute("aria-invalid") === "true" && globalMarkerApply.disabled && /4 to 20/.test(globalMarkerStatus.textContent || "") && markerSizeInput.value === String(originalGlobalMarkerSize) && (doc.querySelector("#mapSvg")?.innerHTML || "") === globalMarkerDraftMapBefore && markerSizeRenderCount() === globalMarkerDraftRendersBefore, globalMarkerEditor.outerHTML);
+              globalMarkerDraft.value = String(testGlobalMarkerSize);
+              globalMarkerDraft.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
+              await waitFor(() => globalMarkerEditor.dataset.draftState === "pending" && !globalMarkerApply.disabled, 2000);
+              const globalMarkerDraftQualityAfter = frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot();
+              assert(checks, "Document marker-size draft changes only its local Preview", Number(globalMarkerEditor.querySelector(".marker-size-preview-svg")?.dataset.markerSize) === testGlobalMarkerSize && globalMarkerEditor.querySelector("[data-marker-size-readout]")?.textContent.includes(`Preview: ${testGlobalMarkerSize} px`) && globalMarkerStatus.textContent.includes(`Draft marker size: ${testGlobalMarkerSize} px`) && Number(globalMarkerEditor.dataset.committedValue) === originalGlobalMarkerSize && markerSizeInput.value === String(originalGlobalMarkerSize) && Array.from(doc.querySelectorAll("#categoryList .category-marker-preview")).map(preview => preview.dataset.markerSize).join("|") === globalMarkerCategorySizesBefore.join("|") && (doc.querySelector("#mapSvg")?.innerHTML || "") === globalMarkerDraftMapBefore && markerSizeRenderCount() === globalMarkerDraftRendersBefore && globalMarkerDraftQualityAfter?.requests === globalMarkerDraftQualityBefore?.requests && globalMarkerDraftQualityAfter?.completed === globalMarkerDraftQualityBefore?.completed && globalMarkerDraftQualityAfter?.revision === globalMarkerDraftQualityBefore?.revision && doc.querySelector("#ribbonUndoBtn")?.disabled === globalMarkerUndoDisabledBeforeDraft && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), `draft=${globalMarkerDraft.value}; source=${markerSizeInput.value}; renders=${globalMarkerDraftRendersBefore}->${markerSizeRenderCount()}`);
+              globalMarkerDraft.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+              assert(checks, "Document marker-size draft keeps its whole-pixel display without applying", globalMarkerDraft.value === String(testGlobalMarkerSize) && markerSizeInput.value === String(originalGlobalMarkerSize) && markerSizeRenderCount() === globalMarkerDraftRendersBefore, `input=${globalMarkerDraft.value}; source=${markerSizeInput.value}; renders=${globalMarkerDraftRendersBefore}->${markerSizeRenderCount()}`);
+              globalMarkerDraft.value = String(originalGlobalMarkerSize);
+              globalMarkerDraft.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
+              globalMarkerDraft.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+              await waitFor(() => globalMarkerEditor.dataset.draftState === "applied" && globalMarkerApply.disabled, 2000);
             }
             const globalLeaderControls = doc.querySelector("#propertiesSelectionControls [data-leader-line-controls='global']");
             const globalLeaderProxyNames = ["hideLeaderLinesInput", "routeDenseLeadersInput", "showLineCasingInput", "lineWidthInput", "leaderColourInput"];
@@ -1577,8 +2274,10 @@
             const globalWidthReadout = globalWidthEditor?.querySelector("[data-leader-line-width-readout]");
             const globalWidthStatus = globalWidthEditor?.querySelector("[data-leader-line-width-draft-status]");
             assert(checks, "Document Properties group all global leader-line controls", Boolean(globalLeaderControls) && globalLeaderProxies.every(Boolean), globalLeaderProxies.map((input, index) => `${globalLeaderProxyNames[index]}=${Boolean(input)}`).join(", "));
-            assert(checks, "Global leader-line controls have an accessible draft preview and explicit Apply", Boolean(globalWidthEditor && globalWidthDraft && globalWidthApply && globalWidthPreview && globalWidthReadout && globalWidthStatus) && globalWidthDraft.closest("label")?.textContent.trim() && globalWidthDraft.getAttribute("aria-describedby") === globalWidthStatus.id && globalWidthApply.tagName === "BUTTON" && globalWidthApply.type === "button" && globalWidthApply.disabled && globalWidthEditor.dataset.draftState === "applied" && globalWidthReadout.closest(".leader-line-thickness-preview")?.getAttribute("aria-live") === "polite", globalWidthEditor?.outerHTML || "missing");
+            assert(checks, "Global leader-line controls have an accessible one-decimal draft preview and explicit Apply", Boolean(globalWidthEditor && globalWidthDraft && globalWidthApply && globalWidthPreview && globalWidthReadout && globalWidthStatus) && globalWidthDraft.closest("label")?.textContent.trim() && globalWidthDraft.min === "1" && globalWidthDraft.max === "10" && globalWidthDraft.step === "0.5" && globalWidthDraft.getAttribute("aria-describedby") === globalWidthStatus.id && globalWidthApply.tagName === "BUTTON" && globalWidthApply.type === "button" && globalWidthApply.disabled && globalWidthEditor.dataset.draftState === "applied" && globalWidthReadout.closest(".leader-line-thickness-preview")?.getAttribute("aria-live") === "polite" && /^\d+\.\d$/.test(globalWidthDraft.value) && /Preview: \d+\.\d px/.test(globalWidthReadout.textContent || ""), globalWidthEditor?.outerHTML || "missing");
             assert(checks, "Global leader-line controls fit the Properties panel", Boolean(globalLeaderControls) && globalLeaderProxies.every(input => Boolean(input?.closest("label")?.textContent.trim())) && globalLeaderControls.scrollWidth <= globalLeaderControls.clientWidth + 1 && doc.querySelector("#propertiesSelectionControls")?.scrollWidth <= doc.querySelector("#propertiesSelectionControls")?.clientWidth + 1, `group=${globalLeaderControls?.scrollWidth || 0}/${globalLeaderControls?.clientWidth || 0}; panel=${doc.querySelector("#propertiesSelectionControls")?.scrollWidth || 0}/${doc.querySelector("#propertiesSelectionControls")?.clientWidth || 0}`);
+            const globalLeaderToggleLayout = leaderToggleLayout(globalLeaderControls);
+            assert(checks, "Global leader-line toggles use unclipped compact switches without redundant edit icons", globalLeaderToggleLayout.pass && !globalLeaderControls?.querySelector(".leader-line-toggle-list .field-origin-icon") && !globalLeaderControls?.querySelector(".field-origin-icon"), globalLeaderToggleLayout.detail);
             assert(checks, "Global leader-line Properties use English labels after restoring the UI language", /Leader lines/.test(globalLeaderControls?.textContent || "") && /Hide all leader lines/.test(globalLeaderControls?.textContent || "") && /Thickness/.test(globalLeaderControls?.textContent || "") && /Colour/.test(globalLeaderControls?.textContent || ""), globalLeaderControls?.textContent.trim() || "missing");
             if (loadSample && globalLeaderControls) {
               await waitFor(() => !doc.querySelector("#mapHost")?.classList.contains("is-rendering") && frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot().pending === false, 12000);
@@ -1612,7 +2311,8 @@
               };
               const initialCrossingValue = crossingValue();
               const testLeaderColour = originalLeaderSettings.colour === "#7b2d8e" ? "#2d6f7b" : "#7b2d8e";
-              const testLeaderWidth = originalLeaderSettings.width === "7.5" ? "6.5" : "7.5";
+              const testLeaderWidth = originalLeaderSettings.width === "7" ? "6" : "7";
+              const testLeaderWidthDisplay = Number(testLeaderWidth).toFixed(1);
               const setGlobalLeaderProxy = (name, value) => {
                 const proxy = doc.querySelector(`#propertiesSelectionControls [data-leader-line-controls='global'] [data-layout-proxy='${name}']`);
                 if (!proxy) return false;
@@ -1629,16 +2329,23 @@
               let activeGlobalWidthEditor = doc.querySelector("#propertiesSelectionControls [data-leader-line-width-editor='global']");
               let activeGlobalWidthDraft = activeGlobalWidthEditor?.querySelector("[data-leader-line-width-draft='global']");
               const initialGlobalPreviewWidth = Number(activeGlobalWidthEditor?.querySelector("[data-leader-line-width-preview]")?.getAttribute("stroke-width") || 0);
-              activeGlobalWidthDraft.value = "9";
+              activeGlobalWidthDraft.value = "10.5";
               activeGlobalWidthDraft.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
               await waitFor(() => activeGlobalWidthEditor.dataset.draftState === "invalid", 2000);
-              assert(checks, "Invalid global thickness draft stays local and disables Apply", activeGlobalWidthDraft.getAttribute("aria-invalid") === "true" && activeGlobalWidthEditor.querySelector("[data-property-action='apply-leader-line-width']")?.disabled && /1 to 8/.test(activeGlobalWidthEditor.querySelector("[data-leader-line-width-draft-status]")?.textContent || "") && sourceLeaderInputs.width.value === originalLeaderSettings.width && (doc.querySelector("#mapSvg")?.innerHTML || "") === globalDraftMapBefore && renderSampleCount() === globalDraftSamplesBefore, activeGlobalWidthEditor.outerHTML);
+              assert(checks, "Invalid global thickness draft stays local and disables Apply", activeGlobalWidthDraft.getAttribute("aria-invalid") === "true" && activeGlobalWidthEditor.querySelector("[data-property-action='apply-leader-line-width']")?.disabled && /1 to 10/.test(activeGlobalWidthEditor.querySelector("[data-leader-line-width-draft-status]")?.textContent || "") && sourceLeaderInputs.width.value === originalLeaderSettings.width && (doc.querySelector("#mapSvg")?.innerHTML || "") === globalDraftMapBefore && renderSampleCount() === globalDraftSamplesBefore, activeGlobalWidthEditor.outerHTML);
+              activeGlobalWidthDraft.value = "9.5";
+              activeGlobalWidthDraft.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
+              await waitFor(() => activeGlobalWidthEditor.dataset.draftState === "pending", 2000);
+              assert(checks, "Global thickness accepts the shared 1 to 10 px range", activeGlobalWidthDraft.getAttribute("aria-invalid") === "false" && activeGlobalWidthEditor.querySelector("[data-leader-line-width-readout]")?.textContent.includes("9.5 px") && sourceLeaderInputs.width.value === originalLeaderSettings.width && renderSampleCount() === globalDraftSamplesBefore, activeGlobalWidthEditor.outerHTML);
               activeGlobalWidthDraft.value = testLeaderWidth;
               activeGlobalWidthDraft.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
               await waitFor(() => activeGlobalWidthEditor.dataset.draftState === "pending" && !activeGlobalWidthEditor.querySelector("[data-property-action='apply-leader-line-width']")?.disabled, 2000);
               const pendingGlobalPreviewWidth = Number(activeGlobalWidthEditor.querySelector("[data-leader-line-width-preview]")?.getAttribute("stroke-width") || 0);
               const globalDraftQualityAfter = frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot();
-              assert(checks, "Global thickness draft updates only the local preview", pendingGlobalPreviewWidth === Number(testLeaderWidth) && pendingGlobalPreviewWidth !== initialGlobalPreviewWidth && new RegExp(testLeaderWidth.replace(".", "\\.")).test(activeGlobalWidthEditor.querySelector("[data-leader-line-width-readout]")?.textContent || "") && /Apply to update the map/.test(activeGlobalWidthEditor.querySelector("[data-leader-line-width-draft-status]")?.textContent || "") && sourceLeaderInputs.width.value === originalLeaderSettings.width && (doc.querySelector("#mapSvg")?.innerHTML || "") === globalDraftMapBefore && renderSampleCount() === globalDraftSamplesBefore && globalDraftQualityAfter?.requests === globalDraftQualityBefore?.requests && globalDraftQualityAfter?.completed === globalDraftQualityBefore?.completed && globalDraftQualityAfter?.revision === globalDraftQualityBefore?.revision && doc.querySelector("#ribbonUndoBtn")?.disabled === globalUndoDisabledBeforeDraft && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), `preview=${initialGlobalPreviewWidth}->${pendingGlobalPreviewWidth}; source=${sourceLeaderInputs.width.value}; renders=${globalDraftSamplesBefore}->${renderSampleCount()}; quality=${globalDraftQualityBefore?.revision}->${globalDraftQualityAfter?.revision}`);
+              assert(checks, "Global integer thickness draft displays to one decimal and updates only the local preview", pendingGlobalPreviewWidth === Number(testLeaderWidth) && pendingGlobalPreviewWidth !== initialGlobalPreviewWidth && activeGlobalWidthEditor.querySelector("[data-leader-line-width-readout]")?.textContent.includes(`${testLeaderWidthDisplay} px`) && activeGlobalWidthEditor.querySelector("[data-leader-line-width-draft-status]")?.textContent.includes(`${testLeaderWidthDisplay} px`) && sourceLeaderInputs.width.value === originalLeaderSettings.width && (doc.querySelector("#mapSvg")?.innerHTML || "") === globalDraftMapBefore && renderSampleCount() === globalDraftSamplesBefore && globalDraftQualityAfter?.requests === globalDraftQualityBefore?.requests && globalDraftQualityAfter?.completed === globalDraftQualityBefore?.completed && globalDraftQualityAfter?.revision === globalDraftQualityBefore?.revision && doc.querySelector("#ribbonUndoBtn")?.disabled === globalUndoDisabledBeforeDraft && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), `draft=${activeGlobalWidthDraft.value}; preview=${activeGlobalWidthEditor.querySelector("[data-leader-line-width-readout]")?.textContent || "missing"}; source=${sourceLeaderInputs.width.value}`);
+              activeGlobalWidthDraft.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+              await waitFor(() => activeGlobalWidthDraft.value === testLeaderWidthDisplay, 2000);
+              assert(checks, "Global thickness input formats to one decimal on change without applying", activeGlobalWidthDraft.value === testLeaderWidthDisplay && sourceLeaderInputs.width.value === originalLeaderSettings.width && renderSampleCount() === globalDraftSamplesBefore, `input=${activeGlobalWidthDraft.value}; source=${sourceLeaderInputs.width.value}; renders=${globalDraftSamplesBefore}->${renderSampleCount()}`);
               const globalApplySamplesBefore = renderSampleCount();
               activeGlobalWidthEditor.querySelector("[data-property-action='apply-leader-line-width']")?.click();
               await waitFor(() => sourceLeaderInputs.width.value === testLeaderWidth && renderSampleCount() >= globalApplySamplesBefore + 1 && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), 12000);
@@ -1646,7 +2353,7 @@
               activeGlobalWidthDraft = activeGlobalWidthEditor?.querySelector("[data-leader-line-width-draft='global']");
               const globalAppliedWidthChanges = Array.from(doc.querySelectorAll("#mapSvg .leader-line"))
                 .filter(node => Number(node.getAttribute("stroke-width") || 0) !== initialLeaderState.get(node.dataset.layoutId)?.width).length;
-              assert(checks, "Global Apply commits one map update and restores draft focus", renderSampleCount() === globalApplySamplesBefore + 1 && globalAppliedWidthChanges > 0 && activeGlobalWidthEditor?.dataset.committedValue === testLeaderWidth && activeGlobalWidthEditor?.dataset.draftState === "applied" && activeGlobalWidthEditor?.querySelector("[data-property-action='apply-leader-line-width']")?.disabled && doc.activeElement === activeGlobalWidthDraft, `renders=${globalApplySamplesBefore}->${renderSampleCount()}; changed=${globalAppliedWidthChanges}; focus=${doc.activeElement?.outerHTML || "none"}`);
+              assert(checks, "Global Apply commits one numeric map update and restores a one-decimal draft", renderSampleCount() === globalApplySamplesBefore + 1 && globalAppliedWidthChanges > 0 && Number(activeGlobalWidthEditor?.dataset.committedValue) === Number(testLeaderWidth) && activeGlobalWidthDraft?.value === testLeaderWidthDisplay && activeGlobalWidthEditor?.dataset.draftState === "applied" && activeGlobalWidthEditor?.querySelector("[data-property-action='apply-leader-line-width']")?.disabled && doc.activeElement === activeGlobalWidthDraft, `renders=${globalApplySamplesBefore}->${renderSampleCount()}; changed=${globalAppliedWidthChanges}; input=${activeGlobalWidthDraft?.value || "missing"}; focus=${doc.activeElement?.outerHTML || "none"}`);
               const globalUndoSamplesBefore = renderSampleCount();
               doc.querySelector("#ribbonUndoBtn")?.click();
               await waitFor(() => sourceLeaderInputs.width.value === originalLeaderSettings.width && renderSampleCount() >= globalUndoSamplesBefore + 1 && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), 12000);
@@ -1704,6 +2411,78 @@
               }, 12000);
               assert(checks, "Global leader-line smoke restores its source controls and rendered state", sourceLeaderInputs.hide.checked === originalLeaderSettings.hide && sourceLeaderInputs.route.checked === originalLeaderSettings.route && sourceLeaderInputs.casing.checked === originalLeaderSettings.casing && sourceLeaderInputs.width.value === originalLeaderSettings.width && sourceLeaderInputs.colour.value.toLowerCase() === originalLeaderSettings.colour, `${sourceLeaderInputs.hide.checked}/${sourceLeaderInputs.route.checked}/${sourceLeaderInputs.casing.checked}/${sourceLeaderInputs.width.value}/${sourceLeaderInputs.colour.value}`);
             }
+            if (loadSample && markerSizeInput) {
+              if (appWidth <= 1080 && propertiesPanel?.inert) {
+                propertiesToggle?.click();
+                await waitFor(() => doc.body.classList.contains("properties-open") && !propertiesPanel.inert && propertiesPanel.getBoundingClientRect().right <= appWidth + 1, 3000);
+              }
+              const markerGeometrySignature = node => ["r", "x", "y", "width", "height", "d", "transform"]
+                .map(attribute => `${attribute}:${node.getAttribute(attribute) || ""}`)
+                .join("|");
+              const markerGeometry = () => new Map(Array.from(doc.querySelectorAll("#mapSvg .marker-layer .marker[data-layout-id]"))
+                .map(node => [node.dataset.layoutId, markerGeometrySignature(node)]));
+              const categoryListMarkerSizes = () => new Map(Array.from(doc.querySelectorAll("#categoryList [data-legend-item][data-category-id]"))
+                .map(item => [item.dataset.categoryId, Number(item.querySelector(".category-marker-preview")?.dataset.markerSize)]));
+
+              globalMarkerEditor = doc.querySelector("#propertiesSelectionControls [data-marker-size-editor='global']");
+              globalMarkerDraft = globalMarkerEditor?.querySelector("[data-marker-size-draft='global']");
+              const originalGlobalMarkerSize = Number(markerSizeInput.value);
+              const appliedGlobalMarkerSize = originalGlobalMarkerSize === 20 ? 19 : Math.min(20, originalGlobalMarkerSize + 4);
+              const initialGlobalMarkerGeometry = markerGeometry();
+              const initialGlobalCategorySizes = categoryListMarkerSizes();
+              globalMarkerDraft.value = String(appliedGlobalMarkerSize);
+              globalMarkerDraft.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
+              await waitFor(() => globalMarkerEditor.dataset.draftState === "pending" && !globalMarkerEditor.querySelector("[data-property-action='apply-marker-size']")?.disabled, 2000);
+              const globalMarkerApplyRendersBefore = markerSizeRenderCount();
+              globalMarkerEditor.querySelector("[data-property-action='apply-marker-size']")?.click();
+              await waitFor(() => markerSizeInput.value === String(appliedGlobalMarkerSize) && markerSizeRenderCount() >= globalMarkerApplyRendersBefore + 1 && doc.activeElement === doc.querySelector("#propertiesSelectionControls [data-marker-size-draft='global']"), 12000);
+              globalMarkerEditor = doc.querySelector("#propertiesSelectionControls [data-marker-size-editor='global']");
+              globalMarkerDraft = globalMarkerEditor?.querySelector("[data-marker-size-draft='global']");
+              const appliedGlobalGeometry = markerGeometry();
+              const appliedGlobalCategorySizes = categoryListMarkerSizes();
+              const globalChangedMarkers = Array.from(appliedGlobalGeometry).filter(([layoutId, signature]) => initialGlobalMarkerGeometry.has(layoutId) && signature !== initialGlobalMarkerGeometry.get(layoutId));
+              assert(checks, "Document marker-size Apply redraws once and updates inherited categories", markerSizeRenderCount() === globalMarkerApplyRendersBefore + 1 && globalChangedMarkers.length > 0 && appliedGlobalCategorySizes.size > 0 && Array.from(appliedGlobalCategorySizes.values()).every(value => value === appliedGlobalMarkerSize) && Number(globalMarkerEditor?.dataset.committedValue) === appliedGlobalMarkerSize && globalMarkerDraft?.value === String(appliedGlobalMarkerSize) && globalMarkerEditor?.dataset.draftState === "applied" && globalMarkerEditor?.querySelector("[data-property-action='apply-marker-size']")?.disabled && doc.activeElement === globalMarkerDraft, `renders=${globalMarkerApplyRendersBefore}->${markerSizeRenderCount()}; changed=${globalChangedMarkers.length}; categories=${Array.from(appliedGlobalCategorySizes.values()).join(",")}`);
+              const globalMarkerUndoRendersBefore = markerSizeRenderCount();
+              doc.querySelector("#ribbonUndoBtn")?.click();
+              await waitFor(() => markerSizeInput.value === String(originalGlobalMarkerSize) && markerSizeRenderCount() >= globalMarkerUndoRendersBefore + 1, 12000);
+              globalMarkerEditor = doc.querySelector("#propertiesSelectionControls [data-marker-size-editor='global']");
+              const restoredGlobalGeometry = markerGeometry();
+              const restoredGlobalCategorySizes = categoryListMarkerSizes();
+              assert(checks, "Undo restores the Document marker size in exactly one map update", markerSizeRenderCount() === globalMarkerUndoRendersBefore + 1 && Number(globalMarkerEditor?.dataset.committedValue) === originalGlobalMarkerSize && globalMarkerEditor?.dataset.draftState === "applied" && Array.from(initialGlobalMarkerGeometry).every(([layoutId, signature]) => restoredGlobalGeometry.get(layoutId) === signature) && Array.from(initialGlobalCategorySizes).every(([categoryId, value]) => restoredGlobalCategorySizes.get(categoryId) === value), `renders=${globalMarkerUndoRendersBefore}->${markerSizeRenderCount()}; source=${markerSizeInput.value}`);
+
+              doc.querySelector(`#categoryList .legend-item-select[data-category-id="${frame.contentWindow.CSS.escape(firstLegendId)}"]`)?.click();
+              await waitFor(() => doc.querySelector(`#propertiesSelectionControls [data-marker-size-editor='category'][data-category-id="${frame.contentWindow.CSS.escape(firstLegendId)}"]`), 2000);
+              categoryMarkerEditor = doc.querySelector("#propertiesSelectionControls [data-marker-size-editor='category']");
+              categoryMarkerDraft = categoryMarkerEditor?.querySelector("[data-marker-size-draft='category']");
+              const originalAppliedCategoryMarkerSize = Number(categoryMarkerEditor?.dataset.committedValue);
+              const appliedCategoryMarkerSize = originalAppliedCategoryMarkerSize === 30 ? 29 : Math.min(30, originalAppliedCategoryMarkerSize + 4);
+              const initialCategoryMarkerGeometry = markerGeometry();
+              const affectedCategoryMarkerIds = new Set(Array.from(doc.querySelectorAll("#mapSvg .marker-layer .marker[data-layout-id]"))
+                .filter(node => String(node.__data__?.type || "") === firstLegendId)
+                .map(node => node.dataset.layoutId));
+              categoryMarkerDraft.value = String(appliedCategoryMarkerSize);
+              categoryMarkerDraft.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
+              await waitFor(() => categoryMarkerEditor.dataset.draftState === "pending" && !categoryMarkerEditor.querySelector("[data-property-action='apply-marker-size']")?.disabled, 2000);
+              const categoryMarkerApplyRendersBefore = markerSizeRenderCount();
+              categoryMarkerDraft.focus();
+              categoryMarkerDraft.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+              await waitFor(() => Number(doc.querySelector("#propertiesSelectionControls [data-marker-size-editor='category']")?.dataset.committedValue) === appliedCategoryMarkerSize && markerSizeRenderCount() >= categoryMarkerApplyRendersBefore + 1 && doc.activeElement === doc.querySelector("#propertiesSelectionControls [data-marker-size-draft='category']"), 12000);
+              categoryMarkerEditor = doc.querySelector("#propertiesSelectionControls [data-marker-size-editor='category']");
+              categoryMarkerDraft = categoryMarkerEditor?.querySelector("[data-marker-size-draft='category']");
+              const appliedCategoryGeometry = markerGeometry();
+              const affectedCategoryMarkersChanged = Array.from(affectedCategoryMarkerIds).every(layoutId => appliedCategoryGeometry.get(layoutId) !== initialCategoryMarkerGeometry.get(layoutId));
+              const unaffectedCategoryMarkersUnchanged = Array.from(initialCategoryMarkerGeometry).every(([layoutId, signature]) => affectedCategoryMarkerIds.has(layoutId) || appliedCategoryGeometry.get(layoutId) === signature);
+              assert(checks, "Category marker-size Enter Apply redraws once and changes only that category", affectedCategoryMarkerIds.size > 0 && markerSizeRenderCount() === categoryMarkerApplyRendersBefore + 1 && affectedCategoryMarkersChanged && unaffectedCategoryMarkersUnchanged && Number(firstLegendListPreview()?.dataset.markerSize) === appliedCategoryMarkerSize && Number(firstLegendPropertiesPreview()?.dataset.markerSize) === appliedCategoryMarkerSize && Number(categoryMarkerEditor.querySelector(".marker-size-preview-svg")?.dataset.markerSize) === appliedCategoryMarkerSize && categoryMarkerDraft?.value === String(appliedCategoryMarkerSize) && categoryMarkerEditor?.dataset.draftState === "applied" && categoryMarkerEditor?.querySelector("[data-property-action='apply-marker-size']")?.disabled && doc.activeElement === categoryMarkerDraft, `ids=${affectedCategoryMarkerIds.size}; renders=${categoryMarkerApplyRendersBefore}->${markerSizeRenderCount()}; focus=${doc.activeElement?.outerHTML || "none"}`);
+              const categoryMarkerUndoRendersBefore = markerSizeRenderCount();
+              doc.querySelector("#ribbonUndoBtn")?.click();
+              await waitFor(() => Number(doc.querySelector("#propertiesSelectionControls [data-marker-size-editor='category']")?.dataset.committedValue) === originalAppliedCategoryMarkerSize && markerSizeRenderCount() >= categoryMarkerUndoRendersBefore + 1, 12000);
+              categoryMarkerEditor = doc.querySelector("#propertiesSelectionControls [data-marker-size-editor='category']");
+              const restoredCategoryGeometry = markerGeometry();
+              assert(checks, "Undo restores the category marker size in exactly one map update", markerSizeRenderCount() === categoryMarkerUndoRendersBefore + 1 && categoryMarkerEditor?.dataset.draftState === "applied" && Number(firstLegendListPreview()?.dataset.markerSize) === originalAppliedCategoryMarkerSize && Array.from(initialCategoryMarkerGeometry).every(([layoutId, signature]) => restoredCategoryGeometry.get(layoutId) === signature), `renders=${categoryMarkerUndoRendersBefore}->${markerSizeRenderCount()}; committed=${categoryMarkerEditor?.dataset.committedValue || "missing"}`);
+              doc.querySelector("#propertiesSelectionControls [data-property-action='back-to-document']")?.click();
+              await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='document']"), 2000);
+            }
+            frame.contentWindow.removeEventListener("plotypus:render-performance", countMarkerSizeRenderEvent);
             assert(checks, "Document Properties do not duplicate map scale", !doc.querySelector("#propertiesSelectionControls [data-layout-proxy='mapScaleInput']"));
             assert(checks, "Document context shows map display groups and the Legend list", previewSections.every(section => section && !section.hidden) && !legendPropertiesSection.hidden);
             const documentPropertyHeading = doc.querySelector("#propertiesSelectionControls .document-property-section h3");
@@ -2054,12 +2833,20 @@
                 const pointWidthReadout = pointWidthEditor?.querySelector("[data-leader-line-width-readout]");
                 const pointWidthStatus = pointWidthEditor?.querySelector("[data-leader-line-width-draft-status]");
                 assert(checks, "Selected point Properties group hide, elbow, thickness draft, colour, and inherit resets", pointFields.every(Boolean) && Boolean(pointResetColour && pointWidthEditor && pointWidthDraft && pointWidthApply && pointWidthPreview && pointWidthReadout && pointWidthStatus) && pointResetColour.disabled && pointWidthApply.disabled && pointWidthEditor.dataset.committedValue === "" && Number(pointWidthEditor.dataset.inheritedValue) > 0 && pointWidthEditor.dataset.draftState === "applied" && pointFields[2].value === "" && pointFields[3].value.toLowerCase() === originalPointStroke, pointLeaderControls.textContent.trim());
-                assert(checks, "Point leader-line controls have accessible draft status and responsive fit", pointFields.every(input => Boolean(input?.closest("label")?.textContent.trim())) && pointWidthDraft.getAttribute("aria-describedby") === pointWidthStatus.id && pointWidthApply.tagName === "BUTTON" && pointWidthApply.type === "button" && pointWidthReadout.closest(".leader-line-thickness-preview")?.getAttribute("aria-live") === "polite" && Boolean(pointResetColour?.textContent.trim()) && pointLeaderControls.scrollWidth <= pointLeaderControls.clientWidth + 1 && doc.querySelector("#propertiesSelectionControls")?.scrollWidth <= doc.querySelector("#propertiesSelectionControls")?.clientWidth + 1 && (appWidth > 1080 || (!propertiesPanel.inert && doc.body.classList.contains("properties-open"))), `group=${pointLeaderControls.scrollWidth}/${pointLeaderControls.clientWidth}; panel=${doc.querySelector("#propertiesSelectionControls")?.scrollWidth || 0}/${doc.querySelector("#propertiesSelectionControls")?.clientWidth || 0}; drawer=${doc.body.classList.contains("properties-open")}`);
+                assert(checks, "Point leader-line controls have accessible one-decimal inherited status and responsive fit", pointFields.every(input => Boolean(input?.closest("label")?.textContent.trim())) && pointWidthDraft.min === "1" && pointWidthDraft.max === "10" && pointWidthDraft.step === "0.5" && pointWidthDraft.getAttribute("aria-describedby") === pointWidthStatus.id && pointWidthApply.tagName === "BUTTON" && pointWidthApply.type === "button" && pointWidthReadout.closest(".leader-line-thickness-preview")?.getAttribute("aria-live") === "polite" && pointWidthDraft.value === "" && /^\d+\.\d$/.test(pointWidthDraft.placeholder) && /Preview: \d+\.\d px \(inherited\)/.test(pointWidthReadout.textContent || "") && Boolean(pointResetColour?.textContent.trim()) && pointLeaderControls.scrollWidth <= pointLeaderControls.clientWidth + 1 && doc.querySelector("#propertiesSelectionControls")?.scrollWidth <= doc.querySelector("#propertiesSelectionControls")?.clientWidth + 1 && (appWidth > 1080 || (!propertiesPanel.inert && doc.body.classList.contains("properties-open"))), `input=${pointWidthDraft.value || "blank"}; placeholder=${pointWidthDraft.placeholder}; readout=${pointWidthReadout.textContent || "missing"}; group=${pointLeaderControls.scrollWidth}/${pointLeaderControls.clientWidth}`);
+                const pointLeaderToggleLayout = leaderToggleLayout(pointLeaderControls);
+                assert(checks, "Point leader-line toggles use unclipped compact switches without redundant edit icons", pointLeaderToggleLayout.pass && !pointLeaderControls.querySelector(".leader-line-toggle-list .field-origin-icon"), pointLeaderToggleLayout.detail);
                 assert(checks, "Selected point leader-line Properties use clear inherited English copy", /Leader lines/.test(pointLeaderControls.textContent || "") && /Hide leader line/.test(pointLeaderControls.textContent || "") && /Use elbow leader/.test(pointLeaderControls.textContent || "") && /Preview: .*inherited/.test(pointLeaderControls.textContent || "") && /Inherited colour/.test(pointLeaderControls.textContent || "") && /Apply/.test(pointLeaderControls.textContent || ""), pointLeaderControls.textContent.trim());
 
                 await waitFor(() => !doc.querySelector("#mapHost")?.classList.contains("is-rendering") && frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot().pending === false, 12000);
-                const pointRenderSampleCount = () => performanceApi?.snapshot().samples.length || 0;
-                const testPointWidth = originalPointWidth === 7.5 ? "6.5" : "7.5";
+                let pointRenderEventCount = 0;
+                const countPointRenderEvent = event => {
+                  if (event.detail?.kind === "render" && event.detail?.outputMode === "web") pointRenderEventCount += 1;
+                };
+                frame.contentWindow.addEventListener("plotypus:render-performance", countPointRenderEvent);
+                const pointRenderSampleCount = () => pointRenderEventCount;
+                const testPointWidth = originalPointWidth === 9.5 ? "10" : "9.5";
+                const testPointWidthDisplay = Number(testPointWidth).toFixed(1);
                 const pointDraftMapBefore = doc.querySelector("#mapSvg")?.innerHTML || "";
                 const pointDraftSamplesBefore = pointRenderSampleCount();
                 const pointDraftQualityBefore = frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot();
@@ -2069,14 +2856,17 @@
                 pointWidthDraft.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
                 await waitFor(() => pointWidthEditor.dataset.draftState === "pending" && !pointWidthApply.disabled, 2000);
                 const pointDraftQualityAfter = frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot();
-                assert(checks, "Point thickness draft updates its local preview without changing row, SVG, Undo, quality, or render count", Number(pointWidthPreview.getAttribute("stroke-width") || 0) === Number(testPointWidth) && Number(pointWidthPreview.getAttribute("stroke-width") || 0) !== inheritedPointPreviewWidth && new RegExp(testPointWidth.replace(".", "\\.")).test(pointWidthReadout.textContent || "") && /Apply to update the map/.test(pointWidthStatus.textContent || "") && pointRow()?.querySelector(".leader-line-width-input")?.value === "" && Number(pointLeader()?.getAttribute("stroke-width") || 0) === originalPointWidth && (doc.querySelector("#mapSvg")?.innerHTML || "") === pointDraftMapBefore && pointRenderSampleCount() === pointDraftSamplesBefore && pointDraftQualityAfter?.requests === pointDraftQualityBefore?.requests && pointDraftQualityAfter?.completed === pointDraftQualityBefore?.completed && pointDraftQualityAfter?.revision === pointDraftQualityBefore?.revision && doc.querySelector("#ribbonUndoBtn")?.disabled === pointUndoDisabledBeforeDraft && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), `preview=${inheritedPointPreviewWidth}->${pointWidthPreview.getAttribute("stroke-width")}; row=${pointRow()?.querySelector(".leader-line-width-input")?.value || "blank"}; renders=${pointDraftSamplesBefore}->${pointRenderSampleCount()}; quality=${pointDraftQualityBefore?.revision}->${pointDraftQualityAfter?.revision}`);
+                assert(checks, "Point integer thickness draft displays to one decimal without changing row, SVG, Undo, quality, or render count", Number(pointWidthPreview.getAttribute("stroke-width") || 0) === Number(testPointWidth) && Number(pointWidthPreview.getAttribute("stroke-width") || 0) !== inheritedPointPreviewWidth && pointWidthReadout.textContent.includes(`${testPointWidthDisplay} px`) && pointWidthStatus.textContent.includes(`${testPointWidthDisplay} px`) && pointRow()?.querySelector(".leader-line-width-input")?.value === "" && Number(pointLeader()?.getAttribute("stroke-width") || 0) === originalPointWidth && (doc.querySelector("#mapSvg")?.innerHTML || "") === pointDraftMapBefore && pointRenderSampleCount() === pointDraftSamplesBefore && pointDraftQualityAfter?.requests === pointDraftQualityBefore?.requests && pointDraftQualityAfter?.completed === pointDraftQualityBefore?.completed && pointDraftQualityAfter?.revision === pointDraftQualityBefore?.revision && doc.querySelector("#ribbonUndoBtn")?.disabled === pointUndoDisabledBeforeDraft && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), `draft=${pointWidthDraft.value}; readout=${pointWidthReadout.textContent}; row=${pointRow()?.querySelector(".leader-line-width-input")?.value || "blank"}`);
+                pointWidthDraft.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+                await waitFor(() => pointWidthDraft.value === testPointWidthDisplay, 2000);
+                assert(checks, "Point thickness input formats to one decimal on change without applying", pointWidthDraft.value === testPointWidthDisplay && pointRow()?.querySelector(".leader-line-width-input")?.value === "" && pointRenderSampleCount() === pointDraftSamplesBefore, `input=${pointWidthDraft.value}; row=${pointRow()?.querySelector(".leader-line-width-input")?.value || "blank"}; renders=${pointDraftSamplesBefore}->${pointRenderSampleCount()}`);
                 const pointApplySamplesBefore = pointRenderSampleCount();
                 pointWidthDraft.focus();
                 pointWidthDraft.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
                 await waitFor(() => pointRow()?.querySelector(".leader-line-width-input")?.value === testPointWidth && pointRenderSampleCount() >= pointApplySamplesBefore + 1 && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), 12000);
                 let activePointWidthEditor = doc.querySelector("#propertiesSelectionControls [data-leader-line-width-editor='point']");
                 let activePointWidthDraft = activePointWidthEditor?.querySelector("[data-leader-line-width-draft='point']");
-                assert(checks, "Enter applies point thickness in exactly one map update and restores draft focus", pointRenderSampleCount() === pointApplySamplesBefore + 1 && Number(pointLeader()?.getAttribute("stroke-width") || 0) !== originalPointWidth && activePointWidthEditor?.dataset.committedValue === testPointWidth && activePointWidthEditor?.dataset.draftState === "applied" && activePointWidthEditor?.querySelector("[data-property-action='apply-leader-line-width']")?.disabled && doc.activeElement === activePointWidthDraft, `renders=${pointApplySamplesBefore}->${pointRenderSampleCount()}; width=${pointLeader()?.getAttribute("stroke-width") || "missing"}; focus=${doc.activeElement?.outerHTML || "none"}`);
+                assert(checks, "Enter applies point thickness in exactly one map update and restores a one-decimal draft", pointRenderSampleCount() === pointApplySamplesBefore + 1 && Number(pointLeader()?.getAttribute("stroke-width") || 0) !== originalPointWidth && Number(activePointWidthEditor?.dataset.committedValue) === Number(testPointWidth) && activePointWidthDraft?.value === testPointWidthDisplay && activePointWidthEditor?.dataset.draftState === "applied" && activePointWidthEditor?.querySelector("[data-property-action='apply-leader-line-width']")?.disabled && doc.activeElement === activePointWidthDraft, `renders=${pointApplySamplesBefore}->${pointRenderSampleCount()}; width=${pointLeader()?.getAttribute("stroke-width") || "missing"}; input=${activePointWidthDraft?.value || "missing"}; focus=${doc.activeElement?.outerHTML || "none"}`);
                 const pointUndoSamplesBefore = pointRenderSampleCount();
                 doc.querySelector("#ribbonUndoBtn")?.click();
                 await waitFor(() => pointRow()?.querySelector(".leader-line-width-input")?.value === "" && pointRenderSampleCount() >= pointUndoSamplesBefore + 1 && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), 12000);
@@ -2151,9 +2941,9 @@
                 assert(checks, "Clearing a point thickness previews inherited width without applying it", pointRow()?.querySelector(".leader-line-width-input")?.value === testPointWidth && Number(pointLeader()?.getAttribute("stroke-width") || 0) !== originalPointWidth && Number(activePointWidthEditor.querySelector("[data-leader-line-width-preview]")?.getAttribute("stroke-width") || 0) === Number(activePointWidthEditor.dataset.inheritedValue) && /inherited/i.test(activePointWidthEditor.querySelector("[data-leader-line-width-readout]")?.textContent || "") && /inherited thickness.*Apply/i.test(activePointWidthEditor.querySelector("[data-leader-line-width-draft-status]")?.textContent || "") && (doc.querySelector("#mapSvg")?.innerHTML || "") === pointResetMapBefore && pointRenderSampleCount() === pointResetSamplesBefore && pointResetQualityAfterDraft?.revision === pointResetQualityBefore?.revision, `row=${pointRow()?.querySelector(".leader-line-width-input")?.value || "blank"}; preview=${activePointWidthEditor.querySelector("[data-leader-line-width-preview]")?.getAttribute("stroke-width") || "missing"}; renders=${pointResetSamplesBefore}->${pointRenderSampleCount()}`);
                 const pointResetApplySamplesBefore = pointRenderSampleCount();
                 activePointWidthEditor.querySelector("[data-property-action='apply-leader-line-width']")?.click();
-                await waitFor(() => pointRow()?.querySelector(".leader-line-width-input")?.value === "" && Number(pointLeader()?.getAttribute("stroke-width") || 0) === originalPointWidth && pointRenderSampleCount() >= pointResetApplySamplesBefore + 1 && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), 12000);
+                await waitFor(() => pointRow()?.querySelector(".leader-line-width-input")?.value === "" && pointRenderSampleCount() >= pointResetApplySamplesBefore + 1 && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), 12000);
                 activePointWidthEditor = doc.querySelector("#propertiesSelectionControls [data-leader-line-width-editor='point']");
-                assert(checks, "Applying a blank point thickness restores inheritance in exactly one map update", pointRenderSampleCount() === pointResetApplySamplesBefore + 1 && activePointWidthEditor?.dataset.committedValue === "" && activePointWidthEditor?.dataset.draftState === "applied" && activePointWidthEditor?.querySelector("[data-property-action='apply-leader-line-width']")?.disabled && doc.activeElement === activePointWidthEditor?.querySelector("[data-leader-line-width-draft='point']"), `renders=${pointResetApplySamplesBefore}->${pointRenderSampleCount()}; row=${pointRow()?.querySelector(".leader-line-width-input")?.value || "blank"}`);
+                assert(checks, "Applying a blank point thickness restores inheritance in exactly one map update", pointRenderSampleCount() === pointResetApplySamplesBefore + 1 && Number(pointLeader()?.getAttribute("stroke-width") || 0) === originalPointWidth && activePointWidthEditor?.dataset.committedValue === "" && activePointWidthEditor?.dataset.draftState === "applied" && activePointWidthEditor?.querySelector("[data-property-action='apply-leader-line-width']")?.disabled && doc.activeElement === activePointWidthEditor?.querySelector("[data-leader-line-width-draft='point']"), `renders=${pointResetApplySamplesBefore}->${pointRenderSampleCount()}; row=${pointRow()?.querySelector(".leader-line-width-input")?.value || "blank"}; width=${pointLeader()?.getAttribute("stroke-width") || "missing"}/${originalPointWidth}`);
                 doc.querySelector("#propertiesSelectionControls [data-property-action='reset-leader-colour']")?.click();
                 await waitFor(() => {
                   const leader = pointLeader();
@@ -2168,6 +2958,7 @@
                     && (leader.getAttribute("d") || "") === originalPointPath;
                 }, 12000);
                 assert(checks, "Point Apply and inherited reset restore colour, thickness, routing, casing, and row state", (pointLeader()?.getAttribute("stroke") || "").toLowerCase() === doc.querySelector("#leaderColourInput")?.value.toLowerCase() && Number(pointLeader()?.getAttribute("stroke-width") || 0) === originalPointWidth && (!pointCasing() || Number(pointCasing()?.getAttribute("stroke-width") || 0) === originalPointCasingWidth), `${pointLeader()?.getAttribute("stroke") || "missing"}/${pointLeader()?.getAttribute("stroke-width") || "missing"}; casing=${pointCasing()?.getAttribute("stroke-width") || "none"}`);
+                frame.contentWindow.removeEventListener("plotypus:render-performance", countPointRenderEvent);
                 if (appWidth <= 1080 && doc.body.classList.contains("properties-open")) {
                   propertiesToggle?.click();
                   await waitFor(() => propertiesPanel.inert && !doc.body.classList.contains("properties-open"), 2000);
@@ -2462,6 +3253,61 @@
               return header && header.scrollWidth <= header.clientWidth + 1;
             });
             assert(checks, "Project compact headers fit their edit hints without ellipses", projectHeadersWithoutEllipses);
+            const projectUtilityColumns = [".annotation-preview-col", ".status-col", ".line-col", ".select-col"];
+            const projectBodyTextSelectors = [".name-input", ".type-input", ".annotation-preview-cell", ".region-input", ".lon-input", ".lat-input", ".status-cell"];
+            const projectMinimumWidth = doc.querySelector("#projectTable")?.dataset.locationMode === "regions" ? 1530 : 1650;
+            const englishProjectTableLayout = semanticTableLayout(doc.querySelector("#projectTable"), {
+              utilitySelectors: projectUtilityColumns,
+              bodyTextSelectors: projectBodyTextSelectors,
+              minimumWidth: projectMinimumWidth
+            });
+            assert(checks, "English Project table headers fit with consistent inline padding", englishProjectTableLayout.headersFit && englishProjectTableLayout.headerPaddingIsConsistent, englishProjectTableLayout.detail);
+            assert(checks, "English Project row text uses the shared inline cell padding", englishProjectTableLayout.bodyTextPaddingIsConsistent, englishProjectTableLayout.detail);
+            assert(checks, "English Project utility columns contain their controls and status text", englishProjectTableLayout.utilityColumnsFit, englishProjectTableLayout.detail);
+            assert(checks, `${appWidth <= 1080 ? "1024px" : "Desktop"} Project table enforces its language-safe minimum width inside horizontal scrolling`, englishProjectTableLayout.minimumWidthIsEnforced && englishProjectTableLayout.horizontalOverflowIsContained, englishProjectTableLayout.detail);
+            const englishTransformativeType = Array.from(doc.querySelectorAll("#projectTable .type-input")).find(select => /Transformative Strategies/.test(select.selectedOptions[0]?.textContent || ""));
+            const englishTransformativeTypeFit = selectOptionTextFit(englishTransformativeType, englishTransformativeType?.selectedOptions[0]?.textContent.trim());
+            assert(checks, "English built-in Project Type value fits inside its selected control", englishTransformativeTypeFit.pass, englishTransformativeTypeFit.detail);
+            const englishProjectRegionsLayout = projectRegionsModeLayout(doc.querySelector("#projectTable"), {
+              utilitySelectors: projectUtilityColumns,
+              bodyTextSelectors: projectBodyTextSelectors
+            });
+            assert(checks, "English Project Region-anchor columns fit without mutating row state", englishProjectRegionsLayout.pass, englishProjectRegionsLayout.detail);
+            const englishCsvPreviewLayout = csvPreviewTableFixtureLayout(doc, "en");
+            assert(checks, "English CSV preview columns fit with consistent padding and isolated horizontal scrolling", englishCsvPreviewLayout.pass, englishCsvPreviewLayout.detail);
+            const englishRegionCsvPreviewLayout = csvPreviewTableFixtureLayout(doc, "en", "regions");
+            assert(checks, "English Region-mode CSV preview columns fit inside isolated horizontal scrolling", englishRegionCsvPreviewLayout.pass, englishRegionCsvPreviewLayout.detail);
+            uiFrenchButton?.click();
+            await waitFor(() => doc.documentElement.lang === "fr" && /Nom du projet/.test(doc.querySelector("#projectTable .name-col")?.textContent || "") && /Masquer le trait/.test(doc.querySelector("#projectTable .line-col")?.textContent || ""), 2000);
+            const frenchProjectTableLayout = semanticTableLayout(doc.querySelector("#projectTable"), {
+              utilitySelectors: projectUtilityColumns,
+              bodyTextSelectors: projectBodyTextSelectors,
+              minimumWidth: projectMinimumWidth
+            });
+            assert(checks, "French Project table headers fit with consistent inline padding", frenchProjectTableLayout.headersFit && frenchProjectTableLayout.headerPaddingIsConsistent, frenchProjectTableLayout.detail);
+            assert(checks, "French Project row text uses the shared inline cell padding", frenchProjectTableLayout.bodyTextPaddingIsConsistent, frenchProjectTableLayout.detail);
+            assert(checks, "French Project utility columns contain their controls and status text", frenchProjectTableLayout.utilityColumnsFit, frenchProjectTableLayout.detail);
+            assert(checks, `${appWidth <= 1080 ? "1024px" : "Desktop"} French Project table keeps horizontal overflow inside the table viewport`, frenchProjectTableLayout.minimumWidthIsEnforced && frenchProjectTableLayout.horizontalOverflowIsContained, frenchProjectTableLayout.detail);
+            frenchAuthoringButton?.click();
+            await waitFor(() => Array.from(doc.querySelectorAll("#projectTable .type-input")).some(select => /Stratégies de transformation/.test(select.selectedOptions[0]?.textContent || "")), 2000);
+            const frenchTransformativeType = Array.from(doc.querySelectorAll("#projectTable .type-input")).find(select => /Stratégies de transformation/.test(select.selectedOptions[0]?.textContent || ""));
+            const frenchTransformativeTypeFit = selectOptionTextFit(frenchTransformativeType, frenchTransformativeType?.selectedOptions[0]?.textContent.trim());
+            assert(checks, "French built-in Project Type value fits inside its selected control", frenchTransformativeTypeFit.pass, frenchTransformativeTypeFit.detail);
+            const frenchProjectRegionsLayout = projectRegionsModeLayout(doc.querySelector("#projectTable"), {
+              utilitySelectors: projectUtilityColumns,
+              bodyTextSelectors: projectBodyTextSelectors
+            });
+            assert(checks, "French Project Region-anchor columns fit without mutating row state", frenchProjectRegionsLayout.pass, frenchProjectRegionsLayout.detail);
+            const frenchCsvPreviewLayout = csvPreviewTableFixtureLayout(doc, "fr");
+            assert(checks, "French CSV preview columns fit with consistent padding and isolated horizontal scrolling", frenchCsvPreviewLayout.pass, frenchCsvPreviewLayout.detail);
+            const frenchRegionCsvPreviewLayout = csvPreviewTableFixtureLayout(doc, "fr", "regions");
+            assert(checks, "French Region-mode CSV preview columns fit inside isolated horizontal scrolling", frenchRegionCsvPreviewLayout.pass, frenchRegionCsvPreviewLayout.detail);
+            englishAuthoringButton?.click();
+            await waitFor(() => Array.from(doc.querySelectorAll("#projectTable .type-input")).some(select => /Transformative Strategies/.test(select.selectedOptions[0]?.textContent || "")), 2000);
+            uiEnglishButton?.click();
+            await waitFor(() => doc.documentElement.lang === "en" && /Project name/.test(doc.querySelector("#projectTable .name-col")?.textContent || ""), 2000);
+            firstNameInput = doc.querySelector("#projectTable .name-input");
+            inputStyle = firstNameInput ? frame.contentWindow.getComputedStyle(firstNameInput) : null;
             if (appWidth <= 1080) {
               assert(checks, "Narrow Project filter remains a compact selector", frame.contentWindow.getComputedStyle(doc.querySelector("#projectFilterSelect")).display !== "none");
               assert(checks, "Project table preserves its 760px minimum", parseFloat(frame.contentWindow.getComputedStyle(doc.querySelector("#projectTablePane")).minWidth) >= 760);
@@ -2470,7 +3316,7 @@
             const statusCell = doc.querySelector("#projectTable .status-cell");
             const statusBadge = doc.querySelector("#projectTable .row-status-badge:not([data-state='blank'])");
             assert(checks, "Project status cells are read-only and labelled", statusCell?.getAttribute("aria-readonly") === "true" && /^Status: /.test(statusBadge?.getAttribute("aria-label") || ""));
-            assert(checks, "Project status column fits the widest badge without excess width", statusCell && statusBadge && statusCell.getBoundingClientRect().width <= 150 && statusBadge.getBoundingClientRect().right <= statusCell.getBoundingClientRect().right - 8, `cell=${statusCell ? Math.round(statusCell.getBoundingClientRect().width) : "missing"}`);
+            assert(checks, "Project status column fits the widest badge with standard inline padding", statusCell && statusBadge && statusCell.getBoundingClientRect().width <= 290 && statusBadge.getBoundingClientRect().left >= statusCell.getBoundingClientRect().left + 16 && statusBadge.getBoundingClientRect().right <= statusCell.getBoundingClientRect().right - 16, `cell=${statusCell ? Math.round(statusCell.getBoundingClientRect().width) : "missing"}`);
             const statusCellCenter = statusCell ? statusCell.getBoundingClientRect().left + statusCell.getBoundingClientRect().width / 2 : 0;
             const statusBadgeCenter = statusBadge ? statusBadge.getBoundingClientRect().left + statusBadge.getBoundingClientRect().width / 2 : 999;
             assert(checks, "Project status badge is centered in the status column", Math.abs(statusCellCenter - statusBadgeCenter) <= 3, `cell=${Math.round(statusCellCenter)}, badge=${Math.round(statusBadgeCenter)}`);
@@ -2581,8 +3427,36 @@
             const frenchRegionRow = Array.from(doc.querySelectorAll("#regionTable tbody tr[data-region-id]")).find(row => /Colombie-Britannique/.test(row.textContent || ""));
             assert(checks, "Canada baselayer region names switch to French", /Colombie-Britannique/.test(frenchRegionTableText), frenchRegionTableText);
             assert(checks, "Canada baselayer editable ARIA labels switch to French region names", /Modifier les propriétés de la région Colombie-Britannique/.test(frenchRegionRow?.getAttribute("aria-label") || "") && /Inclure Colombie-Britannique/.test(frenchRegionRow?.querySelector(".region-table-included-input")?.getAttribute("aria-label") || ""));
+            const regionUtilityColumns = [".region-included-col", ".region-status-col", ".region-count-col", ".region-value-col", ".region-fill-col"];
+            const regionBodyTextSelectors = [".region-table-name", ".region-status-input", ".region-count-cell", ".region-value-cell", ".region-fill-picker"];
+            const frenchRegionTableLayout = semanticTableLayout(doc.querySelector("#regionTable"), {
+              utilitySelectors: regionUtilityColumns,
+              bodyTextSelectors: regionBodyTextSelectors,
+              minimumWidth: 1430
+            });
+            assert(checks, "French Map baselayer headers fit with consistent inline padding", frenchRegionTableLayout.headersFit && frenchRegionTableLayout.headerPaddingIsConsistent, frenchRegionTableLayout.detail);
+            assert(checks, "French Map baselayer row text uses the shared inline cell padding", frenchRegionTableLayout.bodyTextPaddingIsConsistent, frenchRegionTableLayout.detail);
+            assert(checks, "French Map baselayer utility columns contain their controls and values", frenchRegionTableLayout.utilityColumnsFit, frenchRegionTableLayout.detail);
+            assert(checks, `${appWidth <= 1080 ? "1024px" : "Desktop"} French Map baselayer keeps horizontal overflow inside the table viewport`, frenchRegionTableLayout.minimumWidthIsEnforced && frenchRegionTableLayout.horizontalOverflowIsContained, frenchRegionTableLayout.detail);
+            const frenchRegionStatusSelect = doc.querySelector("#regionTable .region-status-input");
+            const frenchLongestRegionStatus = Array.from(frenchRegionStatusSelect?.options || []).find(option => option.textContent.trim() === "Conclu, pas en vigueur");
+            const frenchRegionStatusFit = selectOptionTextFit(frenchRegionStatusSelect, frenchLongestRegionStatus?.textContent.trim());
+            assert(checks, "French longest Region status value fits inside its select control", frenchRegionStatusFit.pass, frenchRegionStatusFit.detail);
             uiEnglishButton?.click();
             await waitFor(() => doc.documentElement.lang === "en" && /Map baselayer/.test(doc.querySelector("#regionTableTab")?.textContent || ""), 2000);
+            const englishRegionTableLayout = semanticTableLayout(doc.querySelector("#regionTable"), {
+              utilitySelectors: regionUtilityColumns,
+              bodyTextSelectors: regionBodyTextSelectors,
+              minimumWidth: 1430
+            });
+            assert(checks, "English Map baselayer headers fit with consistent inline padding", englishRegionTableLayout.headersFit && englishRegionTableLayout.headerPaddingIsConsistent, englishRegionTableLayout.detail);
+            assert(checks, "English Map baselayer row text uses the shared inline cell padding", englishRegionTableLayout.bodyTextPaddingIsConsistent, englishRegionTableLayout.detail);
+            assert(checks, "English Map baselayer utility columns contain their controls and values", englishRegionTableLayout.utilityColumnsFit, englishRegionTableLayout.detail);
+            assert(checks, `${appWidth <= 1080 ? "1024px" : "Desktop"} Map baselayer enforces its language-safe minimum width inside horizontal scrolling`, englishRegionTableLayout.minimumWidthIsEnforced && englishRegionTableLayout.horizontalOverflowIsContained, englishRegionTableLayout.detail);
+            const englishRegionStatusSelect = doc.querySelector("#regionTable .region-status-input");
+            const englishLongestRegionStatus = Array.from(englishRegionStatusSelect?.options || []).find(option => option.textContent.trim() === "Concluded, not in force");
+            const englishRegionStatusFit = selectOptionTextFit(englishRegionStatusSelect, englishLongestRegionStatus?.textContent.trim());
+            assert(checks, "English longest Region status value fits inside its select control", englishRegionStatusFit.pass, englishRegionStatusFit.detail);
             const regionRowText = doc.querySelector("#regionTable .region-table-name");
             const regionRowFontSize = regionRowText ? frame.contentWindow.getComputedStyle(regionRowText).fontSize : "";
             doc.querySelector("#projectTableTab")?.click();
@@ -2598,10 +3472,11 @@
             assert(checks, "Map Properties mark baselayer size as editable", doc.querySelectorAll("#propertiesSelectionControls [data-property-kind='map'] .field-origin-icon-edit").length === 1);
             assert(checks, "Map baselayer Properties omit duplicate region table actions", !doc.querySelector("#propertiesSelectionControls [data-property-action='select-all-regions']") && !doc.querySelector("#propertiesSelectionControls [data-property-action='clear-regions']") && !doc.querySelector("#propertiesSelectionControls [data-property-action='use-project-regions']"));
             const regionIncludedWidth = doc.querySelector("#regionTable .region-included-col")?.getBoundingClientRect().width || 0;
+            const regionStatusWidth = doc.querySelector("#regionTable .region-status-col")?.getBoundingClientRect().width || 0;
             const regionCountWidth = doc.querySelector("#regionTable .region-count-col")?.getBoundingClientRect().width || 0;
             const regionValueWidth = doc.querySelector("#regionTable .region-value-col")?.getBoundingClientRect().width || 0;
             const regionPreviewWidth = doc.querySelector("#regionTable .region-fill-col")?.getBoundingClientRect().width || 0;
-            assert(checks, "Region utility columns stay compact", regionIncludedWidth <= 125 && regionCountWidth <= 105 && regionValueWidth <= 210 && regionPreviewWidth <= 165, `included=${Math.round(regionIncludedWidth)}, points=${Math.round(regionCountWidth)}, order=${Math.round(regionValueWidth)}, preview=${Math.round(regionPreviewWidth)}`);
+            assert(checks, "Region utility columns retain their language-safe widths", regionIncludedWidth >= 170 && regionIncludedWidth <= 190 && regionStatusWidth >= 280 && regionStatusWidth <= 300 && regionCountWidth >= 130 && regionCountWidth <= 150 && regionValueWidth >= 290 && regionValueWidth <= 310 && regionPreviewWidth >= 170 && regionPreviewWidth <= 190, `included=${Math.round(regionIncludedWidth)}, status=${Math.round(regionStatusWidth)}, points=${Math.round(regionCountWidth)}, order=${Math.round(regionValueWidth)}, colour=${Math.round(regionPreviewWidth)}`);
             assert(checks, "Region Colour order header fits its edit hint without ellipses", doc.querySelector("#regionTable .region-value-col")?.scrollWidth <= doc.querySelector("#regionTable .region-value-col")?.clientWidth + 1);
             assert(checks, "Region editable cells expose value-cell affordance hooks", Boolean(doc.querySelector("#regionTable .region-included-cell.region-vcell") && doc.querySelector("#regionTable .region-value-cell.region-vcell") && doc.querySelector("#regionTable .region-fill-cell.region-vcell")));
             doc.querySelector("#previewTableTab")?.click();
@@ -2698,6 +3573,18 @@
             assert(checks, "Translate omits the retired language-focus control and emphasis state", !doc.querySelector(".translation-direction, [data-translation-direction], #translationDirectionText, .translation-input.is-emphasis"));
             assert(checks, "Translation groups are rendered", doc.querySelectorAll("#translationGroups .translation-group").length > 0);
             assert(checks, "Translation progress uses the concise Translations label", /^\d+ \/ \d+ (Translations|Traductions)$/.test(doc.querySelector("#translationProgressText")?.textContent.trim() || ""), doc.querySelector("#translationProgressText")?.textContent.trim() || "");
+            const englishTranslationGridLayout = translationGridLayout(doc);
+            assert(checks, "English Translate columns align and fit with consistent inline padding", englishTranslationGridLayout.headersFit && englishTranslationGridLayout.rowPaddingIsConsistent, englishTranslationGridLayout.detail);
+            assert(checks, "English Translate status stays inside its utility column", englishTranslationGridLayout.utilityColumnsFit, englishTranslationGridLayout.detail);
+            assert(checks, `${appWidth <= 1080 ? "1024px" : "Desktop"} Translate grid keeps its language-safe width without page overflow`, englishTranslationGridLayout.minimumWidthIsEnforced && englishTranslationGridLayout.horizontalOverflowIsContained, englishTranslationGridLayout.detail);
+            uiFrenchButton?.click();
+            await waitFor(() => doc.documentElement.lang === "fr" && /Anglais/.test(doc.querySelector(".translation-column-labels")?.textContent || "") && /État/.test(doc.querySelector(".translation-column-labels")?.textContent || ""), 2000);
+            const frenchTranslationGridLayout = translationGridLayout(doc);
+            assert(checks, "French Translate columns align and fit with consistent inline padding", frenchTranslationGridLayout.headersFit && frenchTranslationGridLayout.rowPaddingIsConsistent, frenchTranslationGridLayout.detail);
+            assert(checks, "French Translate status stays inside its utility column", frenchTranslationGridLayout.utilityColumnsFit, frenchTranslationGridLayout.detail);
+            assert(checks, `${appWidth <= 1080 ? "1024px" : "Desktop"} French Translate grid stays contained without page overflow`, frenchTranslationGridLayout.minimumWidthIsEnforced && frenchTranslationGridLayout.horizontalOverflowIsContained, frenchTranslationGridLayout.detail);
+            uiEnglishButton?.click();
+            await waitFor(() => doc.documentElement.lang === "en" && /English/.test(doc.querySelector(".translation-column-labels")?.textContent || "") && /Status/.test(doc.querySelector(".translation-column-labels")?.textContent || ""), 2000);
             const translateAddSection = doc.querySelector(".translate-add-section");
             assert(checks, "Translation filters and paste action remain available", doc.querySelectorAll("[data-translation-filter]").length === 2 && Boolean(doc.querySelector("#pasteTranslationColumnBtn")));
             assert(checks, "Translation import action is in the Add section", Boolean(translateAddSection?.querySelector("#importTranslationsBtn")) && /Add|Ajouter/.test(translateAddSection?.textContent || ""), translateAddSection?.textContent || "");

@@ -25,7 +25,67 @@
 
   function propertyFieldLabel(options, label, origin = "edit") {
     const { escapeHtml } = options || {};
-    return `<span class="properties-field-label">${escapeHtml(label)} ${propertyOriginIcon(options, origin)}</span>`;
+    const originIcon = origin ? ` ${propertyOriginIcon(options, origin)}` : "";
+    return `<span class="properties-field-label">${escapeHtml(label)}${originIcon}</span>`;
+  }
+
+  function formatLeaderLineWidthInput(value) {
+    if (value === undefined || value === null || String(value).trim() === "") return "";
+    const number = Number(value);
+    return Number.isFinite(number) ? number.toFixed(1) : String(value);
+  }
+
+  function formatLeaderLineWidthDisplay(options, value) {
+    if (options && typeof options.formatLeaderLineWidth === "function") {
+      return options.formatLeaderLineWidth(value);
+    }
+    return formatLeaderLineWidthInput(value);
+  }
+
+  function formatMarkerSizeInput(value) {
+    if (value === undefined || value === null || String(value).trim() === "") return "";
+    const number = Number(value);
+    return Number.isFinite(number) ? String(number) : String(value);
+  }
+
+  function renderMarkerSizeEditor(options, editorOptions = {}) {
+    const { escapeHtml } = options || {};
+    const t = translator(options);
+    const {
+      scope = "global",
+      committedValue = "",
+      minimum = 4,
+      maximum = scope === "category" ? 30 : 20,
+      step = 1,
+      appliedStatus = "",
+      origin = null,
+      categoryId = ""
+    } = editorOptions;
+    const committed = formatMarkerSizeInput(committedValue);
+    const effective = committed || String(minimum);
+    const statusId = `markerSizeStatus-${scope}${categoryId ? `-${categoryId}` : ""}`;
+    const previewMarkup = typeof options.renderMarkerSizePreview === "function"
+      ? options.renderMarkerSizePreview(effective, { scope, categoryId })
+      : `<svg class="marker-size-preview-svg" viewBox="0 0 72 72" focusable="false" aria-hidden="true"><circle cx="36" cy="36" r="${escapeHtml(effective)}"></circle></svg>`;
+    const inputBinding = scope === "category"
+      ? "data-category-marker-size-draft required"
+      : "data-layout-proxy=\"markerSizeInput\" required";
+    return `
+      <div class="marker-size-editor" data-marker-size-editor="${escapeHtml(scope)}" data-committed-value="${escapeHtml(committed)}" data-minimum="${escapeHtml(String(minimum))}" data-maximum="${escapeHtml(String(maximum))}" data-step="${escapeHtml(String(step))}" data-category-id="${escapeHtml(categoryId)}" data-applied-status="${escapeHtml(appliedStatus || t("properties.markerSize.draftApplied"))}" data-draft-state="applied">
+        <div class="marker-size-controls">
+          <label>
+            ${propertyFieldLabel(options, scope === "category" ? t("properties.category.marker") : t("properties.field.defaultMarkerSize"), origin)}
+            <input class="type-numeric-data property-numeric-input" type="number" min="${escapeHtml(String(minimum))}" max="${escapeHtml(String(maximum))}" step="${escapeHtml(String(step))}" inputmode="numeric" data-marker-size-draft="${escapeHtml(scope)}" ${inputBinding} value="${escapeHtml(committed)}" aria-describedby="${escapeHtml(statusId)}">
+          </label>
+          <button type="button" class="primary marker-size-apply-button" data-property-action="apply-marker-size" disabled>${escapeHtml(t("properties.button.applyMarkerSize"))}</button>
+        </div>
+        <div class="marker-size-preview" aria-live="polite">
+          <span class="marker-size-preview-stage" data-marker-size-preview>${previewMarkup}</span>
+          <output data-marker-size-readout>${escapeHtml(t("properties.markerSize.previewValue", { value: effective }))}</output>
+        </div>
+        <span id="${escapeHtml(statusId)}" class="properties-muted" data-marker-size-draft-status>${escapeHtml(appliedStatus || t("properties.markerSize.draftApplied"))}</span>
+      </div>
+    `;
   }
 
   function renderLeaderLineWidthEditor(options, editorOptions = {}) {
@@ -40,19 +100,29 @@
       rowId = ""
     } = editorOptions;
     const isPoint = scope === "point";
+    const isCategory = scope === "category";
+    const maximum = 10;
     const committed = committedValue === undefined || committedValue === null ? "" : String(committedValue);
     const inherited = inheritedValue === undefined || inheritedValue === null ? "" : String(inheritedValue);
     const effective = committed || inherited || "2";
+    const committedInput = formatLeaderLineWidthInput(committed);
+    const inheritedInput = formatLeaderLineWidthInput(inherited);
+    const effectiveDisplay = formatLeaderLineWidthDisplay(options, effective);
     const statusId = `leaderLineWidthStatus-${scope}${rowId ? `-${rowId}` : ""}`;
     const previewText = isPoint && !committed
-      ? t("properties.leaderLines.previewInherited", { value: effective })
-      : t("properties.leaderLines.previewValue", { value: effective });
+      ? t("properties.leaderLines.previewInherited", { value: effectiveDisplay })
+      : t("properties.leaderLines.previewValue", { value: effectiveDisplay });
+    const inputBinding = isPoint
+      ? "data-property-field=\"leaderLineWidth\""
+      : isCategory
+        ? "data-category-line-width-draft required"
+        : "data-layout-proxy=\"lineWidthInput\" required";
     return `
       <div class="leader-line-thickness-editor" data-leader-line-width-editor="${escapeHtml(scope)}" data-committed-value="${escapeHtml(committed)}" data-inherited-value="${escapeHtml(inherited)}" data-applied-status="${escapeHtml(appliedStatus || t("properties.leaderLines.draftApplied"))}" data-draft-state="applied">
         <div class="leader-line-thickness-controls">
           <label>
             ${propertyFieldLabel(options, t("properties.field.leaderLineThickness"), origin)}
-            <input class="type-numeric-data property-numeric-input" type="number" min="1" max="8" step="0.5" inputmode="decimal" data-leader-line-width-draft="${escapeHtml(scope)}" ${isPoint ? "data-property-field=\"leaderLineWidth\"" : "data-layout-proxy=\"lineWidthInput\" required"} value="${escapeHtml(committed)}"${isPoint && inherited ? ` placeholder="${escapeHtml(inherited)}"` : ""} aria-describedby="${escapeHtml(statusId)}">
+            <input class="type-numeric-data property-numeric-input" type="number" min="1" max="${maximum}" step="0.5" inputmode="decimal" data-leader-line-width-draft="${escapeHtml(scope)}" ${inputBinding} value="${escapeHtml(committedInput)}"${isPoint && inherited ? ` placeholder="${escapeHtml(inheritedInput)}"` : ""} aria-describedby="${escapeHtml(statusId)}">
           </label>
           <button type="button" class="primary leader-line-apply-button" data-property-action="apply-leader-line-width" disabled>${escapeHtml(t("properties.button.applyThickness"))}</button>
         </div>
@@ -158,10 +228,13 @@
             ${propertyFieldLabel(options, t("properties.field.defaultCharactersPerLine"))}
             <input type="number" min="12" max="42" step="1" data-layout-proxy="labelCharsInput" value="${escapeHtml(values.labelChars || "")}">
           </label>
-          <label class="properties-field-group">
-            ${propertyFieldLabel(options, t("properties.field.defaultMarkerSize"))}
-            <input type="number" min="4" max="20" step="1" data-layout-proxy="markerSizeInput" value="${escapeHtml(values.markerSize || "")}">
-          </label>
+          ${renderMarkerSizeEditor(options, {
+            scope: "global",
+            committedValue: values.markerSize || "",
+            minimum: 4,
+            maximum: 20,
+            appliedStatus: t("properties.markerSize.draftApplied")
+          })}
         </section>
         <section class="document-property-section leader-line-property-section" data-leader-line-controls="global">
           <h3>${escapeHtml(t("properties.section.leaderLines"))}</h3>
@@ -169,15 +242,15 @@
           <div class="properties-control-list leader-line-toggle-list">
             <label class="toolbar-check">
               <input type="checkbox" data-layout-proxy="hideLeaderLinesInput"${values.hideLeaderLines ? " checked" : ""}>
-              <span>${propertyFieldLabel(options, t("properties.field.hideAllLeaderLines"))}</span>
+              <span>${escapeHtml(t("properties.field.hideAllLeaderLines"))}</span>
             </label>
             <label class="toolbar-check">
               <input type="checkbox" data-layout-proxy="routeDenseLeadersInput"${values.routeDenseLeaders ? " checked" : ""}>
-              <span>${propertyFieldLabel(options, t("settings.elbowLeaders"))}</span>
+              <span>${escapeHtml(t("settings.elbowLeaders"))}</span>
             </label>
             <label class="toolbar-check">
               <input type="checkbox" data-layout-proxy="showLineCasingInput"${values.showLineCasing ? " checked" : ""}>
-              <span>${propertyFieldLabel(options, t("settings.leaderBorder"))}</span>
+              <span>${escapeHtml(t("settings.leaderBorder"))}</span>
             </label>
           </div>
           <div class="leader-line-style-grid">
@@ -185,10 +258,11 @@
               scope: "global",
               committedValue: values.lineWidth || "",
               inheritedValue: values.lineWidth || "",
-              appliedStatus: t("properties.leaderLines.draftApplied")
+              appliedStatus: t("properties.leaderLines.draftApplied"),
+              origin: null
             })}
             <label>
-              ${propertyFieldLabel(options, t("properties.field.leaderLineColour"))}
+              ${propertyFieldLabel(options, t("properties.field.leaderLineColour"), null)}
               <input type="color" data-layout-proxy="leaderColourInput" value="${escapeHtml(values.leaderColour || "#333333")}">
             </label>
           </div>
@@ -263,6 +337,7 @@
       ? ""
       : String(options.inheritedLeaderLineWidth);
     const inheritedLeaderLineColour = String(options.inheritedLeaderLineColour || "#333333").trim() || "#333333";
+    const inheritedLeaderLineWidthDisplay = formatLeaderLineWidthDisplay(options, inheritedLeaderLineWidth || "2");
     const labelStyle = row.labelStyle === "rich" ? "rich" : "compact";
     const languageKey = authoringLanguage === "fr" ? "fr" : "en";
     const content = Array.isArray(row.content) ? row.content : [];
@@ -429,11 +504,11 @@
           <div class="properties-control-list leader-line-toggle-list">
             <label class="toolbar-check">
               <input type="checkbox" data-property-field="hideLine"${row.hideLine ? " checked" : ""}>
-              <span>${propertyFieldLabel(options, t("properties.field.hideLeaderLine"))}</span>
+              <span>${escapeHtml(t("properties.field.hideLeaderLine"))}</span>
             </label>
             <label class="toolbar-check">
               <input type="checkbox" data-property-field="elbowLeader"${row.elbowLeader ? " checked" : ""}>
-              <span>${propertyFieldLabel(options, t("properties.field.useElbowLeader"))}</span>
+              <span>${escapeHtml(t("properties.field.useElbowLeader"))}</span>
             </label>
           </div>
           <div class="leader-line-style-grid">
@@ -444,7 +519,7 @@
               appliedStatus: leaderLineWidth
                 ? t("properties.leaderLines.pointWidthOverride")
                 : inheritedLeaderLineWidth
-                  ? t("properties.leaderLines.pointWidthInherited", { value: inheritedLeaderLineWidth })
+                  ? t("properties.leaderLines.pointWidthInherited", { value: inheritedLeaderLineWidthDisplay })
                   : t("properties.leaderLines.pointWidthInheritedDefault"),
               origin: leaderLineWidth ? "edit" : "auto",
               rowId
@@ -617,11 +692,24 @@
           <span class="custom-icon-note">${escapeHtml(t("properties.category.iconNote"))}</span>
         </div>
         <h3>${escapeHtml(t("properties.category.size"))}</h3>
-        <div class="properties-inline-grid">
-          <label>${propertyFieldLabel(options, t("properties.category.marker"))}<input data-category-field="markerSize" type="number" min="4" max="30" step="1" value="${escapeHtml(category.markerSize)}"></label>
-          <label>${propertyFieldLabel(options, t("properties.category.legend"))}<input data-category-field="lineWidth" type="number" min="1" max="10" step="0.5" value="${escapeHtml(category.lineWidth)}"></label>
+        <div class="category-size-controls">
+          ${renderMarkerSizeEditor(options, {
+            scope: "category",
+            committedValue: category.markerSize,
+            minimum: 4,
+            maximum: 30,
+            appliedStatus: t("properties.markerSize.draftApplied"),
+            categoryId: category.id
+          })}
+          ${renderLeaderLineWidthEditor(options, {
+            scope: "category",
+            committedValue: category.lineWidth,
+            inheritedValue: category.lineWidth,
+            appliedStatus: t("properties.leaderLines.draftApplied"),
+            origin: null,
+            rowId: category.id
+          })}
         </div>
-        <p class="properties-muted">${escapeHtml(t("properties.category.sizeNote"))}</p>
       </div>`;
   }
 
@@ -656,6 +744,7 @@
   }
 
   global.PLOTYPUS_PROPERTIES = Object.freeze({
+    renderMarkerSizeEditor,
     qualityCard,
     qualityMetricItem,
     renderCategoryPropertyControls,

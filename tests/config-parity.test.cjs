@@ -291,7 +291,43 @@ test("English and French i18n dictionaries expose the same keys", () => {
   );
 });
 
-test("leader-line settings expose localized global and point copy", () => {
+test("application settings expose localized browser-preference and language-separation copy", () => {
+  const i18n = loadBundledI18n();
+  const expected = {
+    en: {
+      "aria.applicationSettings": "Application settings",
+      "action.applicationSettings": "Application settings",
+      "action.applicationSettings.title": "Open application settings",
+      "settings.application.title": "Application settings",
+      "settings.application.description": "Preferences for Plotypus on this browser.",
+      "settings.application.close": "Close application settings",
+      "settings.application.language": "Application language",
+      "settings.application.language.hint": "Changes the Plotypus interface. Choose the map-output language separately on the Map tab.",
+      "settings.propertiesPosition": "Properties panel position",
+      "settings.propertiesPosition.hint": "This preference is saved in this browser."
+    },
+    fr: {
+      "aria.applicationSettings": "Paramètres de l’application",
+      "action.applicationSettings": "Paramètres de l’application",
+      "action.applicationSettings.title": "Ouvrir les paramètres de l’application",
+      "settings.application.title": "Paramètres de l’application",
+      "settings.application.description": "Préférences de Plotypus dans ce navigateur.",
+      "settings.application.close": "Fermer les paramètres de l’application",
+      "settings.application.language": "Langue de l’application",
+      "settings.application.language.hint": "Modifie l’interface de Plotypus. Choisissez séparément la langue de sortie de la carte dans l’onglet Carte.",
+      "settings.propertiesPosition": "Position du panneau Propriétés",
+      "settings.propertiesPosition.hint": "Cette préférence est enregistrée dans ce navigateur."
+    }
+  };
+
+  Object.entries(expected).forEach(([locale, values]) => {
+    Object.entries(values).forEach(([key, value]) => {
+      assert.equal(i18n.dictionaries[locale][key], value, `${locale}.${key}`);
+    });
+  });
+});
+
+test("leader-line and marker-size settings expose localized editing copy", () => {
   const i18n = loadBundledI18n();
   const expected = {
     en: {
@@ -302,7 +338,12 @@ test("leader-line settings expose localized global and point copy", () => {
       "properties.leaderLines.draftPending": "Draft thickness: {value} px. Apply to update the map.",
       "properties.leaderLines.previewInherited": "Preview: {value} px (inherited)",
       "properties.button.applyThickness": "Apply",
-      "properties.button.useInheritedColour": "Use inherited"
+      "properties.button.useInheritedColour": "Use inherited",
+      "properties.markerSize.previewValue": "Preview: {value} px",
+      "properties.markerSize.draftApplied": "This matches the applied marker size.",
+      "properties.markerSize.draftPending": "Draft marker size: {value} px. Apply to update the map.",
+      "properties.markerSize.draftInvalid": "Enter a marker size from {min} to {max} in whole pixels.",
+      "properties.button.applyMarkerSize": "Apply"
     },
     fr: {
       "properties.section.leaderLines": "Traits de renvoi",
@@ -312,7 +353,12 @@ test("leader-line settings expose localized global and point copy", () => {
       "properties.leaderLines.draftPending": "Épaisseur provisoire : {value} px. Appliquez-la pour mettre la carte à jour.",
       "properties.leaderLines.previewInherited": "Aperçu : {value} px (héritée)",
       "properties.button.applyThickness": "Appliquer",
-      "properties.button.useInheritedColour": "Utiliser la valeur héritée"
+      "properties.button.useInheritedColour": "Utiliser la valeur héritée",
+      "properties.markerSize.previewValue": "Aperçu : {value} px",
+      "properties.markerSize.draftApplied": "Cette valeur correspond à la taille de repère appliquée.",
+      "properties.markerSize.draftPending": "Taille de repère provisoire : {value} px. Appliquez-la pour mettre la carte à jour.",
+      "properties.markerSize.draftInvalid": "Entrez une taille de repère de {min} à {max} en pixels entiers.",
+      "properties.button.applyMarkerSize": "Appliquer"
     }
   };
 

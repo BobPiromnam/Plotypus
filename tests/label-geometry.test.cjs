@@ -486,6 +486,7 @@ test("project snapshots round-trip portable assets, leader settings, metadata, a
     boundary: "canada",
     mapStyle: "goc-green",
     settings: {
+      markerSize: 8,
       lineWidth: 2,
       leaderColour: "#334455",
       hideLeaderLines: true,
@@ -499,6 +500,7 @@ test("project snapshots round-trip portable assets, leader settings, metadata, a
       colour: "#123456",
       stroke: "#abcdef",
       markerSize: 12,
+      markerSizeCustom: true,
       lineWidth: 3,
       customIcon
     }],
@@ -526,8 +528,11 @@ test("project snapshots round-trip portable assets, leader settings, metadata, a
   assert.deepEqual(restored.generator, { name: "Plotypus", version: "2026.07.14" });
   assert.equal(new Date(restored.savedAt).toISOString(), restored.savedAt);
   assert.equal(restored.categories[0].stroke, "#abcdef");
+  assert.equal(restored.categories[0].markerSize, 12);
+  assert.equal(restored.categories[0].markerSizeCustom, true);
   assert.deepEqual(restored.categories[0].customIcon, customIcon);
   assert.deepEqual(restored.settings, {
+    markerSize: 8,
     lineWidth: 2,
     leaderColour: "#334455",
     hideLeaderLines: true,

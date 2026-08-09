@@ -11,6 +11,7 @@ param(
   [ValidateSet("projects", "regions")]
   [string]$CatalogOrigin = "projects",
   [switch]$LoadSample,
+  [switch]$TableLayoutOnly,
   [switch]$MeasurePerformance,
   [switch]$SkipScreenshot,
   [switch]$VisualCapture,
@@ -21,6 +22,14 @@ $ErrorActionPreference = "Stop"
 
 if ($MeasurePerformance -and -not $LoadSample) {
   throw "-MeasurePerformance requires -LoadSample so the render paths have representative data."
+}
+
+if ($TableLayoutOnly -and -not $LoadSample) {
+  throw "-TableLayoutOnly requires -LoadSample so every table has representative bilingual data."
+}
+
+if ($TableLayoutOnly -and $Workspace -notin @("projects", "regions", "translate")) {
+  throw "-TableLayoutOnly requires -Workspace projects, regions, or translate."
 }
 
 if ($BrowserTimeoutMs -lt 0) {
@@ -39,7 +48,7 @@ $resolvedBrowserTimeoutMs = if ($BrowserTimeoutMs -gt 0) {
 
 $repoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $outputRoot = Join-Path $repoRoot "tests\smoke-output"
-$runLabel = if ($Dialog) { "dialog-$Dialog" } elseif ($Workspace) { "workspace-$Workspace" } else { "shell" }
+$runLabel = if ($TableLayoutOnly) { "table-layout-$Workspace" } elseif ($Dialog) { "dialog-$Dialog" } elseif ($Workspace) { "workspace-$Workspace" } else { "shell" }
 $runId = "$runLabel-$($Width)x$($Height)-$(Get-Date -Format 'yyyyMMdd-HHmmss-fff')"
 $runDir = Join-Path $outputRoot $runId
 $profileDir = Join-Path $runDir "browser-profile"
@@ -68,6 +77,7 @@ try {
   if ($Dialog) { $query += "dialog=$Dialog" }
   if ($Dialog -eq "point-catalog") { $query += "origin=$CatalogOrigin" }
   if ($LoadSample) { $query += "sample=1" }
+  if ($TableLayoutOnly) { $query += "tableLayout=1" }
   if ($MeasurePerformance) { $query += "performance=1" }
   if ($VisualCapture) { $query += "visual=1" }
   $queryString = if ($query.Count) { "?" + ($query -join "&") } else { "" }

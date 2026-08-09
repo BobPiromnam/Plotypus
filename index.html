@@ -44,17 +44,10 @@
               <option value="goc-green" data-i18n="properties.mapStyle.goc-green">GoC green</option>
             </select>
           </label>
-          <div class="ribbon-field map-language-ribbon-field" role="group" aria-label="Language" data-i18n-aria-label="language.label">
-            <span data-i18n="language.label">Language</span>
-            <div class="map-language-toggle">
-              <button type="button" class="is-active" data-ui-language="en" aria-pressed="true" lang="en" data-i18n="language.en">EN</button>
-              <button type="button" data-ui-language="fr" aria-pressed="false" lang="fr" data-i18n="language.fr">FR</button>
-            </div>
-            <select id="mapLanguageInput" class="visually-hidden" aria-hidden="true" tabindex="-1">
-              <option value="en" data-i18n="dialog.mapDetails.english">English</option>
-              <option value="fr" data-i18n="dialog.mapDetails.french">Français</option>
-            </select>
-          </div>
+          <select id="mapLanguageInput" class="visually-hidden" aria-hidden="true" tabindex="-1">
+            <option value="en" data-i18n="dialog.mapDetails.english">English</option>
+            <option value="fr" data-i18n="dialog.mapDetails.french">Français</option>
+          </select>
         </div>
       </div>
       <div class="ribbon-group ribbon-export" aria-label="Map export actions" data-i18n-aria-label="aria.mapExportActions">
@@ -74,6 +67,42 @@
               <span><strong data-i18n="export.csv.title">Export CSV</strong><small data-i18n="export.csv.description">Editable project point data</small></span>
             </button>
             <div id="exportLanguageNotice" class="export-language-notice" hidden></div>
+          </div>
+        </div>
+      </div>
+      <div class="ribbon-group ribbon-application-settings" aria-label="Application settings" data-i18n-aria-label="aria.applicationSettings">
+        <div class="application-settings-wrap">
+          <button id="applicationSettingsBtn" class="ribbon-button ribbon-icon-only application-settings-button" type="button" data-icon="settings" aria-haspopup="dialog" aria-expanded="false" aria-controls="applicationSettingsMenu" aria-label="Application settings" data-i18n-aria-label="action.applicationSettings" title="Application settings" data-i18n-title="action.applicationSettings.title"><span class="visually-hidden" data-i18n="action.applicationSettings">Application settings</span></button>
+          <div id="applicationSettingsMenu" class="application-settings-menu" role="dialog" aria-labelledby="applicationSettingsTitle" aria-describedby="applicationSettingsDescription" hidden>
+            <header class="application-settings-header">
+              <div>
+                <h2 id="applicationSettingsTitle" data-i18n="settings.application.title">Application settings</h2>
+                <p id="applicationSettingsDescription" data-i18n="settings.application.description">Preferences for Plotypus on this browser.</p>
+              </div>
+              <button id="applicationSettingsCloseBtn" class="icon-button application-settings-close" type="button" data-icon="x" aria-label="Close application settings" data-i18n-aria-label="settings.application.close"></button>
+            </header>
+            <section class="application-settings-section" aria-labelledby="applicationLanguageLabel">
+              <h3 id="applicationLanguageLabel" data-i18n="settings.application.language">Application language</h3>
+              <div class="application-language-toggle" role="group" aria-labelledby="applicationLanguageLabel">
+                <button type="button" class="is-active" data-ui-language="en" aria-pressed="true" lang="en" data-i18n="language.en">EN</button>
+                <button type="button" data-ui-language="fr" aria-pressed="false" lang="fr" data-i18n="language.fr">FR</button>
+              </div>
+              <p data-i18n="settings.application.language.hint">Changes the Plotypus interface. Choose the map-output language separately on the Map tab.</p>
+            </section>
+            <section class="application-settings-section" aria-labelledby="propertiesPositionLabel">
+              <h3 id="propertiesPositionLabel" data-i18n="settings.propertiesPosition">Properties panel position</h3>
+              <div class="properties-position-options" role="radiogroup" aria-labelledby="propertiesPositionLabel">
+                <label>
+                  <input type="radio" name="propertiesPanelSide" value="left" data-properties-side-input />
+                  <span data-i18n="settings.position.left">Left</span>
+                </label>
+                <label>
+                  <input type="radio" name="propertiesPanelSide" value="right" data-properties-side-input checked />
+                  <span data-i18n="settings.position.right">Right</span>
+                </label>
+              </div>
+              <p data-i18n="settings.propertiesPosition.hint">This preference is saved in this browser.</p>
+            </section>
           </div>
         </div>
       </div>
@@ -118,7 +147,7 @@
         <input id="labelSizeInput" type="number" min="12" max="30" step="1" value="12" />
         <input id="mapScaleInput" type="number" min="45" max="115" step="1" value="100" />
         <input id="markerSizeInput" type="number" min="4" max="20" step="1" value="4" />
-        <input id="lineWidthInput" type="number" min="1" max="8" step="0.5" value="2" />
+        <input id="lineWidthInput" type="number" min="1" max="10" step="0.5" value="2" />
         <input id="leaderColourInput" type="color" value="#333333" />
         <input id="hideLeaderLinesInput" type="checkbox" />
         <input id="showLineCasingInput" type="checkbox" checked />
@@ -458,8 +487,8 @@
         <div id="propertiesSelectionControls" class="properties-selection-controls"></div>
 
         <div id="previewDisplayPropertiesSection" class="properties-section" data-props-context="preview-display">
-          <h3 data-i18n="properties.section.display">Display</h3>
-          <div class="properties-control-list" aria-label="Map display settings" data-i18n-aria-label="aria.mapDisplaySettings">
+          <h3 data-i18n="properties.section.display">Boxes</h3>
+          <div class="properties-control-list" aria-label="Map box settings" data-i18n-aria-label="aria.mapDisplaySettings">
             <label class="toolbar-check">
               <input id="showLegendInput" type="checkbox" checked />
               <span class="setting-icon" data-setting-icon="legend" aria-hidden="true"></span>
@@ -493,24 +522,6 @@
             </label>
           </div>
         </div>
-
-        <section id="applicationConfigurationSection" class="properties-section application-configuration-section" aria-labelledby="applicationConfigurationTitle">
-          <h3 id="applicationConfigurationTitle" data-i18n="properties.section.configuration">Configuration</h3>
-          <div class="properties-position-setting">
-            <span id="propertiesPositionLabel" data-i18n="settings.propertiesPosition">Properties panel position</span>
-            <div class="properties-position-options" role="radiogroup" aria-labelledby="propertiesPositionLabel">
-              <label>
-                <input type="radio" name="propertiesPanelSide" value="left" data-properties-side-input />
-                <span data-i18n="settings.position.left">Left</span>
-              </label>
-              <label>
-                <input type="radio" name="propertiesPanelSide" value="right" data-properties-side-input checked />
-                <span data-i18n="settings.position.right">Right</span>
-              </label>
-            </div>
-            <p data-i18n="settings.propertiesPosition.hint">This preference is saved in this browser.</p>
-          </div>
-        </section>
 
       </div>
     </aside>

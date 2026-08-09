@@ -341,6 +341,9 @@
     ribbonExportCsvBtn: document.querySelector("#ribbonExportCsvBtn"),
     exportMenuBtn: document.querySelector("#exportMenuBtn"),
     exportMenu: document.querySelector("#exportMenu"),
+    applicationSettingsBtn: document.querySelector("#applicationSettingsBtn"),
+    applicationSettingsMenu: document.querySelector("#applicationSettingsMenu"),
+    applicationSettingsCloseBtn: document.querySelector("#applicationSettingsCloseBtn"),
     ribbonExportSvgBtn: document.querySelector("#ribbonExportSvgBtn"),
     ribbonExportPngBtn: document.querySelector("#ribbonExportPngBtn"),
     exportLanguageNotice: document.querySelector("#exportLanguageNotice"),
@@ -1265,12 +1268,12 @@
   }
 
   function getCategoryMarkerSize(category, settings) {
-    const sourceSize = optionalNumber(category.markerSize) || settings.markerSize;
+    const sourceSize = normalizeMarkerSize(category && category.markerSize, settings.markerSize, 4, 30);
     return sourceSize * (Number(settings.labelDensityScale) || 1);
   }
 
   function getCategoryLineWidth(category, settings) {
-    const sourceWidth = optionalNumber(category.lineWidth) || settings.lineWidth;
+    const sourceWidth = normalizeLeaderLineWidth(category && category.lineWidth, settings.lineWidth);
     return sourceWidth * (Number(settings.labelDensityScale) || 1);
   }
 
@@ -1281,8 +1284,8 @@
   }
 
   function normalizeCategorySizes(category, settings = getSettings()) {
-    category.markerSize = optionalNumber(category.markerSize) || settings.markerSize;
-    category.lineWidth = optionalNumber(category.lineWidth) || settings.lineWidth;
+    category.markerSize = normalizeMarkerSize(category.markerSize, settings.markerSize, 4, 30);
+    category.lineWidth = normalizeLeaderLineWidth(category.lineWidth, settings.lineWidth);
   }
 
   function syncDefaultCategorySizes(settings = getSettings()) {
@@ -3592,11 +3595,111 @@
     return Math.max(mapScaleRange.min, Math.min(mapScaleRange.max, mapScale));
   }
 
-  function normalizeLeaderLineWidth(value, fallback = layoutDefaults.lineWidthInput) {
+  function normalizeMarkerSize(value, fallback = layoutDefaults.markerSizeInput, minimum = 4, maximum = 30) {
+    const parsed = Number(value);
+    const fallbackValue = Number.isFinite(Number(fallback)) ? Number(fallback) : 4;
+    const markerSize = Number.isFinite(parsed) ? parsed : fallbackValue;
+    const lowerBound = Number.isFinite(Number(minimum)) ? Number(minimum) : 4;
+    const upperBound = Number.isFinite(Number(maximum)) ? Number(maximum) : 30;
+    return Math.max(lowerBound, Math.min(upperBound, Math.round(markerSize)));
+  }
+
+  function getMarkerSizeDraftState(input) {
+    const editor = input && input.closest("[data-marker-size-editor]");
+    if (!editor) return null;
+    const scope = editor.dataset.markerSizeEditor === "category" ? "category" : "global";
+    const minimum = Number(input.min) || Number(editor.dataset.minimum) || 4;
+    const maximum = Number(input.max) || Number(editor.dataset.maximum) || (scope === "category" ? 30 : 20);
+    const step = Number(input.step) || Number(editor.dataset.step) || 1;
+    const rawValue = String(input.value || "").trim();
+    const numericValue = Number(rawValue);
+    const valid = rawValue !== ""
+      && Number.isFinite(numericValue)
+      && numericValue >= minimum
+      && numericValue <= maximum
+      && Math.abs((numericValue - minimum) / step - Math.round((numericValue - minimum) / step)) < 1e-9;
+    const normalizedValue = normalizeMarkerSize(rawValue, layoutDefaults.markerSizeInput, minimum, maximum);
+    const committedValue = normalizeMarkerSize(editor.dataset.committedValue, layoutDefaults.markerSizeInput, minimum, maximum);
+    const effectiveValue = valid ? normalizedValue : committedValue;
+    return {
+      changed: valid && normalizedValue !== committedValue,
+      committedValue,
+      editor,
+      effectiveValue,
+      input,
+      maximum,
+      minimum,
+      normalizedValue,
+      scope,
+      valid
+    };
+  }
+
+  function getMarkerSizePreviewCategory(scope, editor) {
+    if (scope === "category") {
+      const categoryId = editor.dataset.categoryId;
+      const category = categorySettings.find(item => item.id === categoryId);
+      if (category) return category;
+    }
+    return {
+      id: "map-default",
+      shape: "circle",
+      colour: "#3b6f62",
+      stroke: "#ffffff",
+      customIcon: null
+    };
+  }
+
+  function syncMarkerSizeDraft(input) {
+    const draft = getMarkerSizeDraftState(input);
+    if (!draft) return null;
+    const { changed, editor, effectiveValue, maximum, minimum, scope, valid } = draft;
+    const preview = editor.querySelector("[data-marker-size-preview]");
+    const readout = editor.querySelector("[data-marker-size-readout]");
+    const status = editor.querySelector("[data-marker-size-draft-status]");
+    const applyButton = editor.querySelector("[data-property-action='apply-marker-size']");
+    const state = valid ? changed ? "pending" : "applied" : "invalid";
+
+    editor.dataset.draftState = state;
+    editor.dataset.draftValue = valid ? String(draft.normalizedValue) : String(input.value || "");
+    input.setAttribute("aria-invalid", String(!valid));
+    if (preview) preview.innerHTML = getMarkerSizePreviewSvg(getMarkerSizePreviewCategory(scope, editor), effectiveValue);
+    if (readout) readout.textContent = t("properties.markerSize.previewValue", { value: effectiveValue });
+    if (status) {
+      status.textContent = !valid
+        ? t("properties.markerSize.draftInvalid", { min: minimum, max: maximum })
+        : changed
+          ? t("properties.markerSize.draftPending", { value: effectiveValue })
+          : editor.dataset.appliedStatus || t("properties.markerSize.draftApplied");
+    }
+    if (applyButton) applyButton.disabled = !valid || !changed;
+    return draft;
+  }
+
+  function focusMarkerSizeDraft(scope) {
+    const targetScope = scope === "category" ? "category" : "global";
+    const selector = `[data-marker-size-draft='${targetScope}']`;
+    const restoreFocus = () => {
+      const input = els.propertiesSelectionControls?.querySelector(selector);
+      if (!input || !input.isConnected) return false;
+      input.focus({ preventScroll: true });
+      return document.activeElement === input;
+    };
+    window.requestAnimationFrame(() => {
+      restoreFocus();
+      window.requestAnimationFrame(() => {
+        const input = els.propertiesSelectionControls?.querySelector(selector);
+        if (document.activeElement !== input) restoreFocus();
+      });
+    });
+  }
+
+  function normalizeLeaderLineWidth(value, fallback = layoutDefaults.lineWidthInput, maximum = 10) {
     const parsed = Number(value);
     const fallbackValue = Number.isFinite(Number(fallback)) ? Number(fallback) : 2;
     const width = Number.isFinite(parsed) ? parsed : fallbackValue;
-    return Math.max(1, Math.min(8, Math.round(width * 2) / 2));
+    const upperBound = Number.isFinite(Number(maximum)) ? Number(maximum) : 10;
+    return Math.max(1, Math.min(upperBound, Math.round(width * 2) / 2));
   }
 
   function normalizeLeaderLineWidthOverride(value) {
@@ -3604,10 +3707,22 @@
     return Number.isFinite(Number(value)) ? normalizeLeaderLineWidth(value) : "";
   }
 
+  function formatLeaderLineWidthInput(value) {
+    if (value === undefined || value === null || String(value).trim() === "") return "";
+    const number = Number(value);
+    return Number.isFinite(number) ? number.toFixed(1) : String(value);
+  }
+
+  function formatLeaderLineWidthDisplay(value) {
+    return formatLocalizedDecimal(value, currentUiLanguage, 1);
+  }
+
   function getLeaderLineWidthDraftState(input) {
     const editor = input && input.closest("[data-leader-line-width-editor]");
     if (!editor) return null;
-    const scope = editor.dataset.leaderLineWidthEditor === "point" ? "point" : "global";
+    const requestedScope = editor.dataset.leaderLineWidthEditor;
+    const scope = requestedScope === "point" || requestedScope === "category" ? requestedScope : "global";
+    const maximum = 10;
     const rawValue = String(input.value || "").trim();
     const isBlank = rawValue === "";
     const numericValue = Number(rawValue);
@@ -3615,13 +3730,13 @@
     const numericIsValid = !isBlank
       && Number.isFinite(numericValue)
       && numericValue >= 1
-      && numericValue <= 8
+      && numericValue <= maximum
       && Math.abs(numericValue * 2 - Math.round(numericValue * 2)) < 1e-9;
     const valid = blankIsValid || numericIsValid;
-    const normalizedValue = isBlank ? "" : normalizeLeaderLineWidth(rawValue);
+    const normalizedValue = isBlank ? "" : normalizeLeaderLineWidth(rawValue, layoutDefaults.lineWidthInput, maximum);
     const committedValue = scope === "point"
       ? normalizeLeaderLineWidthOverride(editor.dataset.committedValue)
-      : normalizeLeaderLineWidth(editor.dataset.committedValue);
+      : normalizeLeaderLineWidth(editor.dataset.committedValue, layoutDefaults.lineWidthInput, maximum);
     const inheritedNumber = Number(editor.dataset.inheritedValue);
     const inheritedValue = Number.isFinite(inheritedNumber) && inheritedNumber > 0
       ? inheritedNumber
@@ -3657,6 +3772,7 @@
     const status = editor.querySelector("[data-leader-line-width-draft-status]");
     const applyButton = editor.querySelector("[data-property-action='apply-leader-line-width']");
     const previewWidth = Math.max(1, Math.min(12, Number(effectiveValue) || normalizeLeaderLineWidth(layoutDefaults.lineWidthInput)));
+    const displayValue = formatLeaderLineWidthDisplay(effectiveValue);
     const state = valid ? changed ? "pending" : "applied" : "invalid";
 
     editor.dataset.draftState = state;
@@ -3665,16 +3781,16 @@
     if (previewLine) previewLine.setAttribute("stroke-width", String(previewWidth));
     if (readout) {
       readout.textContent = scope === "point" && isBlank
-        ? t("properties.leaderLines.previewInherited", { value: effectiveValue })
-        : t("properties.leaderLines.previewValue", { value: effectiveValue });
+        ? t("properties.leaderLines.previewInherited", { value: displayValue })
+        : t("properties.leaderLines.previewValue", { value: displayValue });
     }
     if (status) {
       status.textContent = !valid
         ? t("properties.leaderLines.draftInvalid")
         : changed
           ? scope === "point" && isBlank
-            ? t("properties.leaderLines.draftPendingInherited", { value: effectiveValue })
-            : t("properties.leaderLines.draftPending", { value: effectiveValue })
+            ? t("properties.leaderLines.draftPendingInherited", { value: displayValue })
+            : t("properties.leaderLines.draftPending", { value: displayValue })
           : editor.dataset.appliedStatus || t("properties.leaderLines.draftApplied");
     }
     if (applyButton) applyButton.disabled = !changed;
@@ -3682,7 +3798,8 @@
   }
 
   function focusLeaderLineWidthDraft(scope) {
-    const selector = `[data-leader-line-width-draft='${scope === "point" ? "point" : "global"}']`;
+    const targetScope = scope === "point" || scope === "category" ? scope : "global";
+    const selector = `[data-leader-line-width-draft='${targetScope}']`;
     const restoreFocus = () => {
       const input = els.propertiesSelectionControls?.querySelector(selector);
       if (!input || !input.isConnected) return false;
@@ -3887,7 +4004,7 @@
       mapScale,
       mapOffsetX: Number(languageLayoutState && languageLayoutState.mapOffsetX) || 0,
       mapOffsetY: Number(languageLayoutState && languageLayoutState.mapOffsetY) || 0,
-      markerSize: Number(els.markerSizeInput.value) || 4,
+      markerSize: normalizeMarkerSize(els.markerSizeInput.value, layoutDefaults.markerSizeInput, 4, 20),
       lineWidth: normalizeLeaderLineWidth(els.lineWidthInput.value),
       leaderColour: normalizeHexColour(els.leaderColourInput && els.leaderColourInput.value, layoutDefaults.leaderColourInput || "#333333"),
       hideLeaderLines: Boolean(els.hideLeaderLinesInput && els.hideLeaderLinesInput.checked),
@@ -3917,7 +4034,7 @@
       els.labelSizeInput.value = normalizeLabelSizePt(settings.labelSizePt !== undefined ? settings.labelSizePt : settings.labelSize);
     }
     if (settings.mapScale !== undefined) els.mapScaleInput.value = normalizeMapScale(settings.mapScale);
-    if (settings.markerSize !== undefined) els.markerSizeInput.value = settings.markerSize;
+    if (settings.markerSize !== undefined) els.markerSizeInput.value = normalizeMarkerSize(settings.markerSize, layoutDefaults.markerSizeInput, 4, 20);
     if (settings.lineWidth !== undefined) els.lineWidthInput.value = normalizeLeaderLineWidth(settings.lineWidth);
     if (els.leaderColourInput) {
       els.leaderColourInput.value = normalizeHexColour(settings.leaderColour, layoutDefaults.leaderColourInput || "#333333");
@@ -4423,8 +4540,8 @@
         if (!category) return;
         category.colour = style.colour;
         category.stroke = style.stroke;
-        category.markerSize = optionalNumber(style.markerSize) || category.markerSize || settings.markerSize;
-        category.lineWidth = optionalNumber(style.lineWidth) || category.lineWidth || settings.lineWidth;
+        category.markerSize = normalizeMarkerSize(style.markerSize, category.markerSize || settings.markerSize, 4, 30);
+        category.lineWidth = normalizeLeaderLineWidth(style.lineWidth, category.lineWidth || settings.lineWidth);
         category.markerSizeCustom = false;
         category.lineWidthCustom = false;
       });
@@ -6662,13 +6779,13 @@
     }
     return `
       <div class="csv-preview-table-wrap">
-        <table class="csv-preview-table">
+        <table class="csv-preview-table" data-location-mode="${useRegions ? "regions" : "coordinates"}">
           <thead>
             <tr>
-              <th>${escapeHtml(t("dialog.csv.previewProjectName"))}</th>
-              <th>${escapeHtml(t("dialog.csv.previewType"))}</th>
-              ${useRegions ? `<th>${escapeHtml(t("dialog.csv.field.region"))}</th>` : `<th>${escapeHtml(t("dialog.csv.previewLongitude"))}</th><th>${escapeHtml(t("dialog.csv.previewLatitude"))}</th>`}
-              <th>${escapeHtml(t("dialog.csv.previewStatus"))}</th>
+              <th class="csv-preview-name-col">${escapeHtml(t("dialog.csv.previewProjectName"))}</th>
+              <th class="csv-preview-type-col">${escapeHtml(t("dialog.csv.previewType"))}</th>
+              ${useRegions ? `<th class="csv-preview-region-col">${escapeHtml(t("dialog.csv.field.region"))}</th>` : `<th class="csv-preview-coordinate-col">${escapeHtml(t("dialog.csv.previewLongitude"))}</th><th class="csv-preview-coordinate-col">${escapeHtml(t("dialog.csv.previewLatitude"))}</th>`}
+              <th class="csv-preview-status-col">${escapeHtml(t("dialog.csv.previewStatus"))}</th>
             </tr>
           </thead>
           <tbody>
@@ -6680,10 +6797,10 @@
               const status = useRegions ? hasRegion ? t("table.status.mapped") : t("project.status.coordinateIssue") : hasLon && hasLat ? t("table.status.mapped") : hasLon || hasLat ? t("project.status.coordinateIssue") : t("table.status.callout");
               return `
                 <tr>
-                  <td>${escapeHtml(row.name || t("dialog.csv.previewBlank"))}</td>
-                  <td>${escapeHtml(getCategoryLabel(row.type))}</td>
-                  ${useRegions ? `<td>${escapeHtml(row.region || "")}</td>` : `<td>${escapeHtml(row.lon === "" ? "" : String(row.lon))}</td><td>${escapeHtml(row.lat === "" ? "" : String(row.lat))}</td>`}
-                  <td><span class="csv-preview-badge" data-state="${escapeHtml(statusState)}">${escapeHtml(status)}</span></td>
+                  <td class="csv-preview-name-cell">${escapeHtml(row.name || t("dialog.csv.previewBlank"))}</td>
+                  <td class="csv-preview-type-cell">${escapeHtml(getCategoryLabel(row.type))}</td>
+                  ${useRegions ? `<td class="csv-preview-region-cell">${escapeHtml(row.region || "")}</td>` : `<td class="csv-preview-coordinate-cell">${escapeHtml(row.lon === "" ? "" : String(row.lon))}</td><td class="csv-preview-coordinate-cell">${escapeHtml(row.lat === "" ? "" : String(row.lat))}</td>`}
+                  <td class="csv-preview-status-cell"><span class="csv-preview-badge" data-state="${escapeHtml(statusState)}">${escapeHtml(status)}</span></td>
                 </tr>
               `;
             }).join("")}
@@ -7047,8 +7164,15 @@
         labelChars: els.labelCharsInput ? els.labelCharsInput.value : ""
       },
       escapeHtml,
+      formatLeaderLineWidth: formatLeaderLineWidthDisplay,
       iconSvg,
       qualityMetricItem,
+      renderMarkerSizePreview: value => getMarkerSizePreviewSvg({
+        shape: "circle",
+        colour: "#3b6f62",
+        stroke: "#ffffff",
+        customIcon: null
+      }, value),
       t
     });
   }
@@ -7090,6 +7214,7 @@
       inheritedLeaderLineWidth,
       inheritedLeaderLineColour,
       escapeHtml,
+      formatLeaderLineWidth: formatLeaderLineWidthDisplay,
       iconSvg,
       t
     });
@@ -7175,6 +7300,8 @@
       })),
       escapeHtml,
       iconSvg,
+      formatLeaderLineWidth: formatLeaderLineWidthDisplay,
+      renderMarkerSizePreview: value => getMarkerSizePreviewSvg(category, value),
       t,
       backLabel: activeDataTable === "projects"
         ? t("properties.category.backToProjectPoints")
@@ -7448,6 +7575,10 @@
   }
 
   function handleRichLabelEditorInput(event) {
+    if (event.target && event.target.matches("[data-marker-size-draft]")) {
+      syncMarkerSizeDraft(event.target);
+      return;
+    }
     if (event.target && event.target.matches("[data-leader-line-width-draft]")) {
       syncLeaderLineWidthDraft(event.target);
       return;
@@ -7472,8 +7603,20 @@
   }
 
   async function handlePropertiesControlsChange(event) {
+    if (event.target.matches("[data-marker-size-draft]")) {
+      const draft = syncMarkerSizeDraft(event.target);
+      if (draft && draft.valid) {
+        event.target.value = String(draft.normalizedValue);
+        syncMarkerSizeDraft(event.target);
+      }
+      return;
+    }
     if (event.target.matches("[data-leader-line-width-draft]")) {
-      syncLeaderLineWidthDraft(event.target);
+      const draft = syncLeaderLineWidthDraft(event.target);
+      if (draft && draft.valid && !draft.isBlank) {
+        event.target.value = formatLeaderLineWidthInput(draft.normalizedValue);
+        syncLeaderLineWidthDraft(event.target);
+      }
       return;
     }
     if (event.target.matches("[data-category-icon-upload]")) {
@@ -7511,6 +7654,7 @@
       category.colour = event.target.value;
       const colourInput = form.querySelector("[data-category-field='colour']");
       if (colourInput) colourInput.value = category.colour;
+      syncMarkerSizeDraft(form.querySelector("[data-marker-size-draft='category']"));
       renderCategoryEditors();
       updateWorkspaceSummary();
       requestPreviewRefresh();
@@ -7523,11 +7667,8 @@
       const category = form && categorySettings.find(item => item.id === form.dataset.categoryId);
       if (!category) return;
       captureInputUndo(event.target, "category edit");
-      const numericFields = new Set(["markerSize", "lineWidth"]);
-      category[categoryField] = numericFields.has(categoryField) ? Number(event.target.value) : event.target.value;
+      category[categoryField] = event.target.value;
       if (categoryField === "label") category.defaultLabel = category.defaultLabel || category.label;
-      if (categoryField === "markerSize") category.markerSizeCustom = true;
-      if (categoryField === "lineWidth") category.lineWidthCustom = true;
       if (categoryField === "shape") {
         form.querySelectorAll(".category-shape-option").forEach(option => {
           option.classList.toggle("is-selected", option.querySelector("input")?.checked);
@@ -7541,6 +7682,7 @@
         const presetInput = form.querySelector("[data-category-colour-preset]");
         if (presetInput) presetInput.value = getPresetValueForColour(category.colour);
       }
+      syncMarkerSizeDraft(form.querySelector("[data-marker-size-draft='category']"));
       if ((categoryField === "label" && currentUiLanguage === "en") || (categoryField === "labelFr" && currentUiLanguage === "fr")) {
         if (els.propertiesTitle) els.propertiesTitle.textContent = getCategoryLabel(category.id, currentUiLanguage);
       }
@@ -7709,6 +7851,37 @@
     if (!button) return;
     const action = button.dataset.propertyAction;
 
+    if (action === "apply-marker-size") {
+      event.stopPropagation();
+      const editor = button.closest("[data-marker-size-editor]");
+      const draftInput = editor && editor.querySelector("[data-marker-size-draft]");
+      const draft = syncMarkerSizeDraft(draftInput);
+      if (!draft || !draft.valid || !draft.changed) return;
+
+      if (draft.scope === "global") {
+        pushAppUndoHistory("map marker size");
+        els.markerSizeInput.value = draft.normalizedValue;
+        handleLayoutSettingsChange({ target: els.markerSizeInput });
+        renderPropertiesForActiveState();
+        focusMarkerSizeDraft("global");
+        return;
+      }
+
+      const categoryForm = button.closest("#categoryPropertiesEditor[data-category-id]");
+      const category = categoryForm && categorySettings.find(item => item.id === categoryForm.dataset.categoryId);
+      if (!category) return;
+      pushAppUndoHistory("category marker size");
+      category.markerSize = draft.normalizedValue;
+      category.markerSizeCustom = true;
+      activeCategoryId = category.id;
+      renderCategoryEditors();
+      updateWorkspaceSummary();
+      requestPreviewRefresh();
+      setCategoryPropertiesContext();
+      focusMarkerSizeDraft("category");
+      return;
+    }
+
     if (action === "apply-leader-line-width") {
       event.stopPropagation();
       const editor = button.closest("[data-leader-line-width-editor]");
@@ -7722,6 +7895,22 @@
         handleLayoutSettingsChange({ target: els.lineWidthInput });
         renderPropertiesForActiveState();
         focusLeaderLineWidthDraft("global");
+        return;
+      }
+
+      if (draft.scope === "category") {
+        const categoryForm = button.closest("#categoryPropertiesEditor[data-category-id]");
+        const category = categoryForm && categorySettings.find(item => item.id === categoryForm.dataset.categoryId);
+        if (!category) return;
+        pushAppUndoHistory("category leader line thickness");
+        category.lineWidth = draft.normalizedValue;
+        category.lineWidthCustom = true;
+        activeCategoryId = category.id;
+        renderCategoryEditors();
+        updateWorkspaceSummary();
+        requestPreviewRefresh();
+        setCategoryPropertiesContext();
+        focusLeaderLineWidthDraft("category");
         return;
       }
 
@@ -8063,12 +8252,40 @@
 
   function setExportMenuOpen(open, options = {}) {
     if (!els.exportMenu || !els.exportMenuBtn) return;
+    if (open) setApplicationSettingsOpen(false);
     els.exportMenu.hidden = !open;
     els.exportMenuBtn.setAttribute("aria-expanded", String(open));
     if (open && options.focusFirst) {
       const firstItem = els.exportMenu.querySelector('[role="menuitem"]');
       if (firstItem) firstItem.focus();
     }
+  }
+
+  function setApplicationSettingsOpen(open, options = {}) {
+    if (!els.applicationSettingsMenu || !els.applicationSettingsBtn) return;
+    const shouldOpen = Boolean(open);
+    if (shouldOpen) {
+      setExportMenuOpen(false);
+      closeProjectToolbarMenus();
+      if (propertiesDrawerMedia.matches && document.body.classList.contains("properties-open")) {
+        setPropertiesDrawerOpen(false);
+      }
+    }
+    els.applicationSettingsMenu.hidden = !shouldOpen;
+    els.applicationSettingsBtn.setAttribute("aria-expanded", String(shouldOpen));
+    if (shouldOpen && options.focusFirst) {
+      const firstControl = els.applicationSettingsMenu.querySelector("[data-ui-language][aria-pressed='true']")
+        || els.applicationSettingsMenu.querySelector("[data-ui-language]");
+      if (firstControl) firstControl.focus();
+    } else if (!shouldOpen && options.restoreFocus) {
+      els.applicationSettingsBtn.focus();
+    }
+  }
+
+  function handleApplicationSettingsKeydown(event) {
+    if (event.key !== "ArrowDown" || event.currentTarget !== els.applicationSettingsBtn) return;
+    event.preventDefault();
+    setApplicationSettingsOpen(true, { focusFirst: true });
   }
 
   function getProjectToolbarMenus() {
@@ -8225,9 +8442,12 @@
   }
 
   function handlePropertiesControlsKeydown(event) {
-    if (event.key !== "Enter" || event.isComposing || !event.target.matches("[data-leader-line-width-draft]")) return;
-    const editor = event.target.closest("[data-leader-line-width-editor]");
-    const applyButton = editor && editor.querySelector("[data-property-action='apply-leader-line-width']");
+    if (event.key !== "Enter" || event.isComposing) return;
+    const isMarkerSizeDraft = event.target.matches("[data-marker-size-draft]");
+    const isLeaderWidthDraft = event.target.matches("[data-leader-line-width-draft]");
+    if (!isMarkerSizeDraft && !isLeaderWidthDraft) return;
+    const editor = event.target.closest(isMarkerSizeDraft ? "[data-marker-size-editor]" : "[data-leader-line-width-editor]");
+    const applyButton = editor && editor.querySelector(`[data-property-action='${isMarkerSizeDraft ? "apply-marker-size" : "apply-leader-line-width"}']`);
     if (!applyButton || applyButton.disabled) return;
     event.preventDefault();
     applyButton.click();
@@ -9612,6 +9832,11 @@
 
   function handleGlobalKeyboardShortcuts(event) {
     if (trapShortcutsFocus(event)) return;
+    if (event.key === "Escape" && els.applicationSettingsMenu && !els.applicationSettingsMenu.hidden) {
+      event.preventDefault();
+      setApplicationSettingsOpen(false, { restoreFocus: true });
+      return;
+    }
     if (event.key === "Escape" && els.shortcutsOverlay && !els.shortcutsOverlay.hidden) {
       event.preventDefault();
       closeShortcutsOverlay();
@@ -9660,8 +9885,8 @@
       const shape = normalizeMarkerShape(savedCategory.shape);
       const colour = normalizeHexColour(savedCategory.colour, "#217346");
       const stroke = normalizeHexColour(savedCategory.stroke, (category && category.stroke) || "#ffffff");
-      const markerSize = optionalNumber(savedCategory.markerSize) || settings.markerSize;
-      const lineWidth = optionalNumber(savedCategory.lineWidth) || settings.lineWidth;
+      const markerSize = normalizeMarkerSize(savedCategory.markerSize, settings.markerSize, 4, 30);
+      const lineWidth = normalizeLeaderLineWidth(savedCategory.lineWidth, settings.lineWidth);
       const customIcon = normalizeCustomMarkerIcon(savedCategory.customIcon);
       const markerSizeCustom = savedCategory.markerSizeCustom !== undefined
         ? Boolean(savedCategory.markerSizeCustom)
@@ -9669,6 +9894,7 @@
       const lineWidthCustom = savedCategory.lineWidthCustom !== undefined
         ? Boolean(savedCategory.lineWidthCustom)
         : lineWidth !== settings.lineWidth;
+      const resolvedMarkerSize = markerSizeCustom ? markerSize : settings.markerSize;
       const resolvedLineWidth = lineWidthCustom ? lineWidth : settings.lineWidth;
 
       if (category) {
@@ -9677,7 +9903,7 @@
         category.shape = shape;
         category.colour = colour;
         category.stroke = stroke;
-        category.markerSize = markerSize;
+        category.markerSize = resolvedMarkerSize;
         category.lineWidth = resolvedLineWidth;
         category.customIcon = customIcon;
         category.markerSizeCustom = markerSizeCustom;
@@ -9695,7 +9921,7 @@
         shape,
         colour,
         stroke,
-        markerSize,
+        markerSize: resolvedMarkerSize,
         lineWidth: resolvedLineWidth,
         customIcon,
         markerSizeCustom,
@@ -9756,6 +9982,7 @@
     if (target === els.mapScaleInput) {
       target.value = normalizeMapScale(target.value);
     }
+    if (target === els.markerSizeInput) target.value = normalizeMarkerSize(target.value, layoutDefaults.markerSizeInput, 4, 20);
     if (target === els.lineWidthInput) target.value = normalizeLeaderLineWidth(target.value);
     if (target === els.leaderColourInput) target.value = normalizeHexColour(target.value, layoutDefaults.leaderColourInput || "#333333");
     syncCompactFurnitureAvailability();
@@ -10582,7 +10809,7 @@
   }
 
   function getCategorySwatchSvg(category) {
-    const markerSize = optionalNumber(category.markerSize) || layoutDefaults.markerSizeInput;
+    const markerSize = normalizeMarkerSize(category.markerSize, layoutDefaults.markerSizeInput);
     const lineWidth = optionalNumber(category.lineWidth) || layoutDefaults.lineWidthInput;
     const previewRadius = Math.max(2, Math.min(12, markerSize));
     const previewLineWidth = Math.max(1, Math.min(4, lineWidth));
@@ -10605,6 +10832,28 @@
     }
 
     return `<svg ${svgAttributes}><path d="${markerPath(category.shape, previewRadius)}" transform="translate(${centre} ${centre})" fill="${fill}" stroke="${stroke}" stroke-width="${previewLineWidth}"></path></svg>`;
+  }
+
+  function getMarkerSizePreviewSvg(category = {}, markerSize = layoutDefaults.markerSizeInput) {
+    const size = normalizeMarkerSize(markerSize, layoutDefaults.markerSizeInput, 4, 30);
+    const centre = 36;
+    const fill = escapeHtml(normalizeHexColour(category.colour, "#3b6f62"));
+    const stroke = escapeHtml(normalizeHexColour(category.stroke, "#ffffff"));
+    const shape = normalizeMarkerShape(category.shape);
+    const svgAttributes = `class="marker-size-preview-svg" viewBox="0 0 72 72" data-marker-size="${size}" data-marker-shape="${escapeHtml(shape)}" focusable="false" aria-hidden="true"`;
+    if (category.customIcon && category.customIcon.dataUrl) {
+      const href = escapeHtml(category.customIcon.dataUrl);
+      const side = size * 2;
+      return `<svg ${svgAttributes}><image href="${href}" xlink:href="${href}" x="${centre - size}" y="${centre - size}" width="${side}" height="${side}" preserveAspectRatio="xMidYMid meet"></image></svg>`;
+    }
+    if (shape === "circle") {
+      return `<svg ${svgAttributes}><circle cx="${centre}" cy="${centre}" r="${size}" fill="${fill}" stroke="${stroke}" stroke-width="2"></circle></svg>`;
+    }
+    if (shape === "square") {
+      const side = size * 2;
+      return `<svg ${svgAttributes}><rect x="${centre - size}" y="${centre - size}" width="${side}" height="${side}" fill="${fill}" stroke="${stroke}" stroke-width="2"></rect></svg>`;
+    }
+    return `<svg ${svgAttributes}><path d="${markerPath(shape, size)}" transform="translate(${centre} ${centre})" fill="${fill}" stroke="${stroke}" stroke-width="2"></path></svg>`;
   }
 
   function starPath(size) {
@@ -11824,6 +12073,9 @@
     on(els.exportMenuBtn, "click", () => setExportMenuOpen(els.exportMenu.hidden));
     on(els.exportMenuBtn, "keydown", handleExportMenuKeydown);
     on(els.exportMenu, "keydown", handleExportMenuKeydown);
+    on(els.applicationSettingsBtn, "click", () => setApplicationSettingsOpen(els.applicationSettingsMenu.hidden, { focusFirst: true }));
+    on(els.applicationSettingsBtn, "keydown", handleApplicationSettingsKeydown);
+    on(els.applicationSettingsCloseBtn, "click", () => setApplicationSettingsOpen(false, { restoreFocus: true }));
     on(els.ribbonExportSvgBtn, "click", () => {
       setExportMenuOpen(false);
       exportSvg();
@@ -12122,7 +12374,7 @@
       on(button, "click", () => setMapLanguage(button.dataset.mapLanguage));
     });
     els.uiLanguageButtons.forEach(button => {
-      on(button, "click", () => applyUiLanguage(button.dataset.uiLanguage));
+      on(button, "click", () => applyUiLanguage(button.dataset.uiLanguage, { syncMap: false }));
     });
     on(els.projectFilterSelect, "change", event => setProjectFilter(event.target.value));
     els.projectLocationModeButtons.forEach(button => {
@@ -12165,6 +12417,9 @@
     document.addEventListener("click", event => {
       if (els.exportMenu && !els.exportMenu.hidden && !event.target.closest(".export-menu-wrap")) {
         setExportMenuOpen(false);
+      }
+      if (els.applicationSettingsMenu && !els.applicationSettingsMenu.hidden && !event.target.closest(".application-settings-wrap")) {
+        setApplicationSettingsOpen(false);
       }
       if (getProjectToolbarMenus().some(item => !item.menu.hidden) && !event.target.closest(".project-menu-wrap")) {
         closeProjectToolbarMenus();

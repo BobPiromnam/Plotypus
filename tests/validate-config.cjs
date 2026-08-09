@@ -134,7 +134,11 @@ function validateDefaults(config) {
     if (!(key in defaults)) addError(["defaults", key], "is required");
     else if (type === "string") requireString(defaults[key], ["defaults", key]);
     else if (type === "colour") validateColour(defaults[key], ["defaults", key]);
-    else requireNumber(defaults[key], ["defaults", key], { min: 1 });
+    else requireNumber(defaults[key], ["defaults", key], key === "defaultLineWidth"
+      ? { min: 1, max: 10 }
+      : key === "defaultMarkerSize"
+        ? { min: 4, max: 20 }
+        : { min: 1 });
   });
 
   if (isPlainObject(config.bookSizes) && typeof defaults.bookSize === "string") {
@@ -226,8 +230,8 @@ function validateCategoryStyle(style, parts) {
   if (!requireObject(style, parts)) return;
   validateColour(style.colour, parts.concat("colour"));
   validateColour(style.stroke, parts.concat("stroke"));
-  requireNumber(style.markerSize, parts.concat("markerSize"), { min: 1 });
-  requireNumber(style.lineWidth, parts.concat("lineWidth"), { min: 0 });
+  requireNumber(style.markerSize, parts.concat("markerSize"), { min: 4, max: 30 });
+  requireNumber(style.lineWidth, parts.concat("lineWidth"), { min: 1, max: 10 });
 }
 
 function validateMapStyles(mapStyles) {
@@ -262,8 +266,8 @@ function validateCategories(categories) {
     requireString(category.shape, categoryPath.concat("shape"));
     validateColour(category.colour, categoryPath.concat("colour"));
     validateColour(category.stroke, categoryPath.concat("stroke"));
-    requireNumber(category.markerSize, categoryPath.concat("markerSize"), { min: 1 });
-    requireNumber(category.lineWidth, categoryPath.concat("lineWidth"), { min: 0 });
+    requireNumber(category.markerSize, categoryPath.concat("markerSize"), { min: 4, max: 30 });
+    requireNumber(category.lineWidth, categoryPath.concat("lineWidth"), { min: 1, max: 10 });
   });
 }
 
