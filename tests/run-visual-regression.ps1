@@ -4,7 +4,7 @@ param(
   [switch]$ReportOnly,
   [switch]$FullMatrix,
   [string[]]$Case = @(),
-  [ValidateSet("preview", "projects", "categories", "regions", "translate", "quality")]
+  [ValidateSet("preview", "projects", "regions", "translate", "quality")]
   [string[]]$Workspace = @(),
   [double]$MaxChangedPercent = 1.5,
   [double]$MaxMeanChannelDelta = 1.5,
@@ -25,9 +25,9 @@ New-Item -ItemType Directory -Force -Path $baselineRoot, $outputRoot | Out-Null
 if (-not $ReportPath) { $ReportPath = Join-Path $outputRoot "visual-regression-report.json" }
 
 $viewports = @(
-  @{ Width = 1440; Height = 1000; Workspaces = @("preview", "projects", "categories", "regions", "translate", "quality") },
-  @{ Width = 1280; Height = 900; Workspaces = if ($FullMatrix) { @("preview", "projects", "categories", "regions", "translate", "quality") } else { @("preview", "projects") } },
-  @{ Width = 1024; Height = 900; Workspaces = if ($FullMatrix) { @("preview", "projects", "categories", "regions", "translate", "quality") } else { @("preview", "projects") } }
+  @{ Width = 1440; Height = 1000; Workspaces = @("preview", "projects", "regions", "translate", "quality") },
+  @{ Width = 1280; Height = 900; Workspaces = if ($FullMatrix) { @("preview", "projects", "regions", "translate", "quality") } else { @("preview", "projects") } },
+  @{ Width = 1024; Height = 900; Workspaces = if ($FullMatrix) { @("preview", "projects", "regions", "translate", "quality") } else { @("preview", "projects") } }
 )
 
 function Compare-VisualImage {

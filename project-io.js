@@ -80,6 +80,8 @@
         labelBorder: Boolean(row.labelBorder),
         hideLine: row.hideLine,
         elbowLeader: Boolean(row.elbowLeader),
+        leaderLineWidth: row.leaderLineWidth === "" || row.leaderLineWidth === undefined ? "" : Number(row.leaderLineWidth),
+        leaderLineColour: String(row.leaderLineColour || ""),
         labelMaxChars: row.labelMaxChars || ""
       })),
       regionVisibility,

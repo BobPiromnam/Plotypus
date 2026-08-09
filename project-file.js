@@ -113,6 +113,9 @@
     if (rawProject.rows.length > 10000) throw validationError("Project file contains more than 10,000 rows and was not loaded.", "project.error.rowsTooMany");
     rawProject.rows.forEach((row, index) => {
       if (!isPlainObject(row)) throw validationError(`Project row ${index + 1} must be an object.`, "project.error.rowObject", { index: index + 1 });
+      if (row.leaderLineColour !== undefined && row.leaderLineColour !== "") {
+        validateColour(row.leaderLineColour, fieldLabel(`Project row ${index + 1} leader line colour`, "project.error.label.row.leaderLineColour", { index: index + 1 }));
+      }
     });
     if (rawProject.categories !== undefined && !Array.isArray(rawProject.categories)) {
       throw validationError("Project categories must be an array.", "project.error.categoriesArray");
@@ -127,6 +130,9 @@
     }
     if (rawProject.settings !== undefined && !isPlainObject(rawProject.settings)) {
       throw validationError("Project settings must be an object.", "project.error.settingsObject");
+    }
+    if (rawProject.settings && rawProject.settings.leaderColour !== undefined) {
+      validateColour(rawProject.settings.leaderColour, fieldLabel("Project leader line colour", "project.error.label.settings.leaderColour"));
     }
     if (rawProject.languageLayouts !== undefined && !isPlainObject(rawProject.languageLayouts)) {
       throw validationError("Project language layouts must be an object.", "project.error.languageLayoutsObject");

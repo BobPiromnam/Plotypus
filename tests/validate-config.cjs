@@ -126,12 +126,14 @@ function validateDefaults(config) {
     mapScale: "number",
     defaultMarkerSize: "number",
     defaultLineWidth: "number",
+    defaultLeaderColour: "colour",
     labelMaxChars: "number"
   };
 
   Object.entries(requiredDefaults).forEach(([key, type]) => {
     if (!(key in defaults)) addError(["defaults", key], "is required");
     else if (type === "string") requireString(defaults[key], ["defaults", key]);
+    else if (type === "colour") validateColour(defaults[key], ["defaults", key]);
     else requireNumber(defaults[key], ["defaults", key], { min: 1 });
   });
 
@@ -267,14 +269,16 @@ function validateCategories(categories) {
 
 function validateSampleRows(sampleRows, categories) {
   if (!requireArray(sampleRows, ["sampleRows"])) return;
-  const categoryLabels = new Set((Array.isArray(categories) ? categories : []).map((category) => category && category.label).filter(Boolean));
+  const categoryAliases = new Set((Array.isArray(categories) ? categories : []).flatMap(category => (
+    category && [category.id, category.label, category.labelFr, category.defaultLabel]
+  )).filter(Boolean));
   sampleRows.forEach((row, index) => {
     const rowPath = ["sampleRows", index];
     if (!requireObject(row, rowPath)) return;
     requireString(row.name, rowPath.concat("name"));
     requireString(row.type, rowPath.concat("type"));
-    if (categoryLabels.size && typeof row.type === "string" && !categoryLabels.has(row.type)) {
-      addWarning(rowPath.concat("type"), `does not match a configured category label: "${row.type}"`);
+    if (categoryAliases.size && typeof row.type === "string" && !categoryAliases.has(row.type)) {
+      addWarning(rowPath.concat("type"), `does not match a configured category id or label: "${row.type}"`);
     }
     const hasLon = row.lon !== "" && row.lon !== null && row.lon !== undefined;
     const hasLat = row.lat !== "" && row.lat !== null && row.lat !== undefined;

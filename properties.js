@@ -28,6 +28,45 @@
     return `<span class="properties-field-label">${escapeHtml(label)} ${propertyOriginIcon(options, origin)}</span>`;
   }
 
+  function renderLeaderLineWidthEditor(options, editorOptions = {}) {
+    const { escapeHtml } = options || {};
+    const t = translator(options);
+    const {
+      scope = "global",
+      committedValue = "",
+      inheritedValue = "",
+      appliedStatus = "",
+      origin = "edit",
+      rowId = ""
+    } = editorOptions;
+    const isPoint = scope === "point";
+    const committed = committedValue === undefined || committedValue === null ? "" : String(committedValue);
+    const inherited = inheritedValue === undefined || inheritedValue === null ? "" : String(inheritedValue);
+    const effective = committed || inherited || "2";
+    const statusId = `leaderLineWidthStatus-${scope}${rowId ? `-${rowId}` : ""}`;
+    const previewText = isPoint && !committed
+      ? t("properties.leaderLines.previewInherited", { value: effective })
+      : t("properties.leaderLines.previewValue", { value: effective });
+    return `
+      <div class="leader-line-thickness-editor" data-leader-line-width-editor="${escapeHtml(scope)}" data-committed-value="${escapeHtml(committed)}" data-inherited-value="${escapeHtml(inherited)}" data-applied-status="${escapeHtml(appliedStatus || t("properties.leaderLines.draftApplied"))}" data-draft-state="applied">
+        <div class="leader-line-thickness-controls">
+          <label>
+            ${propertyFieldLabel(options, t("properties.field.leaderLineThickness"), origin)}
+            <input class="type-numeric-data property-numeric-input" type="number" min="1" max="8" step="0.5" inputmode="decimal" data-leader-line-width-draft="${escapeHtml(scope)}" ${isPoint ? "data-property-field=\"leaderLineWidth\"" : "data-layout-proxy=\"lineWidthInput\" required"} value="${escapeHtml(committed)}"${isPoint && inherited ? ` placeholder="${escapeHtml(inherited)}"` : ""} aria-describedby="${escapeHtml(statusId)}">
+          </label>
+          <button type="button" class="primary leader-line-apply-button" data-property-action="apply-leader-line-width" disabled>${escapeHtml(t("properties.button.applyThickness"))}</button>
+        </div>
+        <div class="leader-line-thickness-preview" aria-live="polite">
+          <svg viewBox="0 0 120 24" preserveAspectRatio="none" focusable="false" aria-hidden="true">
+            <line data-leader-line-width-preview x1="6" y1="12" x2="114" y2="12" stroke-width="${escapeHtml(effective)}" vector-effect="non-scaling-stroke"></line>
+          </svg>
+          <output data-leader-line-width-readout>${escapeHtml(previewText)}</output>
+        </div>
+        <span id="${escapeHtml(statusId)}" class="properties-muted" data-leader-line-width-draft-status>${escapeHtml(appliedStatus || t("properties.leaderLines.draftApplied"))}</span>
+      </div>
+    `;
+  }
+
   function qualityMetricItem(label, value, options) {
     const { state = "neutral", description = "", escapeHtml } = options || {};
     const metricState = state === "ok" ? "ok" : (state === "warning" || state === "review") ? "review" : "info";
@@ -124,6 +163,37 @@
             <input type="number" min="4" max="20" step="1" data-layout-proxy="markerSizeInput" value="${escapeHtml(values.markerSize || "")}">
           </label>
         </section>
+        <section class="document-property-section leader-line-property-section" data-leader-line-controls="global">
+          <h3>${escapeHtml(t("properties.section.leaderLines"))}</h3>
+          <p class="properties-muted">${escapeHtml(t("properties.leaderLines.globalHelp"))}</p>
+          <div class="properties-control-list leader-line-toggle-list">
+            <label class="toolbar-check">
+              <input type="checkbox" data-layout-proxy="hideLeaderLinesInput"${values.hideLeaderLines ? " checked" : ""}>
+              <span>${propertyFieldLabel(options, t("properties.field.hideAllLeaderLines"))}</span>
+            </label>
+            <label class="toolbar-check">
+              <input type="checkbox" data-layout-proxy="routeDenseLeadersInput"${values.routeDenseLeaders ? " checked" : ""}>
+              <span>${propertyFieldLabel(options, t("settings.elbowLeaders"))}</span>
+            </label>
+            <label class="toolbar-check">
+              <input type="checkbox" data-layout-proxy="showLineCasingInput"${values.showLineCasing ? " checked" : ""}>
+              <span>${propertyFieldLabel(options, t("settings.leaderBorder"))}</span>
+            </label>
+          </div>
+          <div class="leader-line-style-grid">
+            ${renderLeaderLineWidthEditor(options, {
+              scope: "global",
+              committedValue: values.lineWidth || "",
+              inheritedValue: values.lineWidth || "",
+              appliedStatus: t("properties.leaderLines.draftApplied")
+            })}
+            <label>
+              ${propertyFieldLabel(options, t("properties.field.leaderLineColour"))}
+              <input type="color" data-layout-proxy="leaderColourInput" value="${escapeHtml(values.leaderColour || "#333333")}">
+            </label>
+          </div>
+          <p class="properties-muted">${escapeHtml(t("properties.leaderLines.precedence"))}</p>
+        </section>
         <section class="document-property-section">
           <h3>${escapeHtml(t("properties.section.mapDetails"))}</h3>
           <div class="map-details-status-card" data-state="${missingDetails ? "review" : "ok"}">
@@ -184,8 +254,15 @@
     const effectiveLabelMaxChars = row.labelMaxChars === "" || row.labelMaxChars === undefined
       ? globalLabelMaxChars
       : row.labelMaxChars;
-    const numericStyle = "font-family: &quot;IBM Plex Mono&quot;, ui-monospace, monospace; text-align: right; font-variant-numeric: tabular-nums;";
     const anchor = projectLocationMode === "regions" ? "region" : "coord";
+    const leaderLineWidth = row.leaderLineWidth === "" || row.leaderLineWidth === undefined || row.leaderLineWidth === null
+      ? ""
+      : String(row.leaderLineWidth);
+    const leaderLineColour = String(row.leaderLineColour || "").trim();
+    const inheritedLeaderLineWidth = options.inheritedLeaderLineWidth === "" || options.inheritedLeaderLineWidth === undefined || options.inheritedLeaderLineWidth === null
+      ? ""
+      : String(options.inheritedLeaderLineWidth);
+    const inheritedLeaderLineColour = String(options.inheritedLeaderLineColour || "#333333").trim() || "#333333";
     const labelStyle = row.labelStyle === "rich" ? "rich" : "compact";
     const languageKey = authoringLanguage === "fr" ? "fr" : "en";
     const content = Array.isArray(row.content) ? row.content : [];
@@ -278,7 +355,7 @@
                 <label class="annotation-image-size-field">
                   ${propertyFieldLabel(options, t("properties.annotation.imageSize"))}
                   <span class="annotation-image-size-control">
-                    <input type="number" min="24" max="300" step="4" inputmode="numeric" data-property-field="contentImageSize" data-block-index="${index}" aria-describedby="${escapeHtml(sizeHintId)}" style="${numericStyle}" value="${displaySize}">
+                    <input class="type-numeric-data property-numeric-input" type="number" min="24" max="300" step="4" inputmode="numeric" data-property-field="contentImageSize" data-block-index="${index}" aria-describedby="${escapeHtml(sizeHintId)}" value="${displaySize}">
                     <span aria-hidden="true">pt</span>
                   </span>
                   <small id="${escapeHtml(sizeHintId)}">${escapeHtml(t("properties.annotation.imageSizeHint"))}</small>
@@ -328,11 +405,11 @@
             <div class="properties-inline-grid">
               <label>
                 ${propertyFieldLabel(options, t("properties.field.longitude"))}
-                <input type="text" inputmode="decimal" data-property-field="lon" style="${numericStyle}" value="${escapeHtml(row.lon === "" ? "" : String(row.lon))}">
+                <input class="type-numeric-data property-numeric-input" type="text" inputmode="decimal" data-property-field="lon" value="${escapeHtml(row.lon === "" ? "" : String(row.lon))}">
               </label>
               <label>
                 ${propertyFieldLabel(options, t("properties.field.latitude"))}
-                <input type="text" inputmode="decimal" data-property-field="lat" style="${numericStyle}" value="${escapeHtml(row.lat === "" ? "" : String(row.lat))}">
+                <input class="type-numeric-data property-numeric-input" type="text" inputmode="decimal" data-property-field="lat" value="${escapeHtml(row.lat === "" ? "" : String(row.lat))}">
               </label>
             </div>`}
         </section>
@@ -346,14 +423,45 @@
           ${contentEditor}
         </section>
 
-        <label class="toolbar-check">
-          <input type="checkbox" data-property-field="hideLine"${row.hideLine ? " checked" : ""}>
-          <span>${propertyFieldLabel(options, t("properties.field.hideLeaderLine"))}</span>
-        </label>
-        <label class="toolbar-check">
-          <input type="checkbox" data-property-field="elbowLeader"${row.elbowLeader ? " checked" : ""}>
-          <span>${propertyFieldLabel(options, t("properties.field.useElbowLeader"))}</span>
-        </label>
+        <section class="annotation-property-section leader-line-property-section" data-leader-line-controls="point">
+          <h3>${escapeHtml(t("properties.section.leaderLines"))}</h3>
+          <p class="properties-muted">${escapeHtml(t("properties.leaderLines.pointHelp"))}</p>
+          <div class="properties-control-list leader-line-toggle-list">
+            <label class="toolbar-check">
+              <input type="checkbox" data-property-field="hideLine"${row.hideLine ? " checked" : ""}>
+              <span>${propertyFieldLabel(options, t("properties.field.hideLeaderLine"))}</span>
+            </label>
+            <label class="toolbar-check">
+              <input type="checkbox" data-property-field="elbowLeader"${row.elbowLeader ? " checked" : ""}>
+              <span>${propertyFieldLabel(options, t("properties.field.useElbowLeader"))}</span>
+            </label>
+          </div>
+          <div class="leader-line-style-grid">
+            ${renderLeaderLineWidthEditor(options, {
+              scope: "point",
+              committedValue: leaderLineWidth,
+              inheritedValue: inheritedLeaderLineWidth,
+              appliedStatus: leaderLineWidth
+                ? t("properties.leaderLines.pointWidthOverride")
+                : inheritedLeaderLineWidth
+                  ? t("properties.leaderLines.pointWidthInherited", { value: inheritedLeaderLineWidth })
+                  : t("properties.leaderLines.pointWidthInheritedDefault"),
+              origin: leaderLineWidth ? "edit" : "auto",
+              rowId
+            })}
+            <label>
+              ${propertyFieldLabel(options, t("properties.field.leaderLineColour"), leaderLineColour ? "edit" : "auto")}
+              <span class="leader-line-colour-control">
+                <input type="color" data-property-field="leaderLineColour" value="${escapeHtml(leaderLineColour || inheritedLeaderLineColour)}">
+                <button type="button" class="ghost-button leader-line-reset-button" data-property-action="reset-leader-colour"${leaderLineColour ? "" : " disabled"}>${escapeHtml(t("properties.button.useInheritedColour"))}</button>
+              </span>
+              <span class="properties-muted">${escapeHtml(leaderLineColour
+                ? t("properties.leaderLines.pointColourOverride")
+                : t("properties.leaderLines.pointColourInherited", { value: inheritedLeaderLineColour }))}</span>
+            </label>
+          </div>
+          <p class="properties-muted properties-dot-note">${escapeHtml(t("properties.leaderLines.pointPrecedence"))}</p>
+        </section>
         <details${advancedOpen ? " open" : ""}>
           <summary>${escapeHtml(t("properties.field.advanced"))}</summary>
           <div class="properties-form">
@@ -456,7 +564,7 @@
   }
 
   function renderCategoryPropertyControls(options) {
-    const { category, markerShapes = [], escapeHtml, markerShapeIcon } = options || {};
+    const { category, markerShapes = [], colourPresets = [], escapeHtml, iconSvg, markerShapeIcon, backLabel = "" } = options || {};
     const t = translator(options);
     if (!category) return `<p class="properties-muted">${escapeHtml(t("properties.category.empty"))}</p>`;
     const customIcon = category.customIcon || null;
@@ -472,14 +580,24 @@
             ${typeof markerShapeIcon === "function" ? markerShapeIcon(shape.value, category) : ""}
             <span>${escapeHtml(shape.label)}</span>
       </label>`).join("");
+    const selectedColourPreset = colourPresets.find(preset => (
+      preset.value && String(preset.value).toLowerCase() === String(category.colour || "").toLowerCase()
+    ));
+    const colourPresetOptions = colourPresets.map(preset => `
+          <option value="${escapeHtml(preset.value)}"${selectedColourPreset ? preset.value === selectedColourPreset.value ? " selected" : "" : !preset.value ? " selected" : ""}>${escapeHtml(preset.label)}</option>`).join("");
     return `
-      <div class="properties-form" data-property-kind="category" data-category-id="${escapeHtml(category.id)}">
+      <div id="categoryPropertiesEditor" class="properties-form" data-property-kind="category" data-category-id="${escapeHtml(category.id)}">
+        <button type="button" class="properties-back-button" data-property-action="back-to-document" data-category-id="${escapeHtml(category.id)}">
+          ${typeof iconSvg === "function" ? iconSvg("chevron-left", "button-icon") : ""}
+          <span>${escapeHtml(backLabel || t("properties.category.backToDocument"))}</span>
+        </button>
         <h3>${escapeHtml(t("properties.category.legendLabel"))}</h3>
         <label>${propertyFieldLabel(options, t("properties.category.english"))}<input data-category-field="label" type="text" value="${escapeHtml(category.label)}"></label>
         <label>${propertyFieldLabel(options, t("properties.category.french"))}<input data-category-field="labelFr" type="text" value="${escapeHtml(category.labelFr || "")}"></label>
         <p class="properties-muted properties-dot-note">${escapeHtml(t("properties.category.languageNote"))}</p>
         <h3>${escapeHtml(t("properties.category.markerShape"))}</h3>
         <div class="category-shape-grid">${shapeOptions}</div>
+        ${colourPresetOptions ? `<label>${propertyFieldLabel(options, t("properties.category.colourPreset"))}<select data-category-colour-preset>${colourPresetOptions}</select></label>` : ""}
         <label>${propertyFieldLabel(options, t("properties.category.markerColour"))}<input data-category-field="colour" type="color" value="${escapeHtml(category.colour)}"></label>
         <div class="custom-icon-dropzone${customIcon ? " is-active" : ""}">
           <input data-category-icon-upload type="file" accept="image/png,image/webp" hidden>

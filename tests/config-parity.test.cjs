@@ -205,6 +205,7 @@ test("bundled file-mode defaults match the editable JSON configuration", () => {
   assert.deepEqual(bundled.mapStylePresets, external.mapStyles);
   assert.deepEqual(bundled.categorySettings, external.categories);
   assert.deepEqual(bundled.sampleRows, external.sampleRows);
+  assert.deepEqual(bundled.sampleMapDetails, external.sampleMapDetails);
   assert.deepEqual(bundled.layoutDefaults, {
     bookSizeInput: external.defaults.bookSize,
     imageSizeInput: external.defaults.imageSize,
@@ -212,6 +213,7 @@ test("bundled file-mode defaults match the editable JSON configuration", () => {
     mapScaleInput: external.defaults.mapScale,
     markerSizeInput: external.defaults.defaultMarkerSize,
     lineWidthInput: external.defaults.defaultLineWidth,
+    leaderColourInput: external.defaults.defaultLeaderColour,
     labelCharsInput: external.defaults.labelMaxChars
   });
   assert.equal(bundled.layoutDefaults.markerSizeInput, 4);
@@ -257,7 +259,7 @@ test("static HTML i18n keys exist in English and French dictionaries", () => {
 
 test("workspace headline keys exist in English and French dictionaries", () => {
   const i18n = loadBundledI18n();
-  const workspaceNames = ["preview", "projects", "categories", "regions", "translate", "quality"];
+  const workspaceNames = ["preview", "projects", "regions", "translate", "quality"];
   const keys = workspaceNames.map(name => `summary.headline.${name}`);
 
   assert.deepEqual(
@@ -287,6 +289,38 @@ test("English and French i18n dictionaries expose the same keys", () => {
     [],
     "English dictionary is missing French keys"
   );
+});
+
+test("leader-line settings expose localized global and point copy", () => {
+  const i18n = loadBundledI18n();
+  const expected = {
+    en: {
+      "properties.section.leaderLines": "Leader lines",
+      "properties.field.hideAllLeaderLines": "Hide all leader lines",
+      "properties.field.hideLeaderLine": "Hide leader line",
+      "properties.field.useElbowLeader": "Use elbow leader",
+      "properties.leaderLines.draftPending": "Draft thickness: {value} px. Apply to update the map.",
+      "properties.leaderLines.previewInherited": "Preview: {value} px (inherited)",
+      "properties.button.applyThickness": "Apply",
+      "properties.button.useInheritedColour": "Use inherited"
+    },
+    fr: {
+      "properties.section.leaderLines": "Traits de renvoi",
+      "properties.field.hideAllLeaderLines": "Masquer tous les traits de renvoi",
+      "properties.field.hideLeaderLine": "Masquer le trait de renvoi",
+      "properties.field.useElbowLeader": "Utiliser un trait de renvoi coudé",
+      "properties.leaderLines.draftPending": "Épaisseur provisoire : {value} px. Appliquez-la pour mettre la carte à jour.",
+      "properties.leaderLines.previewInherited": "Aperçu : {value} px (héritée)",
+      "properties.button.applyThickness": "Appliquer",
+      "properties.button.useInheritedColour": "Utiliser la valeur héritée"
+    }
+  };
+
+  Object.entries(expected).forEach(([locale, values]) => {
+    Object.entries(values).forEach(([key, value]) => {
+      assert.equal(i18n.dictionaries[locale][key], value, `${locale}.${key}`);
+    });
+  });
 });
 
 test("i18n source dictionaries do not contain duplicate keys", () => {

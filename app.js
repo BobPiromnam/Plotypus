@@ -29,7 +29,8 @@
     if (statusBox) statusBox.innerHTML = `<div class="status-danger">${message}</div>`;
     if (mapSvg) {
       mapSvg.setAttribute("viewBox", "0 0 900 360");
-      mapSvg.innerHTML = `<rect width="900" height="360" fill="#fff7e6"></rect><text x="450" y="180" text-anchor="middle" font-family="${defaultFontFamily}" font-size="22" font-weight="700" fill="#8a1f11">${message}</text>`;
+      mapSvg.classList.add("map-font-lato");
+      mapSvg.innerHTML = `<rect class="map-startup-error-background" width="900" height="360"></rect><text class="map-startup-error-title map-type-size-22" x="450" y="180" text-anchor="middle">${message}</text>`;
     }
     return;
   }
@@ -154,11 +155,12 @@
     rememberLabelPositions: collectLabelPositions,
     scoreCandidate,
     scoreLayout,
+    solveConflictFreeLayout,
     sameLabelPlacement,
     weights: labelPlacementWeights
   } = labelLayoutPolicies;
 
-  const fallbackRegionColours = ["#c7ded5", "#96c6b4", "#6caf94", "#078c70"];
+  const fallbackRegionColours = ["#b4d6c9", "#88b6a5", "#57a588", "#088b70"];
   const customMarkerIconRules = Object.freeze({
     maxBytes: 256 * 1024,
     minDimension: 8,
@@ -180,6 +182,8 @@
   });
   const boundarySources = appConfig.boundarySources || {};
   const sampleRows = cloneConfigList(appConfig.sampleRows);
+  const sampleMapDetails = clonePlainObject(appConfig.sampleMapDetails);
+  const sampleRegionFills = clonePlainObject(appConfig.sampleRegionFills);
   const mapStylePresets = appConfig.mapStylePresets || window.MAP_APP_STYLE_PRESETS || appConfig.fallbackMapStylePresets || {
     "goc-green": {
       label: "GoC green",
@@ -222,9 +226,10 @@
     mapScaleInput: 100,
     markerSizeInput: 4,
     lineWidthInput: 2,
+    leaderColourInput: "#333333",
     labelCharsInput: 24
   };
-  const mapScaleRange = Object.freeze({ min: 45, max: 115, autoFitStep: 5 });
+  const mapScaleRange = Object.freeze({ min: 45, max: 115 });
   const canvasViewZoomLevels = Object.freeze([25, 33, 50, 67, 75, 90, 100, 110, 125, 150, 175, 200]);
   const defaultCanvasViewZoom = 125;
   const storageKeys = appConfig.storageKeys || {};
@@ -290,13 +295,11 @@
     regionTableBody: document.querySelector("#regionTable tbody"),
     tablePanelTitle: document.querySelector("#tablePanelTitle"),
     projectTableTab: document.querySelector("#projectTableTab"),
-    categoriesTableTab: document.querySelector("#categoriesTableTab"),
     regionTableTab: document.querySelector("#regionTableTab"),
     translateTableTab: document.querySelector("#translateTableTab"),
     previewTableTab: document.querySelector("#previewTableTab"),
     qualityTableTab: document.querySelector("#qualityTableTab"),
     projectTablePane: document.querySelector("#projectTablePane"),
-    categoriesTablePane: document.querySelector("#categoriesTablePane"),
     regionTablePane: document.querySelector("#regionTablePane"),
     translateTablePane: document.querySelector("#translateTablePane"),
     previewTablePane: document.querySelector("#previewTablePane"),
@@ -321,6 +324,7 @@
     propertiesIcon: document.querySelector("#propertiesIcon"),
     previewDisplayPropertiesSection: document.querySelector("#previewDisplayPropertiesSection"),
     previewInteractionPropertiesSection: document.querySelector("#previewInteractionPropertiesSection"),
+    legendPropertiesSection: document.querySelector("#legendPropertiesSection"),
     propertiesDescription: document.querySelector("#propertiesDescription"),
     propertiesSelectionControls: document.querySelector("#propertiesSelectionControls"),
     applyRegionValueColoursBtn: document.querySelector("#applyRegionValueColoursBtn"),
@@ -344,6 +348,7 @@
     projectAddMenu: document.querySelector("#projectAddMenu"),
     projectMoreMenuBtn: document.querySelector("#projectMoreMenuBtn"),
     projectMoreMenu: document.querySelector("#projectMoreMenu"),
+    addProjectTypeBtn: document.querySelector("#addProjectTypeBtn"),
     addRowBtn: document.querySelector("#addRowBtn"),
     addPointsBtn: document.querySelector("#addPointsBtn"),
     projectSelectionActions: document.querySelector("#projectSelectionActions"),
@@ -358,8 +363,6 @@
     documentPagePreview: document.querySelector("#documentPagePreview"),
     documentCanvasSlot: document.querySelector("#documentCanvasSlot"),
     canvasPlaceholder: document.querySelector("#canvasPlaceholder"),
-    previewLoadSampleBtn: document.querySelector("#previewLoadSampleBtn"),
-    previewImportCsvBtn: document.querySelector("#previewImportCsvBtn"),
     canvasToolbar: document.querySelector("#canvasToolbar"),
     canvasQualityPill: document.querySelector("#canvasQualityPill"),
     canvasZoomOutBtn: document.querySelector("#canvasZoomOutBtn"),
@@ -371,6 +374,8 @@
     mapScaleInput: document.querySelector("#mapScaleInput"),
     markerSizeInput: document.querySelector("#markerSizeInput"),
     lineWidthInput: document.querySelector("#lineWidthInput"),
+    leaderColourInput: document.querySelector("#leaderColourInput"),
+    hideLeaderLinesInput: document.querySelector("#hideLeaderLinesInput"),
     labelCharsInput: document.querySelector("#labelCharsInput"),
     fontFamilyInput: document.querySelector("#fontFamilyInput"),
     mapLanguageInput: document.querySelector("#mapLanguageInput"),
@@ -509,8 +514,8 @@
   let activeCategoryId = categorySettings[0] ? categorySettings[0].id : "";
   let currentMapLanguage = "en";
   const languageLayoutStates = {
-    en: { manualLabelPositions: {}, manualBoxPositions: {}, history: [], mapScale: null },
-    fr: { manualLabelPositions: {}, manualBoxPositions: {}, history: [], mapScale: null }
+    en: { manualLabelPositions: {}, manualBoxPositions: {}, history: [], mapScale: null, mapOffsetX: 0, mapOffsetY: 0 },
+    fr: { manualLabelPositions: {}, manualBoxPositions: {}, history: [], mapScale: null, mapOffsetX: 0, mapOffsetY: 0 }
   };
   let manualLabelPositions = languageLayoutStates.en.manualLabelPositions;
   let manualBoxPositions = languageLayoutStates.en.manualBoxPositions;
@@ -550,6 +555,7 @@
     sampleWindow: Math.max(5, Math.min(100, Number(performanceBudgetConfig.sampleWindow) || 30))
   });
   const renderPerformanceSamples = [];
+  let autoFitDiagnostics = { attempts: [], selected: null };
   let scheduledRenderRequestedAt = null;
   let previewBusyStartedAt = 0;
   let previewBusyClearTimer = null;
@@ -739,6 +745,15 @@
     budgets: { ...renderPerformanceBudgets },
     snapshot: getRenderPerformanceSnapshot
   });
+  window.PLOTYPUS_AUTO_FIT_DIAGNOSTICS = Object.freeze({
+    snapshot: () => ({
+      attempts: autoFitDiagnostics.attempts.map(attempt => ({ ...attempt })),
+      selected: autoFitDiagnostics.selected ? { ...autoFitDiagnostics.selected } : null,
+      unresolvedAbove: Array.isArray(autoFitDiagnostics.unresolvedAbove)
+        ? autoFitDiagnostics.unresolvedAbove.slice()
+        : []
+    })
+  });
   window.PLOTYPUS_QUALITY_ANALYSIS = Object.freeze({
     snapshot: getQualityAnalysisSnapshot
   });
@@ -782,9 +797,23 @@
     return languageLayoutStates[normalizeMapLanguage(language)];
   }
 
-  function rememberCurrentLanguageMapScale() {
+  function rememberCurrentLanguageMapScale(settings = null) {
     const state = getLanguageLayoutState();
-    if (state && els.mapScaleInput) state.mapScale = normalizeMapScale(els.mapScaleInput.value);
+    if (!state) return;
+    if (settings && Number.isFinite(Number(settings.mapScale))) state.mapScale = normalizeMapScale(settings.mapScale);
+    else if (els.mapScaleInput) state.mapScale = normalizeMapScale(els.mapScaleInput.value);
+    if (settings) {
+      state.mapOffsetX = Number(settings.mapOffsetX) || 0;
+      state.mapOffsetY = Number(settings.mapOffsetY) || 0;
+    }
+  }
+
+  function resetLanguageMapOffsets() {
+    ["en", "fr"].forEach(language => {
+      languageLayoutStates[language].mapOffsetX = 0;
+      languageLayoutStates[language].mapOffsetY = 0;
+    });
+    languageLayoutCache.clear();
   }
 
   function syncCurrentLanguageLayoutState() {
@@ -829,7 +858,9 @@
         manualLabelPositions: {},
         manualBoxPositions: {},
         history: [],
-        mapScale: null
+        mapScale: null,
+        mapOffsetX: 0,
+        mapOffsetY: 0
       };
     });
     activateLanguageLayoutState(currentMapLanguage, els.mapScaleInput ? els.mapScaleInput.value : null);
@@ -839,11 +870,16 @@
     syncCurrentLanguageLayoutState();
     return Object.fromEntries(["en", "fr"].map(language => {
       const state = languageLayoutStates[language];
-      return [language, {
+      const serialized = {
         manualLabelPositions: cloneCoordinateMap(state.manualLabelPositions),
         manualBoxPositions: cloneCoordinateMap(state.manualBoxPositions),
         mapScale: Number.isFinite(Number(state.mapScale)) ? normalizeMapScale(state.mapScale) : null
-      }];
+      };
+      if (Number(state.mapOffsetX) || Number(state.mapOffsetY)) {
+        serialized.mapOffsetX = Number(state.mapOffsetX) || 0;
+        serialized.mapOffsetY = Number(state.mapOffsetY) || 0;
+      }
+      return [language, serialized];
     }));
   }
 
@@ -854,7 +890,9 @@
         manualLabelPositions: normalizeStoredCoordinateMap(saved && saved.manualLabelPositions),
         manualBoxPositions: normalizeStoredCoordinateMap(saved && saved.manualBoxPositions),
         history: [],
-        mapScale: saved && Number.isFinite(Number(saved.mapScale)) ? normalizeMapScale(saved.mapScale) : null
+        mapScale: saved && Number.isFinite(Number(saved.mapScale)) ? normalizeMapScale(saved.mapScale) : null,
+        mapOffsetX: saved && Number.isFinite(Number(saved.mapOffsetX)) ? Number(saved.mapOffsetX) : 0,
+        mapOffsetY: saved && Number.isFinite(Number(saved.mapOffsetY)) ? Number(saved.mapOffsetY) : 0
       };
     });
 
@@ -864,6 +902,8 @@
       languageLayoutStates[targetLanguage].manualBoxPositions = normalizeStoredCoordinateMap(project.manualBoxPositions);
       const legacyScale = project.settings && project.settings.mapScale;
       languageLayoutStates[targetLanguage].mapScale = Number.isFinite(Number(legacyScale)) ? normalizeMapScale(legacyScale) : null;
+      languageLayoutStates[targetLanguage].mapOffsetX = Number(project.settings && project.settings.mapOffsetX) || 0;
+      languageLayoutStates[targetLanguage].mapOffsetY = Number(project.settings && project.settings.mapOffsetY) || 0;
     }
     currentMapLanguage = targetLanguage;
     activateLanguageLayoutState(currentMapLanguage, els.mapScaleInput ? els.mapScaleInput.value : null);
@@ -1225,11 +1265,19 @@
   }
 
   function getCategoryMarkerSize(category, settings) {
-    return optionalNumber(category.markerSize) || settings.markerSize;
+    const sourceSize = optionalNumber(category.markerSize) || settings.markerSize;
+    return sourceSize * (Number(settings.labelDensityScale) || 1);
   }
 
   function getCategoryLineWidth(category, settings) {
-    return optionalNumber(category.lineWidth) || settings.lineWidth;
+    const sourceWidth = optionalNumber(category.lineWidth) || settings.lineWidth;
+    return sourceWidth * (Number(settings.labelDensityScale) || 1);
+  }
+
+  function getLeaderLineWidth(row, settings) {
+    const override = normalizeLeaderLineWidthOverride(row && row.leaderLineWidth);
+    if (override !== "") return override * (Number(settings.labelDensityScale) || 1);
+    return getCategoryLineWidth(getCategory(row && row.type), settings);
   }
 
   function normalizeCategorySizes(category, settings = getSettings()) {
@@ -1442,19 +1490,19 @@
     categorySettings.forEach(category => normalizeCategorySizes(category, settings));
     els.categoryList.innerHTML = categorySettings.map((category, index) => {
       const categoryUiLabel = getCategoryLabel(category.id, currentUiLanguage);
+      const isSelected = activePropertiesSelection?.kind === "category" && activePropertiesSelection.id === category.id;
       return `
-      <div class="category-editor${category.collapsed ? " is-collapsed" : ""}${category.id === activeCategoryId ? " is-selected" : ""}" data-category-id="${escapeHtml(category.id)}" tabindex="0" aria-label="${escapeHtml(t("properties.category.editAria", { label: categoryUiLabel }))}">
-        <div class="category-header">
-          <div class="category-title-block">
-            <span class="category-swatch">${getCategorySwatchSvg(category)}</span>
-            <span>
-              <strong title="${escapeHtml(categoryUiLabel)}">${escapeHtml(categoryUiLabel)}</strong>
-              <small>${categoryCounts[category.id] || 0} ${escapeHtml((categoryCounts[category.id] || 0) === 1 ? t("properties.category.point") : t("properties.category.points"))} · ${escapeHtml(category.customIcon ? t("properties.category.customIcon") : getMarkerShapeLabel(category.shape))}</small>
-            </span>
-          </div>
-          <button class="toggle-category-btn icon-button" type="button" data-category-id="${escapeHtml(category.id)}" aria-label="${escapeHtml(`${category.collapsed ? t("properties.category.expand") : t("properties.category.collapse")} ${categoryUiLabel}`)}" title="${escapeHtml(category.collapsed ? t("properties.category.expand") : t("properties.category.collapse"))}">${category.collapsed ? "▸" : "▾"}</button>
-          <div class="category-actions">
-            <button class="category-drag-handle icon-button" type="button" draggable="true" data-category-id="${escapeHtml(category.id)}" aria-label="${escapeHtml(t("properties.category.dragAria", { label: categoryUiLabel }))}" title="${escapeHtml(t("properties.category.dragTitle"))}">
+      <li class="legend-item${isSelected ? " is-selected" : ""}" data-legend-item data-category-id="${escapeHtml(category.id)}">
+        <button class="legend-item-select" type="button" data-property-action="edit-legend-item" data-category-id="${escapeHtml(category.id)}" aria-controls="categoryPropertiesEditor" aria-expanded="${String(isSelected)}"${isSelected ? " aria-current=\"true\"" : ""} aria-label="${escapeHtml(t("properties.category.editAria", { label: categoryUiLabel }))}">
+          <span class="category-swatch" data-legend-preview aria-hidden="true">${getCategorySwatchSvg(category)}</span>
+          <span class="legend-item-copy">
+            <strong data-legend-name>${escapeHtml(categoryUiLabel)}</strong>
+            <small data-legend-count data-count="${categoryCounts[category.id] || 0}">${categoryCounts[category.id] || 0} ${escapeHtml((categoryCounts[category.id] || 0) === 1 ? t("properties.category.point") : t("properties.category.points"))} · ${escapeHtml(category.customIcon ? t("properties.category.customIcon") : getMarkerShapeLabel(category.shape))}</small>
+          </span>
+          <span class="legend-item-chevron" aria-hidden="true">›</span>
+        </button>
+        <div class="category-actions">
+            <span class="category-drag-handle icon-button" draggable="true" data-category-id="${escapeHtml(category.id)}" aria-hidden="true" title="${escapeHtml(t("properties.category.dragTitle"))}">
               <svg class="category-grip-icon" aria-hidden="true" viewBox="0 0 24 24" fill="currentColor">
                 <circle cx="9" cy="6" r="1.8"></circle>
                 <circle cx="15" cy="6" r="1.8"></circle>
@@ -1463,41 +1511,12 @@
                 <circle cx="9" cy="18" r="1.8"></circle>
                 <circle cx="15" cy="18" r="1.8"></circle>
               </svg>
-            </button>
-            <button class="remove-category-btn icon-button" type="button" data-category-id="${escapeHtml(category.id)}" aria-label="${escapeHtml(t("properties.category.removeAria", { label: categoryUiLabel }))}" title="${escapeHtml(t("properties.category.removeTitle"))}"${categorySettings.length <= 1 ? " disabled" : ""}>×</button>
-          </div>
+            </span>
+            <button class="move-category-up-btn icon-button" type="button" data-category-id="${escapeHtml(category.id)}" aria-label="${escapeHtml(t("properties.category.moveUpAria", { label: categoryUiLabel }))}" title="${escapeHtml(t("properties.category.moveUp"))}"${index === 0 ? " disabled" : ""}>↑</button>
+            <button class="move-category-down-btn icon-button" type="button" data-category-id="${escapeHtml(category.id)}" aria-label="${escapeHtml(t("properties.category.moveDownAria", { label: categoryUiLabel }))}" title="${escapeHtml(t("properties.category.moveDown"))}"${index >= categorySettings.length - 1 ? " disabled" : ""}>↓</button>
+            <button class="remove-category-btn icon-button" type="button" data-category-id="${escapeHtml(category.id)}" aria-label="${escapeHtml(t("properties.category.removeAria", { label: categoryUiLabel }))}" title="${escapeHtml(t("properties.category.removeTitle"))}"${category.removable === false || categorySettings.length <= 1 ? " disabled" : ""}>×</button>
         </div>
-        <div class="category-body category-form">
-        <label class="category-name-field">
-          ${escapeHtml(t("properties.category.name"))}
-          <input class="category-label-input" type="text" value="${escapeHtml(category.label)}" />
-        </label>
-          <label>
-            ${escapeHtml(t("properties.category.marker"))}
-            <select class="category-shape-input">
-              ${markerShapes.map(shape => `<option value="${escapeHtml(shape.value)}"${category.shape === shape.value ? " selected" : ""}>${escapeHtml(getMarkerShapeLabel(shape))}</option>`).join("")}
-            </select>
-          </label>
-          <label>
-            ${escapeHtml(t("properties.category.colourPreset"))}
-            <select class="category-preset-input">
-              ${colourPresets.map(preset => `<option value="${escapeHtml(preset.value)}"${getPresetValueForColour(category.colour) === preset.value ? " selected" : ""}>${escapeHtml(getCategoryColourPresetLabel(preset))}</option>`).join("")}
-            </select>
-          </label>
-          <label>
-            ${escapeHtml(t("properties.category.customColour"))}
-            <input class="category-colour-input" type="color" value="${escapeHtml(category.colour)}" />
-          </label>
-          <label>
-            ${escapeHtml(t("properties.category.markerSize"))}
-            <input class="category-marker-size-input" type="number" min="4" max="30" step="1" value="${category.markerSize}" />
-          </label>
-          <label>
-            ${escapeHtml(t("properties.category.lineWidth"))}
-            <input class="category-line-width-input" type="number" min="1" max="10" step="0.5" value="${category.lineWidth}" />
-          </label>
-        </div>
-      </div>
+      </li>
     `;
     }).join("");
   }
@@ -1875,6 +1894,8 @@
       labelBorder: toBoolean(row && row.labelBorder),
       hideLine: toBoolean(getField(row, csvColumnAliases.hideLine)),
       elbowLeader: toBoolean(row && row.elbowLeader),
+      leaderLineWidth: normalizeLeaderLineWidthOverride(row && row.leaderLineWidth),
+      leaderLineColour: normalizeHexColour(row && row.leaderLineColour, ""),
       labelMaxChars: normalizeLabelMaxCharsOverride(row && row.labelMaxChars)
     };
   }
@@ -1903,6 +1924,7 @@
     els.tableBody.appendChild(fragment);
     updateDeleteButtonState();
     refreshProjectTableUx();
+    renderCategoryEditors();
     if (options.resetProperties !== false) {
       activePropertiesSelection = null;
     }
@@ -1916,7 +1938,7 @@
   }
 
   function addRow(
-    row = { name: "", nameFr: "", footnote: "", type: getDefaultCategory().id, lon: "", lat: "", anchor: "coord", region: "", labelStyle: "compact", content: [], labelBorder: false, hideLine: false, elbowLeader: false, labelMaxChars: "" },
+    row = { name: "", nameFr: "", footnote: "", type: getDefaultCategory().id, lon: "", lat: "", anchor: "coord", region: "", labelStyle: "compact", content: [], labelBorder: false, hideLine: false, elbowLeader: false, leaderLineWidth: "", leaderLineColour: "", labelMaxChars: "" },
     options = {}
   ) {
     const tr = document.createElement("tr");
@@ -1948,7 +1970,11 @@
       <td class="bulk-edit-cell coordinate-cell lat-cell vcell" data-cell-field="lat"><input class="lat-input" type="text" inputmode="decimal" value="${escapeHtml(formatProjectCoordinate(row.lat))}" aria-label="${escapeHtml(t("table.latitude"))}"><button class="clear-coordinate-cell" type="button" data-clear-coordinate="lat" aria-label="${escapeHtml(t("table.clearLatitude"))}" title="${escapeHtml(t("table.clearLatitude"))}" hidden>&times;</button></td>
       <td class="status-cell" data-cell-field="status" aria-readonly="true"><span class="row-status-badge"></span></td>
       <td class="line-cell" data-cell-field="hideLine"><input type="checkbox" class="hide-line-input" aria-label="${escapeHtml(t("properties.field.hideLeaderLine"))}"${row.hideLine ? " checked" : ""}></td>
-      <td hidden><input type="checkbox" class="elbow-leader-input" aria-label="${escapeHtml(t("properties.field.useElbowLeader"))}"${row.elbowLeader ? " checked" : ""}></td>
+      <td hidden>
+        <input type="checkbox" class="elbow-leader-input" aria-label="${escapeHtml(t("properties.field.useElbowLeader"))}"${row.elbowLeader ? " checked" : ""}>
+        <input type="hidden" class="leader-line-width-input" value="${escapeHtml(String(normalizeLeaderLineWidthOverride(row.leaderLineWidth)))}">
+        <input type="hidden" class="leader-line-colour-input" value="${escapeHtml(normalizeHexColour(row.leaderLineColour, ""))}">
+      </td>
       <td class="select-cell"><input type="checkbox" class="row-select" aria-label="${escapeHtml(t("table.selectRow"))}"></td>
     `;
     tr.querySelector(".type-input").value = cleanType(row.type);
@@ -2187,7 +2213,14 @@
 
   function loadSampleData() {
     pushAppUndoHistory("load sample data");
+    Object.keys(mapDetails).forEach(key => {
+      mapDetails[key] = String(sampleMapDetails[key] || "");
+    });
+    regionFills = { ...regionFills, ...sampleRegionFills };
+    regionColourOverrides = Object.fromEntries(Object.keys(sampleRegionFills).map(regionId => [regionId, true]));
     setRows(sampleRows);
+    document.title = mapDetails[currentMapLanguage === "fr" ? "titleFr" : "titleEn"] || "Plotypus";
+    updateMapDetailsState();
     setDocumentPropertiesContext();
     setStatusMessage(t("status.sampleLoaded"), "ok");
   }
@@ -2411,6 +2444,8 @@
       labelBorder: tr.dataset.labelBorder === "true",
       hideLine: tr.querySelector(".hide-line-input").checked,
       elbowLeader: tr.querySelector(".elbow-leader-input")?.checked || false,
+      leaderLineWidth: normalizeLeaderLineWidthOverride(tr.querySelector(".leader-line-width-input")?.value),
+      leaderLineColour: normalizeHexColour(tr.querySelector(".leader-line-colour-input")?.value, ""),
       labelMaxChars: normalizeLabelMaxCharsOverride(tr.dataset.labelMaxChars)
     };
   }
@@ -2447,6 +2482,8 @@
     if (field === "labelBorder") tr.dataset.labelBorder = value ? "true" : "false";
     if (field === "hideLine") tr.querySelector(".hide-line-input").checked = Boolean(value);
     if (field === "elbowLeader") tr.querySelector(".elbow-leader-input").checked = Boolean(value);
+    if (field === "leaderLineWidth") tr.querySelector(".leader-line-width-input").value = normalizeLeaderLineWidthOverride(value);
+    if (field === "leaderLineColour") tr.querySelector(".leader-line-colour-input").value = normalizeHexColour(value, "");
     if (field === "labelMaxChars") tr.dataset.labelMaxChars = normalizeLabelMaxCharsOverride(value);
     updateRowTitles(tr);
     updateRowAnnotationPreview(tr);
@@ -3555,6 +3592,116 @@
     return Math.max(mapScaleRange.min, Math.min(mapScaleRange.max, mapScale));
   }
 
+  function normalizeLeaderLineWidth(value, fallback = layoutDefaults.lineWidthInput) {
+    const parsed = Number(value);
+    const fallbackValue = Number.isFinite(Number(fallback)) ? Number(fallback) : 2;
+    const width = Number.isFinite(parsed) ? parsed : fallbackValue;
+    return Math.max(1, Math.min(8, Math.round(width * 2) / 2));
+  }
+
+  function normalizeLeaderLineWidthOverride(value) {
+    if (value === undefined || value === null || String(value).trim() === "") return "";
+    return Number.isFinite(Number(value)) ? normalizeLeaderLineWidth(value) : "";
+  }
+
+  function getLeaderLineWidthDraftState(input) {
+    const editor = input && input.closest("[data-leader-line-width-editor]");
+    if (!editor) return null;
+    const scope = editor.dataset.leaderLineWidthEditor === "point" ? "point" : "global";
+    const rawValue = String(input.value || "").trim();
+    const isBlank = rawValue === "";
+    const numericValue = Number(rawValue);
+    const blankIsValid = scope === "point" && isBlank;
+    const numericIsValid = !isBlank
+      && Number.isFinite(numericValue)
+      && numericValue >= 1
+      && numericValue <= 8
+      && Math.abs(numericValue * 2 - Math.round(numericValue * 2)) < 1e-9;
+    const valid = blankIsValid || numericIsValid;
+    const normalizedValue = isBlank ? "" : normalizeLeaderLineWidth(rawValue);
+    const committedValue = scope === "point"
+      ? normalizeLeaderLineWidthOverride(editor.dataset.committedValue)
+      : normalizeLeaderLineWidth(editor.dataset.committedValue);
+    const inheritedNumber = Number(editor.dataset.inheritedValue);
+    const inheritedValue = Number.isFinite(inheritedNumber) && inheritedNumber > 0
+      ? inheritedNumber
+      : normalizeLeaderLineWidth(layoutDefaults.lineWidthInput);
+    const committedEffectiveValue = scope === "point" && committedValue === ""
+      ? inheritedValue
+      : Number(committedValue);
+    const effectiveValue = isBlank
+      ? inheritedValue
+      : Number.isFinite(numericValue)
+        ? numericValue
+        : committedEffectiveValue;
+    const changed = valid && normalizedValue !== committedValue;
+    return {
+      changed,
+      committedValue,
+      editor,
+      effectiveValue,
+      input,
+      isBlank,
+      normalizedValue,
+      scope,
+      valid
+    };
+  }
+
+  function syncLeaderLineWidthDraft(input) {
+    const draft = getLeaderLineWidthDraftState(input);
+    if (!draft) return null;
+    const { changed, editor, effectiveValue, isBlank, scope, valid } = draft;
+    const previewLine = editor.querySelector("[data-leader-line-width-preview]");
+    const readout = editor.querySelector("[data-leader-line-width-readout]");
+    const status = editor.querySelector("[data-leader-line-width-draft-status]");
+    const applyButton = editor.querySelector("[data-property-action='apply-leader-line-width']");
+    const previewWidth = Math.max(1, Math.min(12, Number(effectiveValue) || normalizeLeaderLineWidth(layoutDefaults.lineWidthInput)));
+    const state = valid ? changed ? "pending" : "applied" : "invalid";
+
+    editor.dataset.draftState = state;
+    editor.dataset.draftValue = valid ? String(draft.normalizedValue) : String(input.value || "");
+    input.setAttribute("aria-invalid", String(!valid));
+    if (previewLine) previewLine.setAttribute("stroke-width", String(previewWidth));
+    if (readout) {
+      readout.textContent = scope === "point" && isBlank
+        ? t("properties.leaderLines.previewInherited", { value: effectiveValue })
+        : t("properties.leaderLines.previewValue", { value: effectiveValue });
+    }
+    if (status) {
+      status.textContent = !valid
+        ? t("properties.leaderLines.draftInvalid")
+        : changed
+          ? scope === "point" && isBlank
+            ? t("properties.leaderLines.draftPendingInherited", { value: effectiveValue })
+            : t("properties.leaderLines.draftPending", { value: effectiveValue })
+          : editor.dataset.appliedStatus || t("properties.leaderLines.draftApplied");
+    }
+    if (applyButton) applyButton.disabled = !changed;
+    return draft;
+  }
+
+  function focusLeaderLineWidthDraft(scope) {
+    const selector = `[data-leader-line-width-draft='${scope === "point" ? "point" : "global"}']`;
+    const restoreFocus = () => {
+      const input = els.propertiesSelectionControls?.querySelector(selector);
+      if (!input || !input.isConnected) return false;
+      input.focus({ preventScroll: true });
+      return document.activeElement === input;
+    };
+    // A button's default activation may run after its click handler and move
+    // focus back to the button that the Properties rerender just detached.
+    // Restore on the next frame, then verify once the scheduled map render has
+    // crossed its own frame boundary.
+    window.requestAnimationFrame(() => {
+      restoreFocus();
+      window.requestAnimationFrame(() => {
+        const input = els.propertiesSelectionControls?.querySelector(selector);
+        if (document.activeElement !== input) restoreFocus();
+      });
+    });
+  }
+
   function formatMapScalePercent(value) {
     return `${Math.round(normalizeMapScale(value))}%`;
   }
@@ -3660,6 +3807,35 @@
   const defaultLabelTypographyPrintSizePt = 12;
   const defaultLabelTitleSizePx = 10;
   const defaultLabelBodySizePx = 8;
+  const mapTypographySizeRange = Object.freeze({ min: 2, max: 40, step: 0.5 });
+
+  function normalizeMapTypographySize(value) {
+    const numeric = Number(value);
+    const safe = Number.isFinite(numeric) ? numeric : defaultWebLabelSizePx;
+    const stepped = Math.round(safe / mapTypographySizeRange.step) * mapTypographySizeRange.step;
+    return Math.max(mapTypographySizeRange.min, Math.min(mapTypographySizeRange.max, stepped));
+  }
+
+  function mapTypographySizeClass(value) {
+    return `map-type-size-${String(normalizeMapTypographySize(value)).replace(".", "-")}`;
+  }
+
+  function mapFontFamilyClass(value) {
+    const normalized = normalizeFontFamily(value).toLowerCase();
+    if (normalized.startsWith("segoe ui")) return "map-font-segoe";
+    if (normalized.startsWith("arial")) return "map-font-arial";
+    return "map-font-lato";
+  }
+
+  function syncMapTypographyRoot(svg, settings) {
+    if (!svg || !settings) return;
+    svg
+      .classed("map-font-lato", false)
+      .classed("map-font-segoe", false)
+      .classed("map-font-arial", false)
+      .classed(mapFontFamilyClass(settings.fontFamily), true)
+      .attr("data-map-output-mode", settings.outputMode || "web");
+  }
 
   function getWebLabelSize(printPt) {
     // Keep the control in print points, but never render map text below 12 px.
@@ -3689,21 +3865,32 @@
     const labelSizePt = normalizeLabelSizePt(els.labelSizeInput.value);
     const labelTypographySizes = getLabelTypographyRenderSizes(labelSizePt, outputMode);
     const mapScale = normalizeMapScale(els.mapScaleInput.value);
+    const languageLayoutState = getLanguageLayoutState();
+    const bookSize = imageSizePresets[els.bookSizeInput.value] ? els.bookSizeInput.value : layoutDefaults.bookSizeInput;
+    const labelDensityScale = bookSize === "compact" && imageSize.value === "half" ? 0.5 : 1;
+    const scaleTypography = (value, floor) => Math.max(floor, Math.round(value * labelDensityScale));
     return {
       outputMode,
-      bookSize: imageSizePresets[els.bookSizeInput.value] ? els.bookSizeInput.value : layoutDefaults.bookSizeInput,
+      bookSize,
       imageSize: imageSize.value,
       width: imageSize.width,
       height: imageSize.height,
-      title: "",
+      title: currentMapLanguage === "fr"
+        ? String(mapDetails.titleFr || mapDetails.titleEn || "").trim()
+        : String(mapDetails.titleEn || mapDetails.titleFr || "").trim(),
       labelSizePt,
-      labelSize: labelSizePt,
-      labelSizeRender: outputMode === "print" ? labelSizePt : getWebLabelSize(labelSizePt),
-      labelTitleSizeRender: labelTypographySizes.title,
-      labelBodySizeRender: labelTypographySizes.body,
+      labelDensityScale,
+      labelSize: labelSizePt * labelDensityScale,
+      labelSizeRender: scaleTypography(outputMode === "print" ? labelSizePt : getWebLabelSize(labelSizePt), 5),
+      labelTitleSizeRender: scaleTypography(labelTypographySizes.title, 5),
+      labelBodySizeRender: scaleTypography(labelTypographySizes.body, 4),
       mapScale,
+      mapOffsetX: Number(languageLayoutState && languageLayoutState.mapOffsetX) || 0,
+      mapOffsetY: Number(languageLayoutState && languageLayoutState.mapOffsetY) || 0,
       markerSize: Number(els.markerSizeInput.value) || 4,
-      lineWidth: Number(els.lineWidthInput.value) || 2,
+      lineWidth: normalizeLeaderLineWidth(els.lineWidthInput.value),
+      leaderColour: normalizeHexColour(els.leaderColourInput && els.leaderColourInput.value, layoutDefaults.leaderColourInput || "#333333"),
+      hideLeaderLines: Boolean(els.hideLeaderLinesInput && els.hideLeaderLinesInput.checked),
       labelMaxChars: normalizeLabelMaxChars(els.labelCharsInput.value),
       mapLanguage: currentMapLanguage,
       fontFamily: normalizeFontFamily(els.fontFamilyInput.value),
@@ -3731,7 +3918,11 @@
     }
     if (settings.mapScale !== undefined) els.mapScaleInput.value = normalizeMapScale(settings.mapScale);
     if (settings.markerSize !== undefined) els.markerSizeInput.value = settings.markerSize;
-    if (settings.lineWidth !== undefined) els.lineWidthInput.value = settings.lineWidth;
+    if (settings.lineWidth !== undefined) els.lineWidthInput.value = normalizeLeaderLineWidth(settings.lineWidth);
+    if (els.leaderColourInput) {
+      els.leaderColourInput.value = normalizeHexColour(settings.leaderColour, layoutDefaults.leaderColourInput || "#333333");
+    }
+    if (els.hideLeaderLinesInput) els.hideLeaderLinesInput.checked = Boolean(settings.hideLeaderLines);
     if (settings.labelMaxChars !== undefined) els.labelCharsInput.value = normalizeLabelMaxChars(settings.labelMaxChars);
     if (settings.mapLanguage !== undefined) setMapLanguage(settings.mapLanguage, { render: false });
     if (settings.fontFamily !== undefined) els.fontFamilyInput.value = normalizeFontFamily(settings.fontFamily);
@@ -3859,9 +4050,10 @@
     return match ? getRegionFill(match.feature, match.index) : "";
   }
 
-  function getLeaderLineColour(row) {
-    if (row && row.anchor === "region") return getRegionFillById(row.region) || null;
-    return null;
+  function getLeaderLineColour(row, settings = getSettings()) {
+    const override = normalizeHexColour(row && row.leaderLineColour, "");
+    if (override) return override;
+    return normalizeHexColour(settings && settings.leaderColour, layoutDefaults.leaderColourInput || "#333333");
   }
 
   function getRegionColourPresetLabel(index, total) {
@@ -3926,12 +4118,12 @@
 
   function getColourForRegionValue(value, allValues, colours = getCurrentRegionColourSet()) {
     const numericValue = normalizeRegionValue(value);
-    if (numericValue === "" || !colours.length) return colours[0] || "#c7ded5";
+    if (numericValue === "" || !colours.length) return colours[0] || "#b4d6c9";
 
     const numericValues = allValues
       .map(normalizeRegionValue)
       .filter(item => item !== "");
-    if (!numericValues.length) return colours[0] || "#c7ded5";
+    if (!numericValues.length) return colours[0] || "#b4d6c9";
 
     const min = Math.min(...numericValues);
     const max = Math.max(...numericValues);
@@ -4251,6 +4443,7 @@
 
   async function changeBoundary(boundaryValue) {
     currentBoundary = Object.prototype.hasOwnProperty.call(boundarySources, boundaryValue) ? boundaryValue : "canada";
+    resetLanguageMapOffsets();
     els.boundaryInput.value = currentBoundary;
     renderRegionPresetOptions();
     regionVisibility = {};
@@ -4426,9 +4619,9 @@
   function getLabelLineFontSize(line, settings) {
     const role = line && line.role || "title";
     if (role === "title") {
-      return Number(settings && settings.labelTitleSizeRender) || getLabelTypographyRenderSizes(settings && (settings.labelSizePt || settings.labelSize), settings && settings.outputMode).title;
+      return normalizeMapTypographySize(Number(settings && settings.labelTitleSizeRender) || getLabelTypographyRenderSizes(settings && (settings.labelSizePt || settings.labelSize), settings && settings.outputMode).title);
     }
-    return Number(settings && settings.labelBodySizeRender) || getLabelTypographyRenderSizes(settings && (settings.labelSizePt || settings.labelSize), settings && settings.outputMode).body;
+    return normalizeMapTypographySize(Number(settings && settings.labelBodySizeRender) || getLabelTypographyRenderSizes(settings && (settings.labelSizePt || settings.labelSize), settings && settings.outputMode).body);
   }
 
   function getLabelLineHeight(line, settings) {
@@ -4463,13 +4656,14 @@
     return d.x < mapCenter ? "left" : "right";
   }
 
-  function referenceSideOptions(item) {
+  function referenceSideOptions(item, settings = null) {
     if (currentBoundary !== "canada") return [];
     const name = labelKeyText(item);
+    const exactReferenceCanvas = settings && settings.bookSize === "compact" && settings.imageSize === "half";
     const rules = [
       [/mackenzie|red chris|ksi lisims|north coast|lng canada/, ["left"]],
       [/grays|arctic/, ["top", "left"]],
-      [/northwest critical|mcilvenna/, ["bottom", "left"]],
+      [/northwest critical|mcilvenna/, exactReferenceCanvas ? ["bottom"] : ["bottom", "left"]],
       [/pathways/, ["bottom"]],
       [/taltson|churchill|iqaluit|alto|wind west|northcliff|contrecoeur/, ["right"]],
       [/nouveau|darlington|crawford/, ["bottom", "right"]]
@@ -4498,18 +4692,19 @@
       ? [[settings.width * 0.06, settings.height * 0.10], [settings.width * 0.94, settings.height * 0.74]]
       : [[settings.width * 0.09, settings.height * 0.07], [settings.width * 0.91, settings.height * 0.78]];
     const scaleFactor = settings.mapScale / 100;
+    const mapOffsetX = Number(settings.mapOffsetX) || 0;
+    const mapOffsetY = Number(settings.mapOffsetY) || 0;
     const scaleCenter = [
       (mapExtent[0][0] + mapExtent[1][0]) / 2,
       (mapExtent[0][1] + mapExtent[1][1]) / 2
     ];
     const applyMapScale = projection => {
-      if (scaleFactor === 1) return projection;
       const translate = projection.translate();
       projection
         .scale(projection.scale() * scaleFactor)
         .translate([
-          scaleCenter[0] + scaleFactor * (translate[0] - scaleCenter[0]),
-          scaleCenter[1] + scaleFactor * (translate[1] - scaleCenter[1])
+          scaleCenter[0] + scaleFactor * (translate[0] - scaleCenter[0]) + mapOffsetX,
+          scaleCenter[1] + scaleFactor * (translate[1] - scaleCenter[1]) + mapOffsetY
         ]);
       return projection;
     };
@@ -4596,6 +4791,59 @@
     };
   }
 
+  function createProjectedLandMaskQuery(visibleGeo, projection, settings) {
+    if (!visibleGeo || !projection) return null;
+    const cellSize = 2;
+    const columns = Math.max(1, Math.ceil(settings.width / cellSize));
+    const rows = Math.max(1, Math.ceil(settings.height / cellSize));
+    const stride = columns + 1;
+    const integral = new Uint32Array((rows + 1) * stride);
+    let alpha = null;
+
+    try {
+      const canvas = typeof OffscreenCanvas === "function"
+        ? new OffscreenCanvas(columns, rows)
+        : document.createElement("canvas");
+      canvas.width = columns;
+      canvas.height = rows;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      const pathData = d3.geoPath(projection)(visibleGeo);
+      if (context && pathData && typeof Path2D === "function") {
+        context.setTransform(1 / cellSize, 0, 0, 1 / cellSize, 0, 0);
+        context.fillStyle = "#000";
+        context.fill(new Path2D(pathData));
+        context.setTransform(1, 0, 0, 1, 0, 0);
+        alpha = context.getImageData(0, 0, columns, rows).data;
+      }
+    } catch (error) {
+      console.warn("Could not rasterize the projected land mask; map-aware label avoidance is unavailable.", error);
+    }
+
+    if (!alpha) return null;
+    for (let row = 1; row <= rows; row += 1) {
+      let rowTotal = 0;
+      for (let column = 1; column <= columns; column += 1) {
+        const alphaIndex = ((row - 1) * columns + column - 1) * 4 + 3;
+        if (alpha[alphaIndex] > 8) rowTotal += 1;
+        integral[row * stride + column] = integral[(row - 1) * stride + column] + rowTotal;
+      }
+    }
+
+    return rect => {
+      if (!rect) return false;
+      const x0 = clamp(Math.floor(rect.x0 / cellSize), 0, columns);
+      const y0 = clamp(Math.floor(rect.y0 / cellSize), 0, rows);
+      const x1 = clamp(Math.ceil(rect.x1 / cellSize), 0, columns);
+      const y1 = clamp(Math.ceil(rect.y1 / cellSize), 0, rows);
+      if (x1 <= x0 || y1 <= y0) return false;
+      const occupied = integral[y1 * stride + x1]
+        - integral[y0 * stride + x1]
+        - integral[y1 * stride + x0]
+        + integral[y0 * stride + x0];
+      return occupied > 0;
+    };
+  }
+
   function makeLabelBox(d, side, settings, mapBounds = null) {
     const sourceLines = getLabelLines(d, settings);
     const firstLine = sourceLines[0] || asLabelLine("");
@@ -4620,15 +4868,25 @@
     });
     const textLines = visibleLabelLines(lines);
     const footnote = getRenderableFootnote(d.footnote);
-    const baseTextWidth = Math.max(80, ...textLines.map(line => lineText(line).length * (Number(line.fontSize) || fontSize) * 0.58));
+    const minimumTextWidth = Math.max(40, Math.round(80 * (Number(settings.labelDensityScale) || 1)));
+    const baseTextWidth = Math.max(minimumTextWidth, ...textLines.map(line => lineText(line).length * (Number(line.fontSize) || fontSize) * 0.58));
     const lastTextLine = textLines[textLines.length - 1] || asLabelLine("");
     const lastLineFontSize = Number(lastTextLine.fontSize) || fontSize;
-    const footnoteWidth = footnote ? footnote.length * lastLineFontSize * 0.42 + 4 : 0;
+    const footnoteFontSize = normalizeMapTypographySize(lastLineFontSize * 0.68);
+    const footnoteWidth = footnote ? footnote.length * footnoteFontSize * 0.58 + 4 : 0;
     const imageWidth = Math.max(...lines.filter(line => line.role === "image").map(line => Number(line.imageWidth) || 0), 0);
     const textWidth = Math.max(baseTextWidth, imageWidth, lineText(lastTextLine).length * lastLineFontSize * 0.58 + footnoteWidth);
     const visualHeight = Math.max(fontSize, visualBottom + fontSize);
     const textHeight = visualHeight - fontSize + lineHeight;
-    return { lines, lineHeight, textWidth, textHeight, footnote, side };
+    return {
+      lines,
+      lineHeight,
+      textWidth,
+      textHeight,
+      footnote,
+      side,
+      collisionPaddingScale: Number(settings.labelDensityScale) || 1
+    };
   }
 
   function clamp(value, min, max) {
@@ -4663,7 +4921,7 @@
     if (!svgNode) return false;
     const layer = d3.select(svgNode).selectAll(selector);
     const hasLayer = Boolean(layer.size());
-    if (hasLayer) layer.style("display", visible ? null : "none");
+    if (hasLayer) layer.attr("display", visible ? null : "none");
     return hasLayer;
   }
 
@@ -5054,7 +5312,11 @@
       if (name.includes("wind west")) return unit * 4.2;
       if (name.includes("nouveau")) return unit * 5.8;
       if (name.includes("contrecoeur")) return unit * 8;
-      if (name.includes("alto")) return unit * 10.5;
+      if (name.includes("alto")) {
+        return settings.bookSize === "compact" && settings.imageSize === "half"
+          ? -unit * 8
+          : unit * 10.5;
+      }
       if (item.lon > -76 && item.lat < 48) return unit * 4.2;
       if (item.lon > -70 && item.lat < 48) return unit * 3.2;
       if (item.lat >= 58) return -unit * 0.8;
@@ -5217,6 +5479,17 @@
     };
   }
 
+  function finalizeAutomaticLabelPlacements(placed, settings) {
+    const positioned = applyManualLabelPositions(placed, false);
+    positioned.forEach(label => {
+      const constrained = constrainLabelToCanvas(label, settings);
+      if (!constrained.wasConstrained) return;
+      label.labelX = constrained.labelX;
+      label.labelY = constrained.labelY;
+    });
+    return positioned;
+  }
+
   function chooseFeasibleMapLayoutContext(visibleGeo, rows, baseSettings, options = {}) {
     const requestedMapScale = normalizeMapScale(baseSettings.mapScale);
     if (!Array.isArray(rows) || rows.length === 0) {
@@ -5229,28 +5502,243 @@
     // downward from the current value leaves previously undersized maps stuck.
     const maxScale = mapScaleRange.max;
     const minScale = mapScaleRange.min;
-    const step = mapScaleRange.autoFitStep;
+    const referenceCanvas = currentBoundary === "canada"
+      && baseSettings.bookSize === "compact"
+      && baseSettings.imageSize === "half";
+    const searchMaxScale = referenceCanvas ? Math.min(98, maxScale) : maxScale;
     let fallback = null;
+    const attempts = [];
+    const unresolvedAbove = [];
+    const translationCandidates = referenceCanvas
+      ? [
+        { mapOffsetX: baseSettings.width * 0.024, mapOffsetY: baseSettings.height * 0.06 },
+        { mapOffsetX: 0, mapOffsetY: 0 },
+        { mapOffsetX: -baseSettings.width * 0.024, mapOffsetY: baseSettings.height * 0.06 }
+      ].slice(0, 2)
+      : [{ mapOffsetX: 0, mapOffsetY: 0 }];
 
-    for (let scale = maxScale; scale >= minScale; scale -= step) {
-      const settings = { ...baseSettings, mapScale: scale };
-      const context = createMapLayoutContext(visibleGeo, rows, settings);
-      const labelRows = context.mappedRows.filter(row => row.name);
-      settings.layoutObstacles = getLayoutBoxObstacles(settings, context.calloutRows);
-      const feasibility = assessPerimeterFeasibility(labelRows, settings, context.mapBounds, settings.layoutObstacles);
-      const placed = feasibility.feasible
-        ? layoutLabels(labelRows, settings, context.mapBounds, {
-          applyManual: options.ignoreManualPositions !== true
-        })
-        : null;
-      const placementQuality = placed ? measurePlacementQuality(placed, settings) : null;
-      const candidate = { ...context, settings, feasibility, placementQuality, placed, requestedMapScale };
-      if (isBetterScaleFallback(candidate, fallback)) fallback = candidate;
-      if (feasibility.feasible && placementQualityAcceptable(placementQuality)) {
-        return candidate;
+    function orderedTranslations(preferredTranslation = null) {
+      if (!preferredTranslation) return translationCandidates;
+      return translationCandidates.slice().sort((a, b) => {
+        const aDistance = Math.hypot(a.mapOffsetX - preferredTranslation.mapOffsetX, a.mapOffsetY - preferredTranslation.mapOffsetY);
+        const bDistance = Math.hypot(b.mapOffsetX - preferredTranslation.mapOffsetX, b.mapOffsetY - preferredTranslation.mapOffsetY);
+        return aDistance - bDistance;
+      });
+    }
+
+    function tryScale(scale, phase, solverOptions, warmStart = null, preferredTranslation = null) {
+      let sawBudgetExhaustion = false;
+      let bestAttemptDiagnostic = null;
+      for (const translation of orderedTranslations(preferredTranslation)) {
+        const settings = { ...baseSettings, ...translation, mapScale: scale };
+        const context = createMapLayoutContext(visibleGeo, rows, settings);
+        const labelRows = context.mappedRows.filter(row => row.name);
+        settings.layoutObstacles = getLayoutBoxObstacles(settings, context.calloutRows);
+        settings.labelTouchesLand = createProjectedLandMaskQuery(visibleGeo, context.projection, settings);
+        const feasibility = assessPerimeterFeasibility(labelRows, settings, context.mapBounds, settings.layoutObstacles);
+        const { seedWithHeuristic = false, ...constraintOptions } = solverOptions;
+        const heuristicWarmStart = !warmStart && seedWithHeuristic
+          ? layoutLabelsWithoutManualPositions(labelRows, settings, context.mapBounds)
+          : null;
+        const effectiveWarmStart = warmStart || heuristicWarmStart;
+        const finalizedHeuristic = heuristicWarmStart
+          ? finalizeAutomaticLabelPlacements(heuristicWarmStart, settings)
+          : null;
+        const heuristicQuality = finalizedHeuristic ? measurePlacementQuality(finalizedHeuristic, settings) : null;
+        const solved = finalizedHeuristic && placementQualityAcceptable(heuristicQuality)
+          ? {
+            status: "solved",
+            placed: heuristicWarmStart,
+            nodesVisited: 0,
+            candidateCount: 0,
+            conflictChecks: 0,
+            truncatedDomainCount: 0,
+            deadEnds: [],
+            domainSummary: [],
+            strategy: "heuristic-seed"
+          }
+          : solveConflictFreeLayout(labelRows, settings, context.mapBounds, {
+            ...constraintOptions,
+            warmStart: effectiveWarmStart,
+            preferWarmStart: !referenceCanvas && Array.isArray(effectiveWarmStart) && effectiveWarmStart.length > 0
+          });
+        sawBudgetExhaustion ||= solved.status === "budget-exhausted" || solved.status === "candidate-limited" || solved.status === "not-found";
+        const placed = solved.status === "solved"
+          ? finalizeAutomaticLabelPlacements(solved.placed, settings)
+          : null;
+        const placementQuality = placed ? measurePlacementQuality(placed, settings) : null;
+        const diagnostic = {
+          phase,
+          scale,
+          mapOffsetX: Math.round(settings.mapOffsetX * 10) / 10,
+          mapOffsetY: Math.round(settings.mapOffsetY * 10) / 10,
+          status: solved.status,
+          nodesVisited: solved.nodesVisited,
+          candidateCount: solved.candidateCount,
+          minDomainSize: solved.domains ? Math.min(...solved.domains.map(domain => domain.length)) : null,
+          emptyLabel: Number.isInteger(solved.emptyDomainIndex) ? labelRows[solved.emptyDomainIndex]?.name || "" : "",
+          conflictChecks: solved.conflictChecks || 0,
+          strategy: solved.strategy || "constraint-solver",
+          bestConflictCount: Number.isFinite(solved.bestConflictCount) ? solved.bestConflictCount : null,
+          polishMoves: solved.polishMoves || 0,
+          pairPolishMoves: solved.pairPolishMoves || 0,
+          polishPasses: solved.polishPasses || 0,
+          heuristicHardProblems: heuristicQuality ? heuristicQuality.hardProblems : null,
+          truncatedDomainCount: solved.truncatedDomainCount || 0,
+          deadEnds: Array.isArray(solved.deadEnds) ? solved.deadEnds.slice(0, 3) : [],
+          hardProblems: placementQuality ? placementQuality.hardProblems : null
+        };
+        attempts.push(diagnostic);
+        const diagnosticConflictCount = Number.isFinite(diagnostic.bestConflictCount)
+          ? diagnostic.bestConflictCount
+          : Number.POSITIVE_INFINITY;
+        const bestConflictCount = bestAttemptDiagnostic && Number.isFinite(bestAttemptDiagnostic.bestConflictCount)
+          ? bestAttemptDiagnostic.bestConflictCount
+          : Number.POSITIVE_INFINITY;
+        if (!bestAttemptDiagnostic || diagnosticConflictCount < bestConflictCount) bestAttemptDiagnostic = diagnostic;
+        const candidate = {
+          ...context,
+          settings,
+          feasibility,
+          solver: {
+            status: solved.status,
+            strategy: solved.strategy || "constraint-solver",
+            nodesVisited: solved.nodesVisited || 0,
+            candidateCount: solved.candidateCount || 0,
+            conflictChecks: solved.conflictChecks || 0,
+            polishMoves: solved.polishMoves || 0,
+            pairPolishMoves: solved.pairPolishMoves || 0,
+            polishPasses: solved.polishPasses || 0,
+            truncatedDomainCount: solved.truncatedDomainCount || 0
+          },
+          placementQuality,
+          placed,
+          requestedMapScale,
+          autoFitDiagnostic: diagnostic
+        };
+        if (isBetterScaleFallback(candidate, fallback)) fallback = candidate;
+        if (solved.status === "solved" && placementQualityAcceptable(placementQuality)) {
+          return { candidate, sawBudgetExhaustion, diagnostic };
+        }
+      }
+      return { candidate: null, sawBudgetExhaustion, diagnostic: bestAttemptDiagnostic };
+    }
+
+    // First find a feasible foothold cheaply. The expensive former search ran a
+    // full CSP at every one-percent scale. A coarse descent skips most
+    // impossible scales, then a warm-started one-percent ascent finds the
+    // largest conflict-free layout within the bounded search budget.
+    const coarseStep = 10;
+    let bestSolved = null;
+    const coarseScales = referenceCanvas
+      ? Array.from({ length: Math.floor((searchMaxScale - minScale) / 5) + 1 }, (_, index) => searchMaxScale - index * 5)
+      : Array.from({ length: Math.floor((searchMaxScale - minScale) / coarseStep) + 1 }, (_, index) => searchMaxScale - index * coarseStep);
+    const coarseMisses = [];
+    for (const scale of coarseScales) {
+      const result = tryScale(scale, "coarse", {
+        maxCandidatesPerLabel: referenceCanvas ? 64 : 48,
+        maxNodes: referenceCanvas ? 20000 : 6000,
+        computeSupportOrdering: false,
+        seedWithHeuristic: true,
+        minConflictRestarts: referenceCanvas ? 5 : 2,
+        minConflictSteps: referenceCanvas ? 900 : 300,
+        pairPolishMoves: referenceCanvas ? 3 : 0,
+        pairPolishCandidates: 8,
+        minConflictsOnly: true
+      });
+      if (!result.candidate && result.sawBudgetExhaustion) unresolvedAbove.push(scale);
+      if (result.candidate) {
+        bestSolved = result.candidate;
+        break;
+      }
+      coarseMisses.push({ scale, result });
+    }
+
+    if (!bestSolved && !referenceCanvas) {
+      const promisingScales = coarseMisses
+        .filter(item => Number.isFinite(item.result.diagnostic && item.result.diagnostic.bestConflictCount))
+        .sort((a, b) => (
+          a.result.diagnostic.bestConflictCount - b.result.diagnostic.bestConflictCount
+          || b.scale - a.scale
+        ))
+        .slice(0, 3);
+      for (const item of promisingScales) {
+        const result = tryScale(item.scale, "coarse-retry", {
+          maxCandidatesPerLabel: 64,
+          computeSupportOrdering: false,
+          seedWithHeuristic: true,
+          minConflictRestarts: 6,
+          minConflictSteps: 1200,
+          minConflictsOnly: true
+        });
+        if (result.candidate) {
+          bestSolved = result.candidate;
+          break;
+        }
       }
     }
 
+    if (!bestSolved) {
+      const recovery = tryScale(minScale, "recovery", {
+        maxCandidatesPerLabel: referenceCanvas ? 72 : 96,
+        maxNodes: 40000,
+        computeSupportOrdering: false,
+        seedWithHeuristic: true,
+        minConflictRestarts: referenceCanvas ? 10 : 16,
+        minConflictSteps: referenceCanvas ? 1500 : 2200,
+        minConflictsOnly: true
+      });
+      bestSolved = recovery.candidate;
+    }
+
+    if (bestSolved) {
+      for (let scale = bestSolved.settings.mapScale + 1; scale <= searchMaxScale; scale += 1) {
+        const preferredTranslation = {
+          mapOffsetX: Number(bestSolved.settings.mapOffsetX) || 0,
+          mapOffsetY: Number(bestSolved.settings.mapOffsetY) || 0
+        };
+        let result = tryScale(scale, "refine", {
+          maxCandidatesPerLabel: 28,
+          maxNodes: 12000,
+          computeSupportOrdering: false,
+          minConflictRestarts: 4,
+          minConflictSteps: 700,
+          minConflictsOnly: true
+        }, bestSolved.placed, preferredTranslation);
+
+        if (!result.candidate && result.sawBudgetExhaustion) {
+          result = tryScale(scale, "refine-retry", {
+            maxCandidatesPerLabel: 36,
+            maxNodes: 40000,
+            computeSupportOrdering: false,
+            minConflictRestarts: 8,
+            minConflictSteps: 1200,
+            minConflictsOnly: true
+          }, bestSolved.placed, preferredTranslation);
+        }
+
+        if (!result.candidate) {
+          if (result.sawBudgetExhaustion) unresolvedAbove.push(scale);
+          break;
+        }
+        bestSolved = result.candidate;
+      }
+
+      autoFitDiagnostics = {
+        attempts,
+        selected: bestSolved.autoFitDiagnostic,
+        unresolvedAbove: Array.from(new Set(unresolvedAbove))
+          .filter(scale => scale > bestSolved.settings.mapScale)
+          .sort((a, b) => b - a)
+      };
+      return bestSolved;
+    }
+
+    autoFitDiagnostics = {
+      attempts,
+      selected: null,
+      unresolvedAbove: Array.from(new Set(unresolvedAbove)).sort((a, b) => b - a)
+    };
     return fallback || createMapLayoutContext(visibleGeo, rows, baseSettings);
   }
 
@@ -5282,6 +5770,8 @@
       row.labelBorder ? 1 : 0,
       row.hideLine ? 1 : 0,
       row.elbowLeader ? 1 : 0,
+      row.leaderLineWidth || "",
+      row.leaderLineColour || "",
       row.labelMaxChars || ""
     ]);
     const categorySignature = categorySettings.map(category => [
@@ -5305,12 +5795,16 @@
       width: settings.width,
       height: settings.height,
       mapScale: settings.mapScale,
+      mapOffsetX: Number(settings.mapOffsetX) || 0,
+      mapOffsetY: Number(settings.mapOffsetY) || 0,
       labelSizeRender: settings.labelSizeRender,
       labelTitleSizeRender: settings.labelTitleSizeRender,
       labelBodySizeRender: settings.labelBodySizeRender,
       labelMaxChars: settings.labelMaxChars,
       markerSize: settings.markerSize,
       lineWidth: settings.lineWidth,
+      leaderColour: settings.leaderColour,
+      hideLeaderLines: settings.hideLeaderLines ? 1 : 0,
       mapLanguage: settings.mapLanguage,
       fontFamily: settings.fontFamily,
       showLegend: settings.showLegend ? 1 : 0,
@@ -5332,23 +5826,23 @@
     };
   }
 
+  function cloneCachedLayoutSettings(settings = {}) {
+    const { labelTouchesLand: _labelTouchesLand, ...cacheableSettings } = settings;
+    return {
+      ...cacheableSettings,
+      layoutObstacles: Array.isArray(settings.layoutObstacles)
+        ? settings.layoutObstacles.map(obstacle => ({ ...obstacle }))
+        : settings.layoutObstacles
+    };
+  }
+
   function cloneLayoutBundle(bundle) {
     if (!bundle) return null;
     return {
-      settings: {
-        ...bundle.settings,
-        layoutObstacles: Array.isArray(bundle.settings.layoutObstacles)
-          ? bundle.settings.layoutObstacles.map(obstacle => ({ ...obstacle }))
-          : bundle.settings.layoutObstacles
-      },
+      settings: cloneCachedLayoutSettings(bundle.settings),
       layoutContext: {
         ...bundle.layoutContext,
-        settings: {
-          ...bundle.layoutContext.settings,
-          layoutObstacles: Array.isArray(bundle.layoutContext.settings.layoutObstacles)
-            ? bundle.layoutContext.settings.layoutObstacles.map(obstacle => ({ ...obstacle }))
-            : bundle.layoutContext.settings.layoutObstacles
-        },
+        settings: cloneCachedLayoutSettings(bundle.layoutContext.settings),
         mappedRows: bundle.layoutContext.mappedRows.map(cloneLayoutRow),
         calloutRows: bundle.layoutContext.calloutRows.map(cloneLayoutRow),
         projectedProblems: bundle.layoutContext.projectedProblems.map(problem => ({ ...problem })),
@@ -5448,8 +5942,9 @@
   }
 
   function labelBackgroundRect(d) {
-    const padX = 8;
-    const padY = 5;
+    const paddingScale = Number(d.collisionPaddingScale) || 1;
+    const padX = Math.max(4, 8 * paddingScale);
+    const padY = Math.max(2.5, 5 * paddingScale);
     const box = labelVisualBox(d);
     return {
       x0: box.x0 - padX,
@@ -5462,7 +5957,7 @@
   }
 
   function labelRect(d) {
-    return labelVisualBox(d, 10);
+    return labelVisualBox(d, Math.max(5, 10 * (Number(d.collisionPaddingScale) || 1)));
   }
 
   function getLabelSideForPosition(d) {
@@ -5513,6 +6008,7 @@
 
   function createLayoutQualityAnalyzer(placed, settings, projectedProblems, hiddenRegionProblems, mapBounds, markerRows = placed) {
     let crossings = 0;
+    let leaderLabelCrossings = 0;
     let overlaps = 0;
     let minLabelGap = Infinity;
     const placedByRowId = new Map(placed.map(row => [String(row.rowId), row]));
@@ -5520,7 +6016,7 @@
       .map(row => placedByRowId.get(String(row.rowId)) || row);
     const offCanvasPointItems = markerItems.filter(row => isPointOffCanvas(row, settings));
     const lines = placed
-      .filter(d => !d.hideLine)
+      .filter(d => !settings.hideLeaderLines && !d.hideLine)
       .map(d => ({
         segments: leaderSegmentsForLabel(d, settings),
         length: leaderPathLength(d, settings),
@@ -5528,7 +6024,7 @@
       }));
     const rectItems = placed.map(d => ({
       target: snapshotQualityTarget(d),
-      rect: labelRect(d)
+      rect: labelBackgroundRect(d)
     }));
     const rects = rectItems.map(item => item.rect);
     const qualityTargets = [];
@@ -5541,9 +6037,18 @@
       || settings.height - rect.y1 < edgeLimit
     ));
     const labelsNearEdge = labelsNearEdgeItems.length;
-    let phase = lines.length > 1 ? "line-pairs" : rects.length > 1 ? "rect-pairs" : "finalize";
+    const hasLeaderLabelPairs = lines.length > 0 && rects.length > 1;
+    let phase = lines.length > 1
+      ? "line-pairs"
+      : hasLeaderLabelPairs
+        ? "line-labels"
+        : rects.length > 1
+          ? "rect-pairs"
+          : "finalize";
     let pairI = 0;
     let pairJ = 1;
+    let lineRectI = 0;
+    let lineRectJ = 0;
     let report = null;
 
     function advancePair(length, nextPhase) {
@@ -5566,7 +6071,38 @@
         addQualityIssueTarget(qualityTargets, qualityTargetKeys, "crossing", left.target);
         addQualityIssueTarget(qualityTargets, qualityTargetKeys, "crossing", right.target);
       }
-      advancePair(lines.length, rects.length > 1 ? "rect-pairs" : "finalize");
+      advancePair(lines.length, hasLeaderLabelPairs ? "line-labels" : rects.length > 1 ? "rect-pairs" : "finalize");
+    }
+
+    function targetsMatch(left, right) {
+      if (!left || !right) return false;
+      if (left.layoutId && right.layoutId) return left.layoutId === right.layoutId;
+      if (left.labelKey && right.labelKey) return left.labelKey === right.labelKey;
+      return String(left.rowId || "") === String(right.rowId || "");
+    }
+
+    function processLineLabelPair() {
+      const line = lines[lineRectI];
+      const rectItem = rectItems[lineRectJ];
+      if (!targetsMatch(line.target, rectItem.target)) {
+        const crosses = line.segments.some(segment => (
+          segmentIntersectsRect(segment.start, segment.end, rectItem.rect)
+        ));
+        if (crosses) {
+          leaderLabelCrossings += 1;
+          crossings += 1;
+          addQualityIssueTarget(qualityTargets, qualityTargetKeys, "crossing", line.target);
+          addQualityIssueTarget(qualityTargets, qualityTargetKeys, "crossing", rectItem.target);
+        }
+      }
+      lineRectJ += 1;
+      if (lineRectJ < rectItems.length) return;
+      lineRectI += 1;
+      lineRectJ = 0;
+      if (lineRectI < lines.length) return;
+      phase = rects.length > 1 ? "rect-pairs" : "finalize";
+      pairI = 0;
+      pairJ = 1;
     }
 
     function processRectPair() {
@@ -5593,6 +6129,7 @@
       const longestLeader = lines.reduce((best, line) => !best || line.length > best.length ? line : best, null);
       report = {
         crossings,
+        leaderLabelCrossings,
         overlaps,
         longLines: longLineItems.length,
         offCanvasPoints: offCanvasPointItems.length,
@@ -5621,6 +6158,7 @@
       let operations = 0;
       while (phase !== "done") {
         if (phase === "line-pairs") processLinePair();
+        else if (phase === "line-labels") processLineLabelPair();
         else if (phase === "rect-pairs") processRectPair();
         else finalize();
         operations += 1;
@@ -6204,6 +6742,7 @@
   }
 
   function setPropertiesContext(title, subtitle, hint, controlsHtml = "", selection = null) {
+    if (mapScaleControlsVisible && !isBaselayerPropertiesSelection(selection)) hideMapScaleControls();
     activePropertiesSelection = selection;
     highlightActiveProjectRow(selection && selection.rowId ? selection.rowId : null);
     if (els.propertiesTitle) els.propertiesTitle.textContent = title;
@@ -6231,6 +6770,27 @@
     return true;
   }
 
+  function isBaselayerPropertiesSelection(selection = activePropertiesSelection) {
+    return Boolean(activeDataTable === "preview" && selection && ["map", "region"].includes(selection.kind));
+  }
+
+  function clearBaselayerPropertiesSelection() {
+    if (!isBaselayerPropertiesSelection()) return false;
+    activePropertiesSelection = null;
+    if (mapScaleControlsVisible) hideMapScaleControls();
+    renderPropertiesForActiveState();
+    return true;
+  }
+
+  function isBaselayerSelectionInteractionTarget(target) {
+    if (!(target instanceof Element)) return false;
+    return Boolean(target.closest([
+      "#propertiesPanel",
+      "#mapSvg .province",
+      "#mapSvg .map-scale-controls"
+    ].join(", ")));
+  }
+
   function isPointSelectionInteractionTarget(target) {
     if (!(target instanceof Element)) return false;
     return Boolean(target.closest([
@@ -6242,14 +6802,21 @@
     ].join(", ")));
   }
 
-  function setPreviewPropertySectionsVisible(isVisible) {
+  function setPreviewPropertySectionsVisible(isVisible, showLegend = isVisible) {
     [els.previewDisplayPropertiesSection, els.previewInteractionPropertiesSection].forEach(section => {
       if (section) section.hidden = !isVisible;
     });
+    if (els.legendPropertiesSection) els.legendPropertiesSection.hidden = !showLegend;
   }
 
   function setDocumentPropertiesContext() {
     renderPropertiesForActiveState({ kind: "document" });
+  }
+
+  function focusCategoryEditor(selector = ".properties-back-button") {
+    window.requestAnimationFrame(() => {
+      els.propertiesSelectionControls?.querySelector(selector)?.focus({ preventScroll: true });
+    });
   }
 
   function selectOptionsHtml(input) {
@@ -6473,6 +7040,10 @@
         mapScale: els.mapScaleInput ? els.mapScaleInput.value : "",
         markerSize: els.markerSizeInput ? els.markerSizeInput.value : "",
         lineWidth: els.lineWidthInput ? els.lineWidthInput.value : "",
+        leaderColour: els.leaderColourInput ? els.leaderColourInput.value : "#333333",
+        hideLeaderLines: Boolean(els.hideLeaderLinesInput && els.hideLeaderLinesInput.checked),
+        routeDenseLeaders: Boolean(els.routeDenseLeadersInput && els.routeDenseLeadersInput.checked),
+        showLineCasing: Boolean(els.showLineCasingInput && els.showLineCasingInput.checked),
         labelChars: els.labelCharsInput ? els.labelCharsInput.value : ""
       },
       escapeHtml,
@@ -6491,6 +7062,9 @@
   function renderRowPropertyControls(row, options = {}) {
     const labelKey = options.labelKey || getLabelKey(row);
     const canResetLabel = Boolean(options.manual);
+    const settings = getSettings();
+    const inheritedLeaderLineWidth = getCategoryLineWidth(getCategory(row.type), settings) / (Number(settings.labelDensityScale) || 1);
+    const inheritedLeaderLineColour = getLeaderLineColour(null, settings);
     const hasLon = row.lon !== "";
     const hasLat = row.lat !== "";
     const hasRegionAnchor = row.anchor === "region" && row.region;
@@ -6513,6 +7087,8 @@
       projectLocationMode: activeProjectLocationMode,
       authoringLanguage: activeAuthoringLanguage,
       globalLabelMaxChars: normalizeLabelMaxChars(els.labelCharsInput.value),
+      inheritedLeaderLineWidth,
+      inheritedLeaderLineColour,
       escapeHtml,
       iconSvg,
       t
@@ -6530,6 +7106,9 @@
       manual: Boolean(options.manual),
       advancedOpen: Boolean(options.advancedOpen)
     });
+    if (activeDataTable === "preview" && (kind === "marker" || kind === "label") && propertiesDrawerMedia.matches) {
+      setPropertiesDrawerOpen(true);
+    }
   }
 
   function renderFurniturePropertyControls(key, label, visibilityInput) {
@@ -6590,9 +7169,16 @@
     return properties.renderCategoryPropertyControls({
       category,
       markerShapes: markerShapes.map(shape => ({ ...shape, label: getMarkerShapeLabel(shape) })),
+      colourPresets: colourPresets.map(preset => ({
+        value: preset.value,
+        label: getCategoryColourPresetLabel(preset)
+      })),
       escapeHtml,
       iconSvg,
       t,
+      backLabel: activeDataTable === "projects"
+        ? t("properties.category.backToProjectPoints")
+        : t("properties.category.backToDocument"),
       markerShapeIcon: shape => getCategorySwatchSvg({ ...category, shape, customIcon: null })
     });
   }
@@ -6603,8 +7189,13 @@
     return properties.renderRegionPropertyControls({ region, statusOptions: regionStatusOptions, pluralize, escapeHtml, iconSvg, t });
   }
 
-  function setCategoryPropertiesContext() {
-    renderPropertiesForActiveState({ kind: "category", id: activeCategoryId });
+  function setCategoryPropertiesContext({ focus = false, focusSelector = ".properties-back-button" } = {}) {
+    renderPropertiesForActiveState({
+      kind: "category",
+      id: activeCategoryId,
+      ...(activeDataTable === "projects" ? { workspace: "projects" } : {})
+    });
+    if (focus) focusCategoryEditor(focusSelector);
   }
 
   function setMapPropertiesContext() {
@@ -6615,7 +7206,18 @@
     const requested = selection && typeof selection === "object" ? selection : null;
     let context;
 
-    if (activeDataTable === "projects") {
+    if (activeDataTable === "projects" && requested && requested.kind === "category" && requested.id && requested.workspace === "projects") {
+      activeCategoryId = requested.id;
+      const category = categorySettings.find(item => item.id === activeCategoryId) || categorySettings[0];
+      if (category) activeCategoryId = category.id;
+      context = {
+        title: category ? getCategoryLabel(category.id, currentUiLanguage) : t("properties.title.categories"),
+        subtitle: category ? t("properties.subtitle.projectType") : t("properties.subtitle.projectPoints"),
+        hint: t("properties.hint.projectType"),
+        controls: renderCategoryPropertyControls(),
+        selection: { kind: "category", id: category && category.id, workspace: "projects" }
+      };
+    } else if (activeDataTable === "projects") {
       const rowSelection = requested && requested.kind === "row" && requested.rowId ? requested : null;
       const tr = rowSelection ? getRowElementById(rowSelection.rowId) : null;
       const row = readRowElement(tr);
@@ -6637,17 +7239,6 @@
           selection: { kind: "project-data" }
         };
       }
-    } else if (activeDataTable === "categories") {
-      if (requested && requested.kind === "category" && requested.id) activeCategoryId = requested.id;
-      const category = categorySettings.find(item => item.id === activeCategoryId) || categorySettings[0];
-      if (category) activeCategoryId = category.id;
-      context = {
-        title: category ? getCategoryLabel(category.id, currentUiLanguage) : t("properties.title.categories"),
-        subtitle: category ? t("properties.subtitle.legendMarker") : t("properties.subtitle.legendCategories"),
-        hint: t("properties.hint.categories"),
-        controls: renderCategoryPropertyControls(),
-        selection: { kind: "category", id: category && category.id }
-      };
     } else if (activeDataTable === "regions") {
       const region = requested && requested.kind === "region"
         ? getRegionTableRows().find(item => item.id === requested.id)
@@ -6688,6 +7279,17 @@
         hint: t("properties.hint.document"),
         controls: renderDocumentPropertyControls(),
         selection: { kind: "document" }
+      };
+    } else if (requested && requested.kind === "category" && requested.id) {
+      activeCategoryId = requested.id;
+      const category = categorySettings.find(item => item.id === activeCategoryId) || categorySettings[0];
+      if (category) activeCategoryId = category.id;
+      context = {
+        title: category ? getCategoryLabel(category.id, currentUiLanguage) : t("properties.title.categories"),
+        subtitle: category ? t("properties.subtitle.legendMarker") : t("properties.subtitle.legendCategories"),
+        hint: t("properties.hint.categories"),
+        controls: renderCategoryPropertyControls(),
+        selection: { kind: "category", id: category && category.id }
       };
     } else if (requested && ["row", "label", "marker"].includes(requested.kind) && requested.rowId) {
       const tr = getRowElementById(requested.rowId);
@@ -6748,9 +7350,12 @@
       };
     }
 
-    const showPreviewGroups = activeDataTable === "preview" && ["document", "map"].includes(context.selection.kind);
-    setPreviewPropertySectionsVisible(showPreviewGroups);
+    const isPreviewContext = activeDataTable === "preview";
+    const showPreviewGroups = isPreviewContext && ["document", "map"].includes(context.selection.kind);
+    const showPreviewLegend = isPreviewContext && context.selection.kind === "document";
+    setPreviewPropertySectionsVisible(showPreviewGroups, showPreviewLegend);
     setPropertiesContext(context.title, context.subtitle, context.hint, context.controls, context.selection);
+    if (showPreviewLegend) renderCategoryEditors();
     if (els.regionTableBody) {
       els.regionTableBody.querySelectorAll("tr[data-region-id]").forEach(row => {
         const isActive = context.selection.kind === "region" && row.dataset.regionId === context.selection.id;
@@ -6843,6 +7448,10 @@
   }
 
   function handleRichLabelEditorInput(event) {
+    if (event.target && event.target.matches("[data-leader-line-width-draft]")) {
+      syncLeaderLineWidthDraft(event.target);
+      return;
+    }
     const field = event.target && event.target.dataset.propertyField;
     if (!richLabelLiveTextFields.has(field)) return;
     const form = event.target.closest(".properties-form[data-row-id]");
@@ -6863,6 +7472,10 @@
   }
 
   async function handlePropertiesControlsChange(event) {
+    if (event.target.matches("[data-leader-line-width-draft]")) {
+      syncLeaderLineWidthDraft(event.target);
+      return;
+    }
     if (event.target.matches("[data-category-icon-upload]")) {
       const form = event.target.closest("[data-category-id]");
       const category = form && categorySettings.find(item => item.id === form.dataset.categoryId);
@@ -6876,13 +7489,31 @@
         renderCategoryEditors();
         updateWorkspaceSummary();
         requestPreviewRefresh();
-        setCategoryPropertiesContext();
+        setCategoryPropertiesContext({ focus: true, focusSelector: "[data-property-action='remove-category-icon']" });
         setStatusMessage(t("status.categoryCustomIcon", { label: getCategoryLabel(category.id, currentUiLanguage) }), "ok");
       } catch (error) {
         setStatusMessage(t("status.customIconLoadFailedGeneric", { message: translateErrorMessage(error) }), "danger");
       } finally {
         event.target.value = "";
       }
+      return;
+    }
+
+    if (event.target.matches("[data-category-colour-preset]")) {
+      const form = event.target.closest("[data-category-id]");
+      const category = form && categorySettings.find(item => item.id === form.dataset.categoryId);
+      if (!category) return;
+      if (!event.target.value) {
+        form.querySelector("[data-category-field='colour']")?.focus();
+        return;
+      }
+      pushAppUndoHistory("category edit");
+      category.colour = event.target.value;
+      const colourInput = form.querySelector("[data-category-field='colour']");
+      if (colourInput) colourInput.value = category.colour;
+      renderCategoryEditors();
+      updateWorkspaceSummary();
+      requestPreviewRefresh();
       return;
     }
 
@@ -6897,11 +7528,26 @@
       if (categoryField === "label") category.defaultLabel = category.defaultLabel || category.label;
       if (categoryField === "markerSize") category.markerSizeCustom = true;
       if (categoryField === "lineWidth") category.lineWidthCustom = true;
+      if (categoryField === "shape") {
+        form.querySelectorAll(".category-shape-option").forEach(option => {
+          option.classList.toggle("is-selected", option.querySelector("input")?.checked);
+        });
+        if (!category.customIcon) {
+          const preview = form.querySelector(".custom-icon-preview");
+          if (preview) preview.innerHTML = getCategorySwatchSvg(category);
+        }
+      }
+      if (categoryField === "colour") {
+        const presetInput = form.querySelector("[data-category-colour-preset]");
+        if (presetInput) presetInput.value = getPresetValueForColour(category.colour);
+      }
+      if ((categoryField === "label" && currentUiLanguage === "en") || (categoryField === "labelFr" && currentUiLanguage === "fr")) {
+        if (els.propertiesTitle) els.propertiesTitle.textContent = getCategoryLabel(category.id, currentUiLanguage);
+      }
       renderCategoryEditors();
       updateTypeOptions();
       updateWorkspaceSummary();
       requestPreviewRefresh();
-      setCategoryPropertiesContext();
       return;
     }
     const layoutProxy = event.target.dataset.layoutProxy;
@@ -7031,6 +7677,8 @@
 
     let fieldToUpdate = field;
     let value = ["hideLine", "elbowLeader", "labelBorder"].includes(field) ? event.target.checked : event.target.value;
+    if (field === "leaderLineWidth") value = normalizeLeaderLineWidthOverride(value);
+    if (field === "leaderLineColour") value = normalizeHexColour(value, "");
     if (field === "contentElementType" || field === "contentElementValue" || field === "contentParagraph" || field === "contentImageCaption" || field === "contentImageSize" || field === "contentBulletItem") {
       const content = updateRichLabelContentFromPropertyInput(currentRow, event.target);
       if (!content) return;
@@ -7060,6 +7708,75 @@
     const button = event.target.closest("[data-property-action]");
     if (!button) return;
     const action = button.dataset.propertyAction;
+
+    if (action === "apply-leader-line-width") {
+      event.stopPropagation();
+      const editor = button.closest("[data-leader-line-width-editor]");
+      const draftInput = editor && editor.querySelector("[data-leader-line-width-draft]");
+      const draft = syncLeaderLineWidthDraft(draftInput);
+      if (!draft || !draft.valid || !draft.changed) return;
+
+      if (draft.scope === "global") {
+        pushAppUndoHistory("map leader line thickness");
+        els.lineWidthInput.value = draft.normalizedValue;
+        handleLayoutSettingsChange({ target: els.lineWidthInput });
+        renderPropertiesForActiveState();
+        focusLeaderLineWidthDraft("global");
+        return;
+      }
+
+      const rowForm = button.closest(".properties-form[data-row-id]");
+      const rowId = rowForm && rowForm.dataset.rowId;
+      const currentRow = rowId ? readRowElement(getRowElementById(rowId)) : null;
+      if (!currentRow) return;
+      const selectionKind = activePropertiesSelection && activePropertiesSelection.kind || "label";
+      const labelKey = rowForm.dataset.labelKey;
+      const advancedOpen = Boolean(rowForm.querySelector("details")?.open);
+      pushAppUndoHistory("point leader line thickness");
+      const updatedRow = updateProjectRowField(rowId, "leaderLineWidth", draft.normalizedValue);
+      if (!updatedRow) return;
+      requestPreviewRefresh();
+      setRowPropertiesContext(selectionKind, updatedRow, {
+        labelKey,
+        manual: Boolean(manualLabelPositions[labelKey]),
+        advancedOpen
+      });
+      focusLeaderLineWidthDraft("point");
+      return;
+    }
+
+    if (action === "reset-leader-colour") {
+      const rowForm = button.closest(".properties-form[data-row-id]");
+      const rowId = rowForm && rowForm.dataset.rowId;
+      const row = rowId ? readRowElement(getRowElementById(rowId)) : null;
+      if (!row || !row.leaderLineColour) return;
+      pushAppUndoHistory("project row edit");
+      const updatedRow = updateProjectRowField(rowId, "leaderLineColour", "");
+      requestPreviewRefresh();
+      setRowPropertiesContext(activePropertiesSelection && activePropertiesSelection.kind || "label", updatedRow, {
+        labelKey: rowForm.dataset.labelKey,
+        manual: Boolean(manualLabelPositions[rowForm.dataset.labelKey]),
+        advancedOpen: Boolean(rowForm.querySelector("details")?.open)
+      });
+      return;
+    }
+
+    if (action === "back-to-document") {
+      const categoryId = button.dataset.categoryId || activeCategoryId;
+      if (activeDataTable === "projects") {
+        renderPropertiesForActiveState({ kind: "project-data" });
+        window.requestAnimationFrame(() => {
+          els.projectAddMenuBtn?.focus({ preventScroll: true });
+        });
+        return;
+      }
+      setDocumentPropertiesContext();
+      renderCategoryEditors();
+      window.requestAnimationFrame(() => {
+        els.categoryList?.querySelector(`.legend-item-select[data-category-id="${window.CSS && CSS.escape ? CSS.escape(categoryId) : categoryId}"]`)?.focus({ preventScroll: true });
+      });
+      return;
+    }
 
     const rowForm = button.closest(".properties-form[data-row-id]");
     if (rowForm && ["add-content-text", "add-content-bullet", "add-content-paragraph", "add-content-bullets", "add-content-image", "move-content-block-up", "move-content-block-down", "remove-content-block", "clear-content-image", "add-content-bullet-item", "remove-content-bullet-item"].includes(action)) {
@@ -7192,7 +7909,7 @@
       renderCategoryEditors();
       updateWorkspaceSummary();
       requestPreviewRefresh();
-      setCategoryPropertiesContext();
+      setCategoryPropertiesContext({ focus: true, focusSelector: "[data-property-action='upload-category-icon']" });
       setStatusMessage(t("status.categoryReturnedToMarker", { label: getCategoryLabel(category.id, currentUiLanguage), shape: getMarkerShapeLabel(category.shape) }), "ok");
       return;
     }
@@ -7458,7 +8175,6 @@
     return [
       { name: "preview", title: t("tab.map"), tab: els.previewTableTab, pane: els.previewTablePane, actions: "preview" },
       { name: "projects", title: t("tab.projects"), tab: els.projectTableTab, pane: els.projectTablePane, actions: "projects" },
-      { name: "categories", title: t("tab.categories"), tab: els.categoriesTableTab, pane: els.categoriesTablePane, actions: "categories" },
       { name: "regions", title: t("tab.regions"), tab: els.regionTableTab, pane: els.regionTablePane, actions: "regions" },
       { name: "translate", title: t("tab.translate"), tab: els.translateTableTab, pane: els.translateTablePane, actions: "translate" },
       { name: "quality", title: t("tab.quality"), tab: els.qualityTableTab, pane: els.qualityTablePane, actions: "quality" }
@@ -7505,7 +8221,16 @@
   }
 
   function normalizePropertiesPanelSide(value) {
-    return String(value || "").toLowerCase() === "right" ? "right" : "left";
+    return String(value || "right").toLowerCase() === "left" ? "left" : "right";
+  }
+
+  function handlePropertiesControlsKeydown(event) {
+    if (event.key !== "Enter" || event.isComposing || !event.target.matches("[data-leader-line-width-draft]")) return;
+    const editor = event.target.closest("[data-leader-line-width-editor]");
+    const applyButton = editor && editor.querySelector("[data-property-action='apply-leader-line-width']");
+    if (!applyButton || applyButton.disabled) return;
+    event.preventDefault();
+    applyButton.click();
   }
 
   function getPropertiesPanelSide() {
@@ -7685,7 +8410,7 @@
     if (activeName === "translate") renderTranslationWorkbench();
     if (activeName === "projects") refreshProjectTableUx();
     renderPropertiesForActiveState(getDefaultPropertiesSelectionForWorkspace(activeName));
-    if (activeName === "categories") renderCategoryEditors();
+    if (activeName === "preview") renderCategoryEditors();
     if (activeName === "quality" && !qualitySurfacesRefreshed) refreshQualityMetricsPanel();
     if (activeName === "regions") {
       if (pendingPreviewRefresh) {
@@ -7756,6 +8481,7 @@
     updatePreviewState();
     const svg = els.svg;
     svg.selectAll("*").remove();
+    syncMapTypographyRoot(svg, settings);
     svg.attr("viewBox", `0 0 ${settings.width} ${settings.height}`);
     svg.attr("width", settings.width);
     svg.attr("height", settings.height);
@@ -7764,11 +8490,14 @@
     svg.append("desc").text(tFor(settings.mapLanguage, "map.svgDescription", { boundary: getBoundaryLabel(currentBoundary, settings.mapLanguage) }));
 
     if (settings.title) {
+      const denseCompact = settings.bookSize === "compact" && settings.imageSize === "half";
+      const fittedTitleSize = denseCompact
+        ? 5
+        : Math.max(8, Math.min(24, (settings.width - 60) / Math.max(1, settings.title.length * 0.55)));
       svg.append("text")
-        .attr("class", "map-title")
-        .attr("x", 30)
-        .attr("y", 42)
-        .attr("font-family", settings.fontFamily)
+        .attr("class", `map-title ${mapTypographySizeClass(fittedTitleSize)}${denseCompact ? " is-compact" : ""}`)
+        .attr("x", denseCompact ? Math.round(settings.width * 0.058) : 30)
+        .attr("y", denseCompact ? Math.round(settings.height * 0.072) : 42)
         .text(settings.title);
     }
 
@@ -7802,12 +8531,18 @@
     const layoutBundle = cachedLayoutBundle || computeLanguageLayout(visibleGeo, rows, settings, shouldResizeForAutoPlace, {
       ignoreManualPositions: shouldAutoPlace
     });
-    if (shouldAutoPlace && !cachedLayoutBundle) rememberLanguageLayout(layoutCacheKey, layoutBundle);
     settings = layoutBundle.settings;
     const layoutContext = layoutBundle.layoutContext;
-    if (shouldResizeForAutoPlace && layoutContext.requestedMapScale && layoutContext.requestedMapScale !== settings.mapScale) {
-      els.mapScaleInput.value = settings.mapScale;
-      rememberCurrentLanguageMapScale();
+    if (shouldResizeForAutoPlace) {
+      if (layoutContext.requestedMapScale && layoutContext.requestedMapScale !== settings.mapScale) {
+        els.mapScaleInput.value = settings.mapScale;
+      }
+      rememberCurrentLanguageMapScale(settings);
+    }
+    if (shouldAutoPlace && !cachedLayoutBundle) {
+      rememberLanguageLayout(layoutCacheKey, layoutBundle);
+      const finalLayoutCacheKey = getLayoutCacheKey(rows, settings, shouldResizeForAutoPlace);
+      if (finalLayoutCacheKey !== layoutCacheKey) rememberLanguageLayout(finalLayoutCacheKey, layoutBundle);
     }
     const {
       projection,
@@ -7852,7 +8587,7 @@
       return sourceRow && sourceRow.anchor === "region" ? sourceRow.region || null : null;
     };
     const markerRows = mappedRows.map(row => placedByRowId.get(row.rowId) || row);
-    const leaderRows = placed.filter(row => !row.hideLine);
+    const leaderRows = settings.hideLeaderLines ? [] : placed.filter(row => !row.hideLine);
     const report = analyzeLayout(placed, settings, projectedProblems, hiddenRegionProblems, mapBounds, mappedRows);
     lastLayout = {
       placed,
@@ -7869,14 +8604,15 @@
 
     const leaderLayer = svg.append("g").attr("class", "leader-layer");
     if (settings.showLineCasing) {
-    leaderLayer.selectAll("path.leader-casing")
+      const casingExtra = Number(settings.labelDensityScale) < 1 ? 1.5 : 3.5;
+      leaderLayer.selectAll("path.leader-casing")
         .data(leaderRows)
         .join("path")
         .attr("class", d => `leader-casing${isPointOffCanvas(d, settings) ? " is-off-canvas" : ""}`)
         .attr("data-layout-id", d => d.layoutId)
         .attr("data-label-side", d => d.labelSide)
         .attr("data-label-name", d => d.name)
-        .attr("stroke-width", d => getCategoryLineWidth(getCategory(d.type), settings) + 3.5)
+        .attr("stroke-width", d => getLeaderLineWidth(sourceRowForLayout(d), settings) + casingExtra)
         .attr("d", d => linePath(d, settings));
     }
     leaderLayer.selectAll("path.leader-line")
@@ -7887,8 +8623,8 @@
       .attr("data-label-side", d => d.labelSide)
       .attr("data-label-name", d => d.name)
       .attr("data-region-id", d => leaderRegionId(d))
-      .attr("stroke-width", d => getCategoryLineWidth(getCategory(d.type), settings))
-      .style("stroke", d => getLeaderLineColour(sourceRowForLayout(d)))
+      .attr("stroke-width", d => getLeaderLineWidth(sourceRowForLayout(d), settings))
+      .attr("stroke", d => getLeaderLineColour(sourceRowForLayout(d), settings))
       .attr("d", d => linePath(d, settings));
 
     const markerLayer = svg.append("g").attr("class", "marker-layer");
@@ -7953,7 +8689,6 @@
       .data(placed)
       .join("text")
       .attr("class", "map-label")
-      .attr("font-family", settings.fontFamily)
       .attr("data-layout-id", d => d.layoutId)
       .attr("data-label-style", d => d.labelStyle === "rich" ? "rich" : "compact")
       .attr("data-label-side", d => d.labelSide)
@@ -7993,14 +8728,14 @@
       const lineAdvance = index === 0
         ? 0
         : (Number.isFinite(currentOffset) ? currentOffset - previousOffset : row.lineHeight);
+      const lineFontSize = Number(line && line.fontSize) || getLabelLineFontSize(line, settings);
       text.append("tspan")
-        .attr("class", role === "separator" ? "label-line label-separator" : `label-line label-${role}`)
+        .attr("class", `${role === "separator" ? "label-line label-separator" : `label-line label-${role}`} ${mapTypographySizeClass(lineFontSize)}`)
         .attr("x", row.labelX)
         .attr("dy", lineAdvance)
-        .attr("font-size", Number(line && line.fontSize) || getLabelLineFontSize(line, settings))
         .text(role === "separator" ? "" : lineText(line));
       if (index === row.lines.length - 1 && row.footnote) {
-        appendSuperscript(text, row.footnote, Number(line && line.fontSize) || getLabelLineFontSize(line, settings));
+        appendSuperscript(text, row.footnote, lineFontSize);
       }
     });
   }
@@ -8130,10 +8865,9 @@
 
   function appendSuperscript(textSelection, value, labelSize) {
     textSelection.append("tspan")
-      .attr("class", "label-footnote")
+      .attr("class", `label-footnote ${mapTypographySizeClass(labelSize * 0.68)}`)
       .attr("dx", 2)
       .attr("baseline-shift", "super")
-      .attr("font-size", labelSize * 0.68)
       .text(value);
   }
 
@@ -8883,9 +9617,9 @@
       closeShortcutsOverlay();
       return;
     }
-    if (event.key === "Escape" && isPointPropertiesSelection() && !getOpenDialogElement()) {
+    if (event.key === "Escape" && (isPointPropertiesSelection() || isBaselayerPropertiesSelection()) && !getOpenDialogElement()) {
       event.preventDefault();
-      clearPointPropertiesSelection();
+      if (!clearPointPropertiesSelection()) clearBaselayerPropertiesSelection();
       if (propertiesDrawerMedia.matches && document.body.classList.contains("properties-open")) {
         setPropertiesDrawerOpen(false, { restoreFocus: true });
       }
@@ -8905,26 +9639,6 @@
   function getOpenDialogElement() {
     return [els.confirmationDialog, els.startupDialog, els.csvMapDialog, els.pointCatalogDialog, els.mapDetailsDialog]
       .find(dialog => dialog && !dialog.hidden) || null;
-  }
-
-  function syncCategorySettingsFromControls() {
-    const settings = getSettings();
-    Array.from(els.categoryList.querySelectorAll(".category-editor")).forEach(editor => {
-      const category = categorySettings.find(item => item.id === editor.dataset.categoryId);
-      if (!category) return;
-      category.label = editor.querySelector(".category-label-input").value.trim() || category.defaultLabel;
-      category.shape = normalizeMarkerShape(editor.querySelector(".category-shape-input").value);
-      category.colour = editor.querySelector(".category-colour-input").value;
-      category.markerSize = optionalNumber(editor.querySelector(".category-marker-size-input").value) || settings.markerSize;
-      category.lineWidth = optionalNumber(editor.querySelector(".category-line-width-input").value) || settings.lineWidth;
-      const categoryTitle = editor.querySelector(".category-header strong");
-      if (categoryTitle) {
-        const displayLabel = getCategoryLabel(category.id, currentUiLanguage);
-        categoryTitle.textContent = displayLabel;
-        categoryTitle.title = displayLabel;
-      }
-      editor.querySelector(".category-swatch").innerHTML = getCategorySwatchSvg(category);
-    });
   }
 
   function applyCategorySettings(categories = []) {
@@ -8955,6 +9669,7 @@
       const lineWidthCustom = savedCategory.lineWidthCustom !== undefined
         ? Boolean(savedCategory.lineWidthCustom)
         : lineWidth !== settings.lineWidth;
+      const resolvedLineWidth = lineWidthCustom ? lineWidth : settings.lineWidth;
 
       if (category) {
         category.label = label;
@@ -8963,7 +9678,7 @@
         category.colour = colour;
         category.stroke = stroke;
         category.markerSize = markerSize;
-        category.lineWidth = lineWidth;
+        category.lineWidth = resolvedLineWidth;
         category.customIcon = customIcon;
         category.markerSizeCustom = markerSizeCustom;
         category.lineWidthCustom = lineWidthCustom;
@@ -8981,7 +9696,7 @@
         colour,
         stroke,
         markerSize,
-        lineWidth,
+        lineWidth: resolvedLineWidth,
         customIcon,
         markerSizeCustom,
         lineWidthCustom,
@@ -8996,25 +9711,11 @@
 
     categorySettings.length = 0;
     nextCategories.forEach(category => categorySettings.push(category));
+    if (!categorySettings.some(category => category.id === activeCategoryId)) {
+      activeCategoryId = categorySettings[0] ? categorySettings[0].id : "";
+    }
     renderCategoryEditors();
     updateTypeOptions();
-  }
-
-  function handleCategorySettingsChange(event) {
-    if (event && event.target) captureInputUndo(event.target, "category edit");
-    if (event && event.target.classList.contains("category-preset-input") && event.target.value) {
-      const editor = event.target.closest(".category-editor");
-      editor.querySelector(".category-colour-input").value = event.target.value;
-    }
-    if (event && (event.target.classList.contains("category-marker-size-input") || event.target.classList.contains("category-line-width-input"))) {
-      const editor = event.target.closest(".category-editor");
-      const category = editor ? categorySettings.find(item => item.id === editor.dataset.categoryId) : null;
-      if (category && event.target.classList.contains("category-marker-size-input")) category.markerSizeCustom = true;
-      if (category && event.target.classList.contains("category-line-width-input")) category.lineWidthCustom = true;
-    }
-    syncCategorySettingsFromControls();
-    updateTypeOptions();
-    requestPreviewRefresh();
   }
 
   function handleLayoutSettingsChange(event) {
@@ -9045,6 +9746,7 @@
     }
 
     if (event && (event.target === els.bookSizeInput || event.target === els.imageSizeInput)) {
+      resetLanguageMapOffsets();
       saveLayoutPreferences();
     }
 
@@ -9054,6 +9756,8 @@
     if (target === els.mapScaleInput) {
       target.value = normalizeMapScale(target.value);
     }
+    if (target === els.lineWidthInput) target.value = normalizeLeaderLineWidth(target.value);
+    if (target === els.leaderColourInput) target.value = normalizeHexColour(target.value, layoutDefaults.leaderColourInput || "#333333");
     syncCompactFurnitureAvailability();
     if (!target || target === els.markerSizeInput || target === els.lineWidthInput) {
       renderCategoryEditors();
@@ -9070,7 +9774,7 @@
     const count = categorySettings.length + 1;
     const { label, labelFr } = getDefaultCategoryLabels(count);
     const settings = getSettings();
-    categorySettings.push({
+    const category = {
       id: makeCategoryId(label),
       label,
       labelFr,
@@ -9085,10 +9789,13 @@
       customIcon: null,
       collapsed: false,
       removable: true
-    });
+    };
+    categorySettings.push(category);
+    activeCategoryId = category.id;
     renderCategoryEditors();
     updateTypeOptions();
     requestPreviewRefresh();
+    setCategoryPropertiesContext({ focus: true });
   }
 
   function getDefaultCategoryLabels(count, translate = tFor) {
@@ -9099,19 +9806,16 @@
     };
   }
 
-  function toggleCategory(categoryId) {
-    const category = categorySettings.find(item => item.id === categoryId);
-    if (!category) return;
-    category.collapsed = !category.collapsed;
-    renderCategoryEditors();
-  }
-
   function removeCategory(categoryId) {
     const category = categorySettings.find(item => item.id === categoryId);
-    if (!category) return;
+    if (!category) return false;
     if (categorySettings.length <= 1) {
       setStatusMessage(t("status.legendMarkerRequired"), "warning");
-      return;
+      return false;
+    }
+    if (category.removable === false) {
+      setStatusMessage(t("status.legendMarkerProtected"), "warning");
+      return false;
     }
 
     pushAppUndoHistory("remove category");
@@ -9120,14 +9824,17 @@
       if (select.value === categoryId) select.value = replacementCategory.id;
     });
     categorySettings.splice(categorySettings.indexOf(category), 1);
+    if (activeCategoryId === categoryId) activeCategoryId = replacementCategory.id;
     renderCategoryEditors();
     updateTypeOptions();
     requestPreviewRefresh();
+    if (activePropertiesSelection && activePropertiesSelection.kind === "category") setCategoryPropertiesContext();
+    return true;
   }
 
   function clearCategoryDropIndicators() {
     if (!els.categoryList) return;
-    els.categoryList.querySelectorAll(".category-editor").forEach(editor => {
+    els.categoryList.querySelectorAll(".legend-item").forEach(editor => {
       editor.classList.remove("is-dragging", "is-drop-before", "is-drop-after");
     });
     activeCategoryDropEditor = null;
@@ -9168,6 +9875,13 @@
     return true;
   }
 
+  function moveCategoryByOffset(categoryId, offset) {
+    const fromIndex = categorySettings.findIndex(category => category.id === categoryId);
+    const targetIndex = fromIndex + offset;
+    if (fromIndex < 0 || targetIndex < 0 || targetIndex >= categorySettings.length) return false;
+    return reorderCategory(categoryId, categorySettings[targetIndex].id, offset < 0 ? "before" : "after");
+  }
+
   function getCategoryDropPlacement(event, editor) {
     const rect = editor.getBoundingClientRect();
     return event.clientY > rect.top + rect.height / 2 ? "after" : "before";
@@ -9177,7 +9891,7 @@
     const handle = event.target.closest(".category-drag-handle");
     if (!handle) return;
     draggedCategoryId = handle.dataset.categoryId;
-    const editor = handle.closest(".category-editor");
+    const editor = handle.closest(".legend-item");
     if (editor) editor.classList.add("is-dragging");
     if (event.dataTransfer) {
       event.dataTransfer.effectAllowed = "move";
@@ -9187,7 +9901,7 @@
 
   function handleCategoryDragOver(event) {
     if (!draggedCategoryId) return;
-    const editor = event.target.closest(".category-editor");
+    const editor = event.target.closest(".legend-item");
     if (!editor || !els.categoryList.contains(editor) || editor.dataset.categoryId === draggedCategoryId) {
       clearCategoryDropTargets();
       return;
@@ -9200,7 +9914,7 @@
 
   function handleCategoryDrop(event) {
     if (!draggedCategoryId) return;
-    const editor = event.target.closest(".category-editor");
+    const editor = event.target.closest(".legend-item");
     if (!editor || !els.categoryList.contains(editor)) return;
     event.preventDefault();
     const placement = getCategoryDropPlacement(event, editor);
@@ -9274,46 +9988,63 @@
 
   function getFurnitureRowMetrics(settings) {
     const compact = settings.compactFurniture !== false;
+    const denseCompact = compact && Number(settings.labelDensityScale) < 1;
     return {
-      insetX: compact ? 24 : 30,
-      markerX: compact ? 46 : 52,
-      textX: compact ? 72 : 82,
-      rightPad: compact ? 24 : 30
+      insetX: denseCompact ? 5 : compact ? 10 : 30,
+      markerX: denseCompact ? 12 : compact ? 18 : 52,
+      textX: denseCompact ? 24 : compact ? 36 : 82,
+      rightPad: denseCompact ? 5 : compact ? 10 : 30
     };
   }
 
   function getLegendBoxLayout(settings) {
     const compact = settings.compactFurniture !== false;
+    const denseCompact = compact && Number(settings.labelDensityScale) < 1;
     const rowMetrics = getFurnitureRowMetrics(settings);
+    const textSizeRender = normalizeMapTypographySize(compact
+      ? Math.max(denseCompact ? 5 : 7, Math.round(settings.labelSizeRender * 0.78))
+      : settings.labelSizeRender);
     const headingSize = Math.max(settings.labelSize, Math.round(settings.labelSize * 1.02));
-    const headingSizeRender = Math.max(settings.labelSizeRender, Math.round(settings.labelSizeRender * 1.02));
-    const rowHeight = Math.max(compact ? 30 : 34, Math.round(settings.labelSize * (compact ? 2.25 : 2.45)));
-    const headingHeight = Math.max(compact ? 26 : 31, Math.round(headingSize * (compact ? 1.85 : 2.1)));
-    const verticalPadding = Math.max(compact ? 18 : 22, Math.round(settings.labelSize * (compact ? 1.45 : 1.7)));
+    const headingSizeRender = normalizeMapTypographySize(Math.max(settings.labelSizeRender, Math.round(settings.labelSizeRender * 1.02)));
+    const rowHeight = compact
+      ? Math.max(denseCompact ? 14 : 18, Math.round(textSizeRender * 2.1))
+      : Math.max(34, Math.round(settings.labelSize * 2.45));
+    const headingHeight = compact
+      ? Math.max(denseCompact ? 12 : 16, Math.round(headingSizeRender * (denseCompact ? 1.8 : 2)))
+      : Math.max(31, Math.round(headingSize * 2.1));
+    const verticalPadding = denseCompact ? 4 : compact ? 6 : Math.max(22, Math.round(settings.labelSize * 1.7));
     const headingRuleY = verticalPadding + headingHeight;
     const headingText = getChromeText("legendHeading", settings.mapLanguage);
     const statusItems = getUsedRegionStatusOptions();
     const legendLabels = categorySettings.map(category => getCategoryText(category, settings.mapLanguage)).concat(statusItems.map(item => item.label));
     const longestLabelLength = Math.max(6, headingText.length, ...legendLabels.map(label => label.length));
-    const widthPad = compact ? 112 : 126;
+    const widthPad = compact ? rowMetrics.textX + rowMetrics.rightPad : 126;
     const fallbackDimensions = {
-      width: Math.max(compact ? 270 : 300, Math.min(420, Math.round(longestLabelLength * settings.labelSize * 0.58 + widthPad))),
+      width: Math.max(denseCompact ? 120 : compact ? 132 : 300, Math.min(compact ? 210 : 420, Math.round(longestLabelLength * textSizeRender * 0.58 + widthPad))),
       height: verticalPadding * 2 + headingHeight + (categorySettings.length + statusItems.length) * rowHeight
     };
     const constraints = {
-      minWidth: Math.max(compact ? 260 : 290, Math.round(longestLabelLength * settings.labelSizeRender * 0.58 + (compact ? 106 : 126))),
+      minWidth: compact
+        ? Math.max(denseCompact ? 120 : 126, Math.round(longestLabelLength * textSizeRender * 0.58 + widthPad))
+        : Math.max(290, Math.round(longestLabelLength * settings.labelSizeRender * 0.58 + 126)),
       minHeight: fallbackDimensions.height,
       maxWidth: settings.width - 20,
       maxHeight: settings.height - 20
     };
     const dimensions = getBoxDimensions("legend", fallbackDimensions, constraints, settings);
-    const position = getBoxPosition("legend", { x: 40, y: settings.height - 150 }, dimensions, settings);
+    const position = getBoxPosition("legend", {
+      x: compact ? Math.round(settings.width * 0.1) : 40,
+      y: compact
+        ? settings.height - dimensions.height - Math.max(12, Math.round(settings.height * 0.04))
+        : settings.height - 150
+    }, dimensions, settings);
     return {
       dimensions,
       position,
       constraints,
       headingText,
       headingSizeRender,
+      textSizeRender,
       headingRuleY,
       rowHeight,
       headingHeight,
@@ -9329,14 +10060,16 @@
       settings && settings.outputMode
     );
     return {
-      headingSize: Number(settings && settings.labelTitleSizeRender) || fallback.title,
-      nameSize: Number(settings && settings.labelBodySizeRender) || fallback.body
+      headingSize: normalizeMapTypographySize(Number(settings && settings.labelTitleSizeRender) || fallback.title),
+      nameSize: normalizeMapTypographySize(Number(settings && settings.labelBodySizeRender) || fallback.body)
     };
   }
 
   function getCalloutContentLayout(calloutRows, settings, width) {
     const compact = settings.compactFurniture !== false;
-    const rowMetrics = getFurnitureRowMetrics(settings);
+    const rowMetrics = compact
+      ? { insetX: 24, markerX: 46, textX: 72, rightPad: 24 }
+      : getFurnitureRowMetrics(settings);
     const headingText = getChromeText("calloutHeading", settings.mapLanguage);
     const { headingSize, nameSize } = getCalloutTypography(settings);
     const headingHeight = Math.max(compact ? 22 : 26, Math.round(headingSize * (compact ? 1.8 : 2)));
@@ -9426,8 +10159,21 @@
   }
 
   function getLayoutBoxObstacles(settings, calloutRows) {
-    const pad = Math.max(12, Math.round(settings.labelSize * 0.8));
+    const denseCompact = settings.bookSize === "compact" && settings.imageSize === "half";
+    const pad = denseCompact ? 4 : Math.max(12, Math.round(settings.labelSize * 0.8));
     const obstacles = [];
+    if (settings.title) {
+      const denseCompact = settings.bookSize === "compact" && settings.imageSize === "half";
+      obstacles.push({
+        key: "title",
+        rect: {
+          x0: denseCompact ? Math.round(settings.width * 0.04) : 18,
+          y0: 0,
+          x1: denseCompact ? Math.round(settings.width * 0.96) : settings.width - 18,
+          y1: denseCompact ? Math.round(settings.height * 0.09) : 62
+        }
+      });
+    }
     if (settings.showLegend) {
       const legend = getLegendBoxLayout(settings);
       obstacles.push({
@@ -9597,6 +10343,7 @@
       constraints,
       headingText,
       headingSizeRender,
+      textSizeRender,
       headingRuleY,
       rowHeight,
       headingHeight,
@@ -9624,14 +10371,13 @@
       .attr("x", 0)
       .attr("y", 0)
       .attr("width", dimensions.width)
-      .attr("height", dimensions.height);
+      .attr("height", dimensions.height)
+      .attr("rx", 0);
 
     group.append("text")
-      .attr("class", "box-heading legend-heading")
+      .attr("class", `box-heading legend-heading ${mapTypographySizeClass(headingSizeRender)}`)
       .attr("x", 24)
       .attr("y", verticalPadding + 4)
-      .attr("font-size", headingSizeRender)
-      .attr("font-family", settings.fontFamily)
       .attr("dominant-baseline", "hanging")
       .text(headingText);
 
@@ -9644,14 +10390,16 @@
 
     categorySettings.forEach((category, index) => {
       const itemY = verticalPadding + headingHeight + index * rowHeight + rowHeight / 2;
-      const legendMarkerSize = Math.max(8, Math.min(18, getCategoryMarkerSize(category, settings)));
-      drawMarkerSymbol(group, category, markerX, itemY, legendMarkerSize);
+      const denseCompact = settings.compactFurniture !== false && Number(settings.labelDensityScale) < 1;
+      const legendMarkerSize = Math.max(denseCompact ? 4 : 8, Math.min(denseCompact ? 9 : 18, getCategoryMarkerSize(category, settings)));
+      drawMarkerSymbol(group, category, markerX, itemY, legendMarkerSize)
+        .classed("legend-category-marker", true)
+        .attr("data-category-id", category.id);
       group.append("text")
-        .attr("class", "legend-text")
+        .attr("class", `legend-text ${mapTypographySizeClass(textSizeRender)}`)
+        .attr("data-category-id", category.id)
         .attr("x", textX)
         .attr("y", itemY)
-        .attr("font-size", settings.labelSizeRender)
-        .attr("font-family", settings.fontFamily)
         .attr("text-anchor", "start")
         .attr("dominant-baseline", "middle")
         .text(getCategoryText(category, settings.mapLanguage));
@@ -9669,11 +10417,9 @@
         .attr("stroke", "#ffffff")
         .attr("stroke-width", 1.5);
       group.append("text")
-        .attr("class", "legend-text")
+        .attr("class", `legend-text ${mapTypographySizeClass(textSizeRender)}`)
         .attr("x", textX)
         .attr("y", itemY)
-        .attr("font-size", settings.labelSizeRender)
-        .attr("font-family", settings.fontFamily)
         .attr("text-anchor", "start")
         .attr("dominant-baseline", "middle")
         .text(status.label);
@@ -9717,14 +10463,13 @@
       .attr("x", 0)
       .attr("y", 0)
       .attr("width", dimensions.width)
-      .attr("height", dimensions.height);
+      .attr("height", dimensions.height)
+      .attr("rx", 0);
 
     group.append("text")
-      .attr("class", "box-heading callout-heading")
+      .attr("class", `box-heading callout-heading ${mapTypographySizeClass(headingSize)}`)
       .attr("x", 24)
       .attr("y", padV + 4)
-      .attr("font-size", headingSize)
-      .attr("font-family", settings.fontFamily)
       .attr("dominant-baseline", "hanging")
       .text(headingText);
 
@@ -9742,14 +10487,13 @@
       drawMarkerSymbol(group, category, markerX, rowY + rowHeight / 2, markerSize);
 
       const nameEl = group.append("text")
-        .attr("class", "callout-text")
+        .attr("class", `callout-text ${mapTypographySizeClass(nameSize)}`)
         .attr("x", textX)
         .attr("y", textY)
-        .attr("font-size", nameSize)
-        .attr("font-family", settings.fontFamily)
         .attr("dominant-baseline", "hanging");
       nameLines.forEach((line, index) => {
         nameEl.append("tspan")
+          .attr("class", `callout-line callout-${line.role || "title"}`)
           .attr("x", textX)
           .attr("dy", index === 0 ? 0 : lineH)
           .text(line.role === "separator" ? "" : lineText(line));
@@ -9843,7 +10587,7 @@
     const previewRadius = Math.max(2, Math.min(12, markerSize));
     const previewLineWidth = Math.max(1, Math.min(4, lineWidth));
     const centre = 14;
-    const svgAttributes = `class="category-marker-preview" viewBox="0 0 28 28" data-marker-size="${markerSize}" data-preview-radius="${previewRadius}" style="width:28px;height:28px" aria-hidden="true"`;
+    const svgAttributes = `class="category-marker-preview" viewBox="0 0 28 28" data-marker-size="${markerSize}" data-preview-radius="${previewRadius}" aria-hidden="true"`;
     if (category.customIcon) {
       const href = escapeHtml(category.customIcon.dataUrl);
       const iconSize = previewRadius * 2;
@@ -9885,15 +10629,14 @@
       .attr("fill", "#fff7e6")
       .attr("stroke", "#d29a22");
     svg.append("text")
+      .attr("class", "map-missing-title map-type-size-20")
       .attr("x", 55)
       .attr("y", 115)
-      .attr("font-size", 20)
-      .attr("font-weight", 700)
       .text(resolvedTitle);
     svg.append("text")
+      .attr("class", "map-missing-body map-type-size-16")
       .attr("x", 55)
       .attr("y", 150)
-      .attr("font-size", 16)
       .text(resolvedMessage);
   }
 
@@ -9924,25 +10667,39 @@
       .join(", ");
   }
 
-  function getExportCss() {
+  function getMapTypographyExportCss(unit = "px") {
+    const rules = [];
+    for (let value = mapTypographySizeRange.min; value <= mapTypographySizeRange.max; value += mapTypographySizeRange.step) {
+      const normalized = normalizeMapTypographySize(value);
+      const token = String(normalized).replace(".", "-");
+      rules.push(`.map-type-size-${token} { font-size: ${normalized}${unit}; }`);
+    }
+    return rules.join("\n      ");
+  }
+
+  function getExportCss(outputMode = "web") {
     const mapBackground = getCssVar("--map-background", "#ffffff");
     const mapBoundary = getCssVar("--map-boundary", "#ffffff");
     const mapBoxBorder = getCssVar("--map-box-border", "#333333");
     const ink = getCssVar("--map-ink", getCssVar("--ink", "#222222"));
     const muted = getCssVar("--map-muted", getCssVar("--muted", "#666666"));
-    const leader = getCssVar("--leader", "#333333");
+    const leader = normalizeHexColour(getSettings().leaderColour, getCssVar("--leader", "#333333"));
     const fontFamily = quoteFontFamily(getSettings().fontFamily);
 
     return `
       #mapSvg { background: ${mapBackground}; }
-      .map-title { font-size: 24px; font-weight: 700; fill: ${ink}; font-family: ${fontFamily}; }
+      #mapSvg text { font-family: ${fontFamily}; }
+      .map-title { font-weight: 700; fill: ${ink}; }
+      .map-title.is-compact { font-weight: 400; }
       .province { stroke: ${mapBoundary}; stroke-width: 1.2; }
       .marker { stroke-width: 2.2; }
       .leader-casing { fill: none; stroke: ${mapBackground}; stroke-linecap: round; stroke-linejoin: round; }
-      .leader-line { fill: none; stroke: ${leader}; stroke-linecap: round; stroke-linejoin: round; }
+      .leader-line { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+      .leader-line:not([stroke]) { stroke: ${leader}; }
       .map-label-background { fill: none; stroke: none; }
       .map-label-background.has-label-border { fill: none; stroke: ${ink}; stroke-width: 1.2; vector-effect: non-scaling-stroke; }
       .map-label { font-family: ${fontFamily}; font-weight: 700; fill: ${ink}; }
+      .map-label .label-paragraph, .map-label .label-bullet, .map-label .label-caption { font-weight: 400; }
       .label-footnote { font-weight: 700; }
       .callout-box, .legend-box { fill: ${mapBackground}; stroke: ${mapBoxBorder}; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
       .callout-box { stroke-dasharray: 6 4; }
@@ -9950,7 +10707,10 @@
       .box-heading { font-family: ${fontFamily}; fill: ${ink}; font-weight: 700; }
       .box-heading-rule { stroke: ${mapBoxBorder}; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
       .callout-heading-rule { stroke-dasharray: 6 4; }
+      .box-heading.is-hidden, .box-heading-rule.is-hidden { display: none; }
+      .callout-paragraph, .callout-caption { font-style: italic; font-weight: 400; }
       .legend-note { font-family: ${fontFamily}; fill: ${muted}; font-style: italic; }
+      ${getMapTypographyExportCss("px")}
     `;
   }
 
@@ -9961,7 +10721,7 @@
     const clone = svgNode.cloneNode(true);
     clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
     clone.setAttribute("version", "1.1");
-    clone.setAttribute("style", `background:${getCssVar("--map-background", "#ffffff")}`);
+    clone.removeAttribute("style");
     if (outputMode === "print") {
       const settings = getSettings({ outputMode: "print" });
       clone.setAttribute("width", `${settings.width}pt`);
@@ -9974,7 +10734,7 @@
     clone.querySelectorAll(".map-scale-controls, .distance-markers, .box-controls").forEach(node => node.remove());
 
     const style = document.createElementNS("http://www.w3.org/2000/svg", "style");
-    style.textContent = getExportCss();
+    style.textContent = getExportCss(outputMode);
     clone.insertBefore(style, clone.firstChild);
     return clone;
   }
@@ -10074,7 +10834,7 @@
   }
 
   const projectFormat = "plotypus-project";
-  const currentProjectVersion = 7;
+  const currentProjectVersion = 8;
   const currentAppVersion = String(appConfig.appVersion || "2026.07.14");
 
   function validateAndNormalizeProject(rawProject) {
@@ -11083,6 +11843,13 @@
     on(els.shortcutsOverlay, "click", event => {
       if (event.target === els.shortcutsOverlay) closeShortcutsOverlay();
     });
+    on(els.addProjectTypeBtn, "click", () => {
+      closeProjectToolbarMenus();
+      if (propertiesDrawerMedia.matches) setPropertiesDrawerOpen(true);
+      else setPropertiesCollapsed(false);
+      addCategory();
+      setStatusMessage(t("status.projectTypeAdded", { label: getCategoryLabel(activeCategoryId, currentUiLanguage) }), "ok");
+    });
     on(els.addRowBtn, "click", () => {
       closeProjectToolbarMenus();
       pushAppUndoHistory("add project row");
@@ -11141,7 +11908,6 @@
       });
     });
     on(els.projectTableTab, "click", () => setActiveDataTab("projects"));
-    on(els.categoriesTableTab, "click", () => setActiveDataTab("categories"));
     on(els.regionTableTab, "click", () => setActiveDataTab("regions"));
     on(els.translateTableTab, "click", () => setActiveDataTab("translate"));
     on(els.previewTableTab, "click", () => setActiveDataTab("preview"));
@@ -11325,6 +12091,7 @@
     });
     on(els.propertiesSelectionControls, "change", handlePropertiesControlsChange);
     on(els.propertiesSelectionControls, "input", handleRichLabelEditorInput);
+    on(els.propertiesSelectionControls, "keydown", handlePropertiesControlsKeydown);
     on(els.propertiesSelectionControls, "focusin", event => primeInputUndo(event.target, "properties edit"));
     on(els.propertiesSelectionControls, "focusout", event => clearInputUndoCapture(event.target));
     on(els.propertiesSelectionControls, "click", handlePropertiesControlsClick);
@@ -11402,11 +12169,14 @@
       if (getProjectToolbarMenus().some(item => !item.menu.hidden) && !event.target.closest(".project-menu-wrap")) {
         closeProjectToolbarMenus();
       }
-      if (mapScaleControlsVisible && els.mapHost && !els.mapHost.contains(event.target)) {
+      if (mapScaleControlsVisible && els.mapHost && !els.mapHost.contains(event.target) && !event.target.closest("#propertiesPanel")) {
         hideMapScaleControls();
       }
       if (isPointPropertiesSelection() && !isPointSelectionInteractionTarget(event.target)) {
         clearPointPropertiesSelection();
+      }
+      if (isBaselayerPropertiesSelection() && !isBaselayerSelectionInteractionTarget(event.target)) {
+        clearBaselayerPropertiesSelection();
       }
     });
     [
@@ -11421,34 +12191,52 @@
       els.showLegendInput,
       els.showCalloutsInput,
       els.compactFurnitureInput,
+      els.hideLeaderLinesInput,
       els.showLineCasingInput,
       els.routeDenseLeadersInput,
+      els.leaderColourInput,
       els.showDistanceMarkersInput,
       els.lockMarkerCoordinatesInput
     ].forEach(el => on(el, "change", handleLayoutSettingsChange));
     on(els.addCategoryBtn, "click", addCategory);
-    on(els.categoryList, "change", handleCategorySettingsChange);
-    on(els.categoryList, "input", handleCategorySettingsChange);
-    on(els.categoryList, "focusin", event => primeInputUndo(event.target, "category edit"));
-    on(els.categoryList, "focusout", event => clearInputUndoCapture(event.target));
     on(els.categoryList, "click", event => {
-      const editor = event.target.closest(".category-editor");
-      if (editor) {
-        activeCategoryId = editor.dataset.categoryId;
-        els.categoryList.querySelectorAll(".category-editor").forEach(item => item.classList.toggle("is-selected", item === editor));
-        if (activeDataTable === "categories") setCategoryPropertiesContext();
+      const selectButton = event.target.closest(".legend-item-select");
+      if (selectButton) {
+        activeCategoryId = selectButton.dataset.categoryId;
+        els.categoryList.querySelectorAll(".legend-item").forEach(item => {
+          const isSelected = item.dataset.categoryId === activeCategoryId;
+          item.classList.toggle("is-selected", isSelected);
+          const button = item.querySelector(".legend-item-select");
+          button?.setAttribute("aria-expanded", String(isSelected));
+          if (isSelected) button?.setAttribute("aria-current", "true");
+          else button?.removeAttribute("aria-current");
+        });
+        setCategoryPropertiesContext({ focus: true });
+        return;
+      }
+      const moveButton = event.target.closest(".move-category-up-btn, .move-category-down-btn");
+      if (moveButton) {
+        const offset = moveButton.classList.contains("move-category-up-btn") ? -1 : 1;
+        const categoryId = moveButton.dataset.categoryId;
+        if (moveCategoryByOffset(categoryId, offset)) {
+          setStatusMessage(t("status.legendOrderUpdated"), "ok");
+          window.requestAnimationFrame(() => {
+            const className = offset < 0 ? ".move-category-down-btn" : ".move-category-up-btn";
+            els.categoryList?.querySelector(`${className}[data-category-id="${window.CSS && CSS.escape ? CSS.escape(categoryId) : categoryId}"]`)?.focus({ preventScroll: true });
+          });
+        }
+        return;
       }
       const removeButton = event.target.closest(".remove-category-btn");
-      if (removeButton) removeCategory(removeButton.dataset.categoryId);
-
-      const toggleButton = event.target.closest(".toggle-category-btn");
-      if (toggleButton) toggleCategory(toggleButton.dataset.categoryId);
-    });
-    on(els.categoryList, "keydown", event => {
-      const editor = event.target.closest(".category-editor");
-      if (!editor || event.target !== editor || !["Enter", " "].includes(event.key)) return;
-      event.preventDefault();
-      editor.click();
+      if (removeButton) {
+        const item = removeButton.closest(".legend-item");
+        const focusCategoryId = item?.nextElementSibling?.dataset.categoryId || item?.previousElementSibling?.dataset.categoryId || "";
+        if (removeCategory(removeButton.dataset.categoryId) && focusCategoryId) {
+          window.requestAnimationFrame(() => {
+            els.categoryList?.querySelector(`.legend-item-select[data-category-id="${window.CSS && CSS.escape ? CSS.escape(focusCategoryId) : focusCategoryId}"]`)?.focus({ preventScroll: true });
+          });
+        }
+      }
     });
     on(els.categoryList, "dragstart", handleCategoryDragStart);
     on(els.categoryList, "dragover", handleCategoryDragOver);
@@ -11716,6 +12504,7 @@
       countSideOrderInversions,
       createOrderPreservingVerticalSlots,
       createOrderPreservingHorizontalSlots,
+      measurePlacementQuality,
       optimizeOrderedSideBands,
       applyManualLabelPositions,
       normalizeAnnotationContent,

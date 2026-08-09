@@ -30,8 +30,8 @@ No install step is required.
 
 1. Add or import project rows in **Project points**.
 2. Choose included regions and colours in **Map baselayer**.
-3. Define marker categories in **Legend and markers**.
-4. Adjust page, image, map, label, and furniture settings in **Preview**.
+3. In **Map**, define marker categories from the **Legend** list in Document Properties. The panel starts on the right and can still be moved from Configuration.
+4. Adjust page, image, map, label, and furniture settings in **Map**.
 5. Click **Run auto-place** when you want Plotypus to calculate label positions.
 6. Drag labels, the legend, callouts, or the map for final adjustment.
 7. Export the map as SVG or PNG.
@@ -215,6 +215,7 @@ Use `bookSizes` to define the Book size dropdown. Each entry inside `sizes` beco
     "mapScale": 100,
     "defaultMarkerSize": 4,
     "defaultLineWidth": 2,
+    "defaultLeaderColour": "#333333",
     "labelMaxChars": 24
   },
   "bookSizes": {
@@ -280,7 +281,7 @@ Category rules:
 
 - `id` must be unique and should use simple lowercase text such as `capital-project`.
 - `label` is what users see in the app.
-- `sampleRows[].type` should match a category `label`, not the `id`.
+- `sampleRows[].type` may match a category `id`, `label`, `labelFr`, or `defaultLabel`; stable IDs are preferred for new integrations.
 - Supported marker shapes include `circle`, `square`, `diamond`, `triangle-up`, `triangle-down`, `star`, `plus`, and `cross`.
 
 ### Colour Preset Example

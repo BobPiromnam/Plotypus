@@ -132,3 +132,95 @@ test("one-label score delta matches a complete layout rescore", () => {
 
   assert.ok(Math.abs(incremental - complete) < 1e-6, `${incremental} !== ${complete}`);
 });
+
+function geometryPolicies() {
+  const toRect = label => ({
+    x0: label.labelX,
+    y0: label.labelY - 12,
+    x1: label.labelX + 50,
+    y1: label.labelY,
+    centerX: label.labelX + 25,
+    centerY: label.labelY - 6
+  });
+  const pointInRect = (point, rect) => point.x >= rect.x0 && point.x <= rect.x1
+    && point.y >= rect.y0 && point.y <= rect.y1;
+  const segmentsCross = (a, b, c, d) => {
+    const ccw = (p1, p2, p3) => (p3.y - p1.y) * (p2.x - p1.x) > (p2.y - p1.y) * (p3.x - p1.x);
+    return ccw(a, c, d) !== ccw(b, c, d) && ccw(a, b, c) !== ccw(a, b, d);
+  };
+  const segmentIntersectsRect = (start, end, rect) => {
+    if (pointInRect(start, rect) || pointInRect(end, rect)) return true;
+    const corners = [
+      { x: rect.x0, y: rect.y0 },
+      { x: rect.x1, y: rect.y0 },
+      { x: rect.x1, y: rect.y1 },
+      { x: rect.x0, y: rect.y1 }
+    ];
+    return corners.some((corner, index) => segmentsCross(start, end, corner, corners[(index + 1) % corners.length]));
+  };
+  return createPolicies({
+    labelBackgroundRect: toRect,
+    labelRect: toRect,
+    lineEnd: label => ({ x: label.labelX, y: label.labelY }),
+    rectsOverlap: (a, b) => !(a.x1 < b.x0 || b.x1 < a.x0 || a.y1 < b.y0 || b.y1 < a.y0),
+    segmentIntersectsRect,
+    segmentsCross
+  });
+}
+
+test("hard quality counts a leader crossing another label", () => {
+  const policies = geometryPolicies();
+  const settings = { width: 300, height: 220, labelSize: 12, mapScale: 100, layoutObstacles: [], routeDenseLeaders: false };
+  const placed = [
+    { rowId: "a", name: "Alpha", x: 0, y: 0, labelX: 100, labelY: 0, labelSide: "right" },
+    { rowId: "b", name: "Beta", x: 50, y: 50, labelX: 40, labelY: 6, labelSide: "left" }
+  ];
+
+  const quality = policies.measurePlacementQuality(placed, settings);
+  assert.equal(quality.leaderLabelCrossings, 1);
+  assert.equal(quality.hardProblems, 1);
+});
+
+test("fixed-scale solver deterministically selects a conflict-free assignment", () => {
+  const policies = geometryPolicies();
+  const points = [
+    { rowId: "a", name: "Alpha", x: 0, y: 0 },
+    { rowId: "b", name: "Beta", x: 45, y: 6 }
+  ];
+  const bad = { ...points[0], labelX: 100, labelY: 0, labelSide: "right", lines: ["Alpha"], lineHeight: 12, textWidth: 50, textHeight: 12 };
+  const good = { ...bad, labelY: 30 };
+  const beta = { ...points[1], labelX: 40, labelY: 6, labelSide: "left", lines: ["Beta"], lineHeight: 12, textWidth: 50, textHeight: 12 };
+  const candidatePlacementMap = new Map([["a", [bad, good]], ["b", [beta]]]);
+  const settings = { width: 300, height: 220, labelSize: 12, mapScale: 100, layoutObstacles: [], routeDenseLeaders: false };
+  const bounds = { x0: 80, y0: 60, x1: 220, y1: 160 };
+
+  const first = policies.solveConflictFreeLayout(points, settings, bounds, { candidatePlacementMap, maxNodes: 100 });
+  const second = policies.solveConflictFreeLayout(points, settings, bounds, { candidatePlacementMap, maxNodes: 100 });
+
+  assert.equal(first.status, "solved");
+  assert.equal(first.placed[0].labelY, 30);
+  assert.deepEqual(
+    first.placed.map(label => `${label.rowId}:${label.labelSide}:${label.labelX}:${label.labelY}`),
+    second.placed.map(label => `${label.rowId}:${label.labelSide}:${label.labelX}:${label.labelY}`)
+  );
+  assert.equal(policies.measurePlacementQuality(first.placed, settings).hardProblems, 0);
+});
+
+test("fixed-scale solver distinguishes infeasible from budget-exhausted", () => {
+  const policies = geometryPolicies();
+  const points = [
+    { rowId: "a", name: "Alpha", x: 0, y: 0 },
+    { rowId: "b", name: "Beta", x: 45, y: 6 }
+  ];
+  const alpha = { ...points[0], labelX: 40, labelY: 6, labelSide: "right", lines: ["Alpha"], lineHeight: 12, textWidth: 50, textHeight: 12 };
+  const beta = { ...points[1], labelX: 40, labelY: 6, labelSide: "left", lines: ["Beta"], lineHeight: 12, textWidth: 50, textHeight: 12 };
+  const candidatePlacementMap = new Map([["a", [alpha]], ["b", [beta]]]);
+  const settings = { width: 300, height: 220, labelSize: 12, mapScale: 100, layoutObstacles: [], routeDenseLeaders: false };
+  const bounds = { x0: 80, y0: 60, x1: 220, y1: 160 };
+
+  assert.equal(policies.solveConflictFreeLayout(points, settings, bounds, { candidatePlacementMap, maxNodes: 100 }).status, "infeasible");
+  assert.equal(policies.solveConflictFreeLayout(points, settings, bounds, {
+    candidatePlacementMap: new Map([["a", [alpha, { ...alpha, labelY: 40 }]], ["b", [beta]]]),
+    maxNodes: 1
+  }).status, "budget-exhausted");
+});

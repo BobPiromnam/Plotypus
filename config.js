@@ -1,5 +1,5 @@
 (function () {
-  const fallbackRegionColours = ["#c7ded5", "#96c6b4", "#6caf94", "#078c70"];
+  const fallbackRegionColours = ["#b4d6c9", "#88b6a5", "#57a588", "#088b70"];
 
   const defaultConfig = {
     appVersion: "2026.07.14",
@@ -45,6 +45,27 @@
         projection: "world"
       }
     },
+    sampleMapDetails: {
+      titleEn: "",
+      titleFr: "",
+      textEn: "",
+      textFr: ""
+    },
+    sampleRegionFills: {
+      "Nunavut": "#b4d6c9",
+      "Northwest Territories": "#57a588",
+      "Yukon": "#b4d6c9",
+      "British Columbia": "#b4d6c9",
+      "Alberta": "#b4d6c9",
+      "Saskatchewan": "#088b70",
+      "Manitoba": "#088b70",
+      "Ontario": "#88b6a5",
+      "Quebec": "#088b70",
+      "New Brunswick": "#57a588",
+      "Nova Scotia": "#b4d6c9",
+      "Prince Edward Island": "#088b70",
+      "Newfoundland and Labrador": "#088b70"
+    },
     sampleRows: [
       { name: "Grays Bay Road and Port", nameFr: "Route et port de Grays Bay", type: "Referred Project", lon: -108.4, lat: 68.5 },
       { name: "Arctic Economic and Security Corridor", nameFr: "Corridor économique et de sécurité pour l'Arctique", type: "Referred Project", lon: -112.5, lat: 64.5 },
@@ -66,7 +87,21 @@
       { name: "Port of Churchill Plus", nameFr: "Port de Churchill plus", type: "Transformative Strategy", lon: -94.17, lat: 58.77 },
       { name: "Taltson Hydro Expansion Project", nameFr: "Agrandissement de la centrale hydroélectrique Taltson", type: "Referred Project", lon: -111.0, lat: 60.5 },
       { name: "Alto High-Speed Rail, Ontario-Quebec Corridor", nameFr: "Train à grande vitesse Alto, corridor Ontario‑Québec", type: "Transformative Strategy", lon: -74.5, lat: 45.8 },
-      { name: "Critical Minerals Strategy", nameFr: "Stratégie sur les minéraux critiques", type: "Transformative Strategy", lon: "", lat: "" }
+      {
+        name: "Critical Minerals Strategy",
+        nameFr: "Stratégie sur les minéraux critiques",
+        type: "Transformative Strategy",
+        lon: "",
+        lat: "",
+        labelStyle: "rich",
+        content: [{
+          type: "paragraph",
+          text: {
+            en: "(Canada-wide, not shown on Map)",
+            fr: "(À l'échelle du Canada, non illustrée sur la carte)"
+          }
+        }]
+      }
     ],
     fallbackRegionColours,
     mapStylePresets: {
@@ -133,6 +168,7 @@
       mapScaleInput: 100,
       markerSizeInput: 4,
       lineWidthInput: 2,
+      leaderColourInput: "#333333",
       labelCharsInput: 24
     },
     storageKeys: {
@@ -218,7 +254,7 @@
     categorySettings: [
       {
         id: "referred",
-        label: "Referred Project",
+        label: "Referred Projects",
         labelFr: "Projets soumis",
         defaultLabel: "Referred Project",
         shape: "circle",
@@ -233,7 +269,7 @@
       },
       {
         id: "strategy",
-        label: "Transformative Strategy",
+        label: "Transformative Strategies",
         labelFr: "Stratégies de transformation",
         defaultLabel: "Transformative Strategy",
         shape: "square",
@@ -282,6 +318,7 @@
       mapScaleInput: defaults.mapScale || defaults.mapScaleInput,
       markerSizeInput: defaults.defaultMarkerSize || defaults.markerSizeInput,
       lineWidthInput: defaults.defaultLineWidth || defaults.lineWidthInput,
+      leaderColourInput: defaults.defaultLeaderColour || defaults.leaderColourInput,
       labelCharsInput: defaults.labelMaxChars || defaults.labelCharsInput
     };
   }

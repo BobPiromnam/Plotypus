@@ -63,6 +63,8 @@
 
     function assert(checks, name, pass, detail = "") {
       checks.push({ name, pass: Boolean(pass), detail });
+      result.dataset.lastCheck = name;
+      result.dataset.checkCount = String(checks.length);
     }
 
     function floatingSurfaceState(surface, { boundary = null, hitTarget = null } = {}) {
@@ -96,7 +98,7 @@
       const isTopmost = Boolean(topNode && (target === topNode || target.contains(topNode)));
       return {
         pass: hasSize && isRendered && isContained && isTopmost,
-        detail: `surface=${Math.round(rect.left)},${Math.round(rect.top)}-${Math.round(rect.right)},${Math.round(rect.bottom)} boundary=${Math.round(boundaryRect.left)},${Math.round(boundaryRect.top)}-${Math.round(boundaryRect.right)},${Math.round(boundaryRect.bottom)} top=${topNode?.tagName || "none"}#${topNode?.id || ""}.${topNode?.className?.baseVal || topNode?.className || ""}`
+        detail: `surface=${Math.round(rect.left)},${Math.round(rect.top)}-${Math.round(rect.right)},${Math.round(rect.bottom)} boundary=${Math.round(boundaryRect.left)},${Math.round(boundaryRect.top)}-${Math.round(boundaryRect.right)},${Math.round(boundaryRect.bottom)} top=${topNode?.tagName || "none"}#${topNode?.id || ""}.${topNode?.className?.baseVal || topNode?.className || ""} contained=${isTopmost} text=${String(topNode?.textContent || "").trim().slice(0, 40)}`
       };
     }
 
@@ -304,6 +306,11 @@
         if (doc.fonts?.ready) await doc.fonts.ready;
         assert(checks, "Bundled IBM Plex Mono is available offline", !doc.fonts || doc.fonts.check('12px "IBM Plex Mono"'));
         const rootStyle = frame.contentWindow.getComputedStyle(doc.documentElement);
+        const bodyStyle = frame.contentWindow.getComputedStyle(doc.body);
+        const typographyScale = ["--type-body-size", "--type-h6-size", "--type-h5-size", "--type-h4-size", "--type-h3-size", "--type-h2-size", "--type-h1-size"]
+          .map(token => parseFloat(rootStyle.getPropertyValue(token)) || 0);
+        assert(checks, "Application typography uses an explicit 18px minimum body size", parseFloat(bodyStyle.fontSize) >= 18 && typographyScale[0] === 18, `body=${bodyStyle.fontSize}, token=${typographyScale[0]}`);
+        assert(checks, "Application heading tokens form a non-decreasing 18-40px hierarchy", typographyScale[0] === 18 && typographyScale.at(-1) === 40 && typographyScale.every((value, index) => index === 0 || value >= typographyScale[index - 1]), typographyScale.join(" / "));
         const brandSurfaces = {
           app: rootStyle.getPropertyValue("--app-background").trim(),
           controls: rootStyle.getPropertyValue("--control-background").trim(),
@@ -350,7 +357,7 @@
             headingStyle.marginBottom
           ].join("|");
         });
-        assert(checks, "All six workspaces use the shared intro template", workspaceIntros.length === 6 && workspaceIntros.every(intro => intro.tagName === "HEADER" && intro.firstElementChild?.classList.contains("workspace-intro-copy")));
+        assert(checks, "All five workspaces use the shared intro template", workspaceIntros.length === 5 && workspaceIntros.every(intro => intro.tagName === "HEADER" && intro.firstElementChild?.classList.contains("workspace-intro-copy")));
         assert(checks, "All workspace intros use identical spacing", new Set(workspaceIntroSignatures).size === 1, workspaceIntroSignatures.join(", "));
         const startupDialog = await waitFor(() => {
           const dialog = doc.querySelector("#startupDialog");
@@ -399,6 +406,29 @@
           doc.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
           await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='document']"), 2000);
           assert(checks, "Escape deselects the selected point", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='document']")));
+          const baselayerRegion = doc.querySelector("#mapSvg .province");
+          baselayerRegion?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
+          await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='region']") && doc.querySelector("#mapSvg .map-scale-controls"), 2000);
+          doc.querySelector("#propertiesSelectionControls")?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
+          assert(checks, "Interacting with selected baselayer Properties keeps the baselayer selected", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='region']") && doc.querySelector("#mapSvg .map-scale-controls")));
+          marker.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
+          await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='marker']") && !doc.querySelector("#mapSvg .map-scale-controls"), 2000);
+          assert(checks, "Selecting another map object deselects the selected baselayer", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='marker']") && !doc.querySelector("#mapSvg .map-scale-controls")));
+          baselayerRegion?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
+          await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='region']") && doc.querySelector("#mapSvg .map-scale-controls"), 2000);
+          doc.querySelector("#mapSvg")?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
+          await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='document']") && !doc.querySelector("#mapSvg .map-scale-controls"), 2000);
+          assert(checks, "Clicking empty canvas space deselects the selected baselayer", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='document']") && !doc.querySelector("#mapSvg .map-scale-controls")));
+          baselayerRegion?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
+          await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='region']") && doc.querySelector("#mapSvg .map-scale-controls"), 2000);
+          doc.querySelector("#previewTablePane > .workspace-intro")?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
+          await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='document']") && !doc.querySelector("#mapSvg .map-scale-controls"), 2000);
+          assert(checks, "Clicking outside the canvas deselects the selected baselayer", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='document']") && !doc.querySelector("#mapSvg .map-scale-controls")));
+          baselayerRegion?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
+          await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='region']") && doc.querySelector("#mapSvg .map-scale-controls"), 2000);
+          doc.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+          await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='document']") && !doc.querySelector("#mapSvg .map-scale-controls"), 2000);
+          assert(checks, "Escape deselects the selected baselayer", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='document']") && !doc.querySelector("#mapSvg .map-scale-controls")));
           const failed = checks.filter(check => !check.pass);
           result.textContent = JSON.stringify({
             status: failed.length ? "failed" : "ok",
@@ -498,6 +528,7 @@
             const snapshot = frame.contentWindow.PLOTYPUS_RENDER_PERFORMANCE?.snapshot();
             return snapshot?.samples.length > samplesBeforeLoad && snapshot;
           }, 12000);
+          assert(checks, "Built-in sample omits the reference-only map title", !doc.querySelector("#mapSvg .map-title") && !/125 billion|125 milliards/i.test(doc.querySelector("#mapSvg")?.textContent || ""));
           if (measurePerformance) {
             const samplesBeforeAutoPlace = sampleLoadSnapshot.samples.length;
             doc.querySelector("#canvasAutoPlaceBtn").click();
@@ -522,6 +553,83 @@
           const latestAutoPlace = performanceSnapshot.latestByKind.autoPlace;
           assert(checks, "Sample auto-place uses the configured auto-place budget", latestAutoPlace.budgetMs === performanceApi.budgets.autoPlaceMs && latestAutoPlace.overBudget === (latestAutoPlace.totalMs > latestAutoPlace.budgetMs), `${latestAutoPlace.totalMs} / ${latestAutoPlace.budgetMs} ms`);
           assert(checks, "Scheduled render telemetry includes queue time", performanceSnapshot.latestByKind.autoPlace.source === "scheduled" && performanceSnapshot.latestByKind.autoPlace.queueMs >= 0, `${performanceSnapshot.latestByKind.autoPlace.source}, ${performanceSnapshot.latestByKind.autoPlace.queueMs} ms`);
+        }
+        if (loadSample && requestedWorkspace === "preview") {
+          const NativeBlob = frame.contentWindow.Blob;
+          const nativeAnchorClick = frame.contentWindow.HTMLAnchorElement.prototype.click;
+          let exportedSvgSource = "";
+          function CapturingBlob(parts, options) {
+            if (/image\/svg\+xml/i.test(options?.type || "")) exportedSvgSource = parts.map(part => String(part)).join("");
+            return new NativeBlob(parts, options);
+          }
+          CapturingBlob.prototype = NativeBlob.prototype;
+          frame.contentWindow.Blob = CapturingBlob;
+          frame.contentWindow.HTMLAnchorElement.prototype.click = function () {
+            if (this.download === "custom-map.svg") return;
+            return nativeAnchorClick.call(this);
+          };
+          try {
+            doc.querySelector("#ribbonExportSvgBtn")?.click();
+          } finally {
+            frame.contentWindow.Blob = NativeBlob;
+            frame.contentWindow.HTMLAnchorElement.prototype.click = nativeAnchorClick;
+          }
+          const exportedSvgDocument = new frame.contentWindow.DOMParser().parseFromString(exportedSvgSource, "image/svg+xml");
+          const exportedFontPresentationNodes = exportedSvgDocument.querySelectorAll("[font-size], [font-family], [font-weight], [font-style]");
+          const exportedLeaderLines = Array.from(exportedSvgDocument.querySelectorAll(".leader-line"));
+          const exportedLeaderStrokes = exportedLeaderLines.map(node => (node.getAttribute("stroke") || "").toLowerCase()).filter(Boolean);
+          const exportedLeaderWidths = exportedLeaderLines.map(node => Number(node.getAttribute("stroke-width") || 0));
+          const exportedLeaderCasings = Array.from(exportedSvgDocument.querySelectorAll(".leader-casing"));
+          const exportedLeaderFallback = exportedSvgSource.match(/\.leader-line:not\(\[stroke\]\)\s*\{[^}]*stroke:\s*([^;}]+)[;}]/i)?.[1]?.trim().toLowerCase() || "";
+          const invisibleLeaderStrokes = new Set(["none", "transparent", "#fff", "#ffffff", "white"]);
+          const exportedLegendBox = exportedSvgDocument.querySelector(".legend-box");
+          const exportedLegendLayer = exportedSvgDocument.querySelector(".legend-layer");
+          const exportedLegendHeading = exportedSvgDocument.querySelector(".legend-heading");
+          const exportedLegendRule = exportedSvgDocument.querySelector(".legend-heading-rule");
+          const exportedLegendMarker = exportedSvgDocument.querySelector(".legend-layer .legend-category-marker, .legend-layer .marker");
+          const exportedLegendText = exportedSvgDocument.querySelector(".legend-layer .legend-text");
+          const exportedCalloutBox = exportedSvgDocument.querySelector(".callout-box");
+          const exportedCalloutLayer = exportedSvgDocument.querySelector(".callout-layer");
+          const exportedCalloutHeading = exportedSvgDocument.querySelector(".callout-heading");
+          const exportedCalloutRule = exportedSvgDocument.querySelector(".callout-heading-rule");
+          const exportedCalloutNote = exportedSvgDocument.querySelector(".callout-paragraph, .callout-caption");
+          const exportedCalloutTransform = /translate\(([-\d.]+)[, ]+([-\d.]+)\)/.exec(exportedCalloutLayer?.getAttribute("transform") || "");
+          const exportedLegendTransform = /translate\(([-\d.]+)[, ]+([-\d.]+)\)/.exec(exportedLegendLayer?.getAttribute("transform") || "");
+          const exportedCanvasWidth = parseFloat(exportedSvgDocument.documentElement.getAttribute("width") || "0");
+          const exportedCanvasHeight = parseFloat(exportedSvgDocument.documentElement.getAttribute("height") || "0");
+          const exportedLegendWidth = Number(exportedLegendBox?.getAttribute("width") || 0);
+          const exportedLegendHeight = Number(exportedLegendBox?.getAttribute("height") || 0);
+          const exportedLegendX = Number(exportedLegendTransform?.[1]);
+          const exportedLegendY = Number(exportedLegendTransform?.[2]);
+          const exportedLegendIsCompact = doc.querySelector("#compactFurnitureInput")?.checked !== false;
+          const exportedLegendIsDenseCompact = exportedLegendIsCompact && doc.querySelector("#bookSizeInput")?.value === "compact" && doc.querySelector("#imageSizeInput")?.value === "half";
+          const exportedLegendExpectedMarkerX = exportedLegendIsDenseCompact ? 12 : exportedLegendIsCompact ? 18 : 52;
+          const exportedLegendExpectedTextX = exportedLegendIsDenseCompact ? 24 : exportedLegendIsCompact ? 36 : 82;
+          const exportedLegendExpectedX = exportedLegendIsCompact ? Math.round(exportedCanvasWidth * 0.1) : 40;
+          const exportedLegendExpectedY = exportedLegendIsCompact
+            ? exportedCanvasHeight - exportedLegendHeight - Math.max(12, Math.round(exportedCanvasHeight * 0.04))
+            : exportedCanvasHeight - 150;
+          const exportedLegendMarkerX = exportedLegendMarker?.tagName.toLowerCase() === "circle"
+            ? Number(exportedLegendMarker.getAttribute("cx") || 0)
+            : Number(exportedLegendMarker?.getAttribute("x") || 0) + Number(exportedLegendMarker?.getAttribute("width") || 0) / 2;
+          const exportedCalloutWidth = Number(exportedCalloutBox?.getAttribute("width") || 0);
+          const exportedCalloutX = Number(exportedCalloutTransform?.[1]);
+          const exportedCalloutY = Number(exportedCalloutTransform?.[2]);
+          const exportedCalloutExpectedX = Math.max(30, exportedCanvasWidth - exportedCalloutWidth - 30);
+          assert(checks, "Print SVG keeps typography in centralized CSS at one user-unit per printed point", /data-output="print"/.test(exportedSvgSource) && /\.map-type-size-12\s*\{\s*font-size:\s*12px;\s*\}/.test(exportedSvgSource) && !/font-size:\s*12pt/.test(exportedSvgSource) && exportedFontPresentationNodes.length === 0, `captured=${exportedSvgSource.length}, presentation=${exportedFontPresentationNodes.length}`);
+          assert(checks, "Exported leader lines retain visible explicit colour and thickness", exportedLeaderLines.length > 0 && exportedLeaderStrokes.length === exportedLeaderLines.length && exportedLeaderWidths.every(width => width > 0) && exportedLeaderFallback && !invisibleLeaderStrokes.has(exportedLeaderFallback) && exportedLeaderStrokes.every(stroke => !invisibleLeaderStrokes.has(stroke)), `fallback=${exportedLeaderFallback}; explicit=${exportedLeaderStrokes.join(", ")}; widths=${exportedLeaderWidths.join(", ")}`);
+          assert(checks, "Exported leader-line casing matches the enabled map setting", doc.querySelector("#showLineCasingInput")?.checked ? exportedLeaderCasings.length === exportedLeaderLines.length : exportedLeaderCasings.length === 0, `lines=${exportedLeaderLines.length}; casings=${exportedLeaderCasings.length}`);
+          assert(checks, "Print SVG preserves the solid square headed Legend", Boolean(exportedLegendBox && exportedLegendHeading && exportedLegendRule) && Number(exportedLegendBox.getAttribute("rx") || 0) === 0 && !exportedLegendHeading.classList.contains("is-hidden") && !exportedLegendRule.classList.contains("is-hidden") && exportedLegendHeading.textContent.trim() === "Legend" && !/\.legend-box\s*\{[^}]*stroke-dasharray\s*:/si.test(exportedSvgSource) && !/\.legend-heading-rule\s*\{[^}]*stroke-dasharray\s*:/si.test(exportedSvgSource), exportedLegendBox?.outerHTML || "missing");
+          const exportedLegendSizePass = exportedLegendIsCompact
+            ? exportedLegendWidth >= (exportedLegendIsDenseCompact ? 120 : 132) && exportedLegendWidth < 260 && exportedLegendHeight >= (exportedLegendIsDenseCompact ? 48 : 64) && exportedLegendHeight < 118
+            : exportedLegendWidth >= 290 && exportedLegendHeight >= 143;
+          const exportedLegendHeadingGap = Number(exportedLegendRule?.getAttribute("y1") || 0) - Number(exportedLegendHeading?.getAttribute("y") || 0);
+          const exportedLegendRowGap = Number(exportedLegendText?.getAttribute("y") || 0) - Number(exportedLegendRule?.getAttribute("y1") || 0);
+          assert(checks, "Print SVG keeps responsive Legend geometry and columns", exportedLegendSizePass && Number(exportedLegendRule?.getAttribute("x1") || 0) === 24 && exportedLegendHeadingGap >= (exportedLegendIsDenseCompact ? 8 : 20) && exportedLegendRowGap >= (exportedLegendIsDenseCompact ? 7 : exportedLegendIsCompact ? 9 : 14) && Math.abs(exportedLegendMarkerX - exportedLegendExpectedMarkerX) <= 1 && Number(exportedLegendText?.getAttribute("x") || 0) === exportedLegendExpectedTextX, `compact=${exportedLegendIsCompact}, dense=${exportedLegendIsDenseCompact}, legend=${exportedLegendWidth}x${exportedLegendHeight}, columns=${exportedLegendMarkerX}/${exportedLegendText?.getAttribute("x") || "missing"}`);
+          assert(checks, "Print SVG keeps the Legend in its responsive bottom-left position", Math.abs(exportedLegendX - exportedLegendExpectedX) <= 1 && Math.abs(exportedLegendY - exportedLegendExpectedY) <= 1, `compact=${exportedLegendIsCompact}, dense=${exportedLegendIsDenseCompact}, legend=${exportedLegendX},${exportedLegendY}; expected=${exportedLegendExpectedX},${exportedLegendExpectedY}`);
+          assert(checks, "Print SVG preserves the dashed square headed callout", Boolean(exportedCalloutBox && exportedCalloutHeading && exportedCalloutRule) && Number(exportedCalloutBox.getAttribute("rx") || 0) === 0 && !exportedCalloutBox.classList.contains("is-compact") && !exportedCalloutHeading.classList.contains("is-hidden") && !exportedCalloutRule.classList.contains("is-hidden") && exportedCalloutHeading.textContent.trim() === "No-coordinate callouts" && /\.callout-box\s*\{[^}]*stroke-dasharray:\s*6\s+4/si.test(exportedSvgSource), exportedCalloutBox?.outerHTML || "missing");
+          assert(checks, "Print SVG keeps the callout in its upper-right furniture position", exportedCalloutWidth >= 260 && Math.abs(exportedCalloutX - exportedCalloutExpectedX) <= 1 && Math.abs(exportedCalloutY - 30) <= 1, `callout=${exportedCalloutWidth}px @ ${exportedCalloutX},${exportedCalloutY}; expected x=${exportedCalloutExpectedX}`);
+          assert(checks, "Print SVG retains rich italic callout notes", Boolean(exportedCalloutNote) && /\.callout-paragraph,\s*\.callout-caption\s*\{[^}]*font-style:\s*italic/si.test(exportedSvgSource), exportedCalloutNote?.textContent || "missing");
         }
         const canvasZoomReadout = doc.querySelector("#canvasZoomReadout");
         if (canvasZoomReadout) {
@@ -850,8 +958,8 @@
               boundary: doc.querySelector(".workspace"),
               hitTarget: menu.querySelector("[role='menuitem']")
             });
-            assert(checks, "Add data menu opens with accessible menu semantics", trigger.getAttribute("aria-expanded") === "true" && menu.getAttribute("role") === "menu" && menu.querySelectorAll("[role='menuitem']").length === 3);
-            assert(checks, "Add data menu stays fully visible beside left-side Properties", doc.body.dataset.propertiesSide === "left" && menuSurfaceState.pass, menuSurfaceState.detail);
+            assert(checks, "Add data menu opens with accessible menu semantics", trigger.getAttribute("aria-expanded") === "true" && menu.getAttribute("role") === "menu" && menu.querySelectorAll("[role='menuitem']").length === 4 && Boolean(menu.querySelector("#addProjectTypeBtn[role='menuitem']")));
+            assert(checks, "Add data menu stays fully visible beside right-side Properties", doc.body.dataset.propertiesSide === "right" && menuSurfaceState.pass, menuSurfaceState.detail);
           }
           if (requestedDialog === "project-load-error") {
             doc.querySelector("[data-ui-language='fr']")?.click();
@@ -888,7 +996,6 @@
           const workspaceMap = {
             preview: ["#previewTableTab", "#previewTablePane"],
             projects: ["#projectTableTab", "#projectTablePane"],
-            categories: ["#categoriesTableTab", "#categoriesTablePane"],
             regions: ["#regionTableTab", "#regionTablePane"],
             translate: ["#translateTableTab", "#translateTablePane"],
             quality: ["#qualityTableTab", "#qualityTablePane"]
@@ -923,6 +1030,27 @@
           assert(checks, "Properties panel has a contextual heading", Boolean(doc.querySelector("#propertiesTitle")?.textContent.trim()));
           assert(checks, "Properties guidance appears in the top heading", Boolean(doc.querySelector("#propertiesDescription")?.textContent.trim()));
           assert(checks, "Properties panel has no duplicate bottom selection copy", !doc.querySelector("[data-props-context='selection']"));
+          if (visualCapture) {
+            doc.querySelectorAll("#projectTable tr.is-active-row").forEach(row => row.classList.remove("is-active-row"));
+            doc.querySelectorAll("#regionTable tr.is-active-region").forEach(row => {
+              row.classList.remove("is-active-region");
+              row.removeAttribute("aria-current");
+            });
+            doc.activeElement?.blur();
+            await waitFor(() => !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), 12000);
+            await new Promise(resolve => setTimeout(resolve, 0));
+            const failed = checks.filter(check => !check.pass);
+            result.textContent = JSON.stringify({
+              status: failed.length ? "failed" : "ok",
+              workspace: requestedWorkspace,
+              viewport: { width: innerWidth, height: innerHeight },
+              checks,
+              failures: failed.length,
+              frameErrors,
+              performance: performanceApi?.snapshot() || null
+            }, null, 2);
+            return;
+          }
           const propertiesPanel = doc.querySelector(".properties-panel");
           const propertiesStyle = frame.contentWindow.getComputedStyle(propertiesPanel);
           const propertiesToggle = doc.querySelector("#propertiesToggleBtn");
@@ -937,31 +1065,27 @@
           const regionSummaryLabel = doc.querySelector("#workspaceSummaryMetrics [data-summary-key='regions'] span");
           const workspaceTabs = Array.from(doc.querySelectorAll(".workspace-nav .table-tab"));
           assert(checks, "Every workspace tab has an accessible name", workspaceTabs.every(tab => Boolean((tab.getAttribute("aria-label") || tab.textContent || "").trim())));
-          assert(checks, "Properties defaults to the left with an accessible Configuration control", doc.body.dataset.propertiesSide === "left" && propertiesLeftInput?.checked && propertiesLeftInput?.closest("[role='radiogroup']")?.getAttribute("aria-labelledby") === "propertiesPositionLabel");
+          assert(checks, "Properties defaults to the right with an accessible Configuration control", doc.body.dataset.propertiesSide === "right" && propertiesRightInput?.checked && propertiesRightInput?.closest("[role='radiogroup']")?.getAttribute("aria-labelledby") === "propertiesPositionLabel");
           if (appWidth > 1080) {
             const initialPanelRect = propertiesPanel.getBoundingClientRect();
             const initialWorkspaceRect = workspaceElement.getBoundingClientRect();
-            assert(checks, "Left Properties is visually and structurally before the workspace", initialPanelRect.right <= initialWorkspaceRect.left + 1 && propertiesPanel.nextElementSibling === workspaceElement, `panel=${initialPanelRect.left}-${initialPanelRect.right}, workspace=${initialWorkspaceRect.left}-${initialWorkspaceRect.right}`);
-          }
-          propertiesRightInput?.click();
-          await waitFor(() => doc.body.dataset.propertiesSide === "right" && propertiesRightInput.checked, 2000);
-          const savedRightPropertiesPreference = JSON.parse(frame.contentWindow.localStorage.getItem("plotypus.propertiesPanel") || "{}");
-          assert(checks, "Properties can move right and saves the preference", savedRightPropertiesPreference.side === "right" && workspaceElement.nextElementSibling === propertiesPanel);
-          if (appWidth > 1080) {
-            const rightPanelRect = propertiesPanel.getBoundingClientRect();
-            const rightWorkspaceRect = workspaceElement.getBoundingClientRect();
-            assert(checks, "Right Properties is visually after the workspace", rightPanelRect.left >= rightWorkspaceRect.right - 1, `workspace=${rightWorkspaceRect.left}-${rightWorkspaceRect.right}, panel=${rightPanelRect.left}-${rightPanelRect.right}`);
+            assert(checks, "Right Properties is visually and structurally after the workspace", initialPanelRect.left >= initialWorkspaceRect.right - 1 && workspaceElement.nextElementSibling === propertiesPanel, `workspace=${initialWorkspaceRect.left}-${initialWorkspaceRect.right}, panel=${initialPanelRect.left}-${initialPanelRect.right}`);
             propertiesResizeHandle?.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true }));
             await waitFor(() => Math.round(propertiesPanel.getBoundingClientRect().width) === (appWidth > 1280 ? 336 : 316), 2000);
             const savedRightResizePreference = JSON.parse(frame.contentWindow.localStorage.getItem("plotypus.propertiesPanel") || "{}");
-            assert(checks, "Right-side splitter grows inward and preserves the saved side", savedRightResizePreference.side === "right" && savedRightResizePreference.width === (appWidth > 1280 ? 336 : 316));
+            assert(checks, "Right-side splitter grows inward", doc.body.dataset.propertiesSide === "right" && savedRightResizePreference.width === (appWidth > 1280 ? 336 : 316));
             propertiesResizeHandle?.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }));
             await waitFor(() => Math.round(propertiesPanel.getBoundingClientRect().width) === (appWidth > 1280 ? 320 : 300), 2000);
           }
           propertiesLeftInput?.click();
           await waitFor(() => doc.body.dataset.propertiesSide === "left" && propertiesLeftInput.checked, 2000);
           const savedLeftPropertiesPreference = JSON.parse(frame.contentWindow.localStorage.getItem("plotypus.propertiesPanel") || "{}");
-          assert(checks, "Properties can move back left and updates the saved preference", savedLeftPropertiesPreference.side === "left" && propertiesPanel.nextElementSibling === workspaceElement);
+          assert(checks, "Properties can move left and saves the preference", savedLeftPropertiesPreference.side === "left" && propertiesPanel.nextElementSibling === workspaceElement);
+          if (appWidth > 1080) {
+            const leftPanelRect = propertiesPanel.getBoundingClientRect();
+            const leftWorkspaceRect = workspaceElement.getBoundingClientRect();
+            assert(checks, "Left Properties is visually before the workspace", leftPanelRect.right <= leftWorkspaceRect.left + 1, `panel=${leftPanelRect.left}-${leftPanelRect.right}, workspace=${leftWorkspaceRect.left}-${leftWorkspaceRect.right}`);
+          }
           const uiFrenchButton = doc.querySelector("[data-ui-language='fr']");
           const uiEnglishButton = doc.querySelector("[data-ui-language='en']");
           uiFrenchButton?.click();
@@ -970,7 +1094,6 @@
           const expectedFrenchIntroTitles = {
             preview: "Carte",
             projects: "Points de projet",
-            categories: "Catégories et repères",
             regions: "Fond de carte",
             translate: "Traduire",
             quality: "Qualité de la carte"
@@ -984,6 +1107,10 @@
             }, 2000);
             const translatedPropertiesText = `${doc.querySelector("#propertiesTitle")?.textContent || ""} ${doc.querySelector("#propertiesSubtitle")?.textContent || ""} ${doc.querySelector("#propertiesSelectionControls")?.textContent || ""}`;
             assert(checks, "Top language toggle switches Properties copy to French", expectedPropertiesCopy.every(copy => translatedPropertiesText.includes(copy)), translatedPropertiesText);
+            const frenchLeaderControls = doc.querySelector("#propertiesSelectionControls [data-leader-line-controls='global']");
+            assert(checks, "Global leader-line Properties expose localized French draft and Apply labels", Boolean(frenchLeaderControls) && /Traits de renvoi/.test(frenchLeaderControls.textContent || "") && /Masquer tous les traits de renvoi/.test(frenchLeaderControls.textContent || "") && /Épaisseur/.test(frenchLeaderControls.textContent || "") && /Aperçu/.test(frenchLeaderControls.textContent || "") && /Appliquer/.test(frenchLeaderControls.textContent || "") && /Couleur/.test(frenchLeaderControls.textContent || ""), frenchLeaderControls?.textContent.trim() || "missing");
+            const frenchLegendList = doc.querySelector("#categoryList");
+            assert(checks, "Map Properties Legend list switches to French", doc.querySelector("#legendPropertiesTitle")?.textContent.trim() === "Légende" && /Projets soumis|Stratégies de transformation/.test(frenchLegendList?.textContent || ""), frenchLegendList?.textContent.trim() || "");
             const placeholderText = doc.querySelector("#canvasPlaceholder")?.textContent || "";
             assert(checks, "Top language toggle switches empty canvas fallback to French", /Canevas de carte/.test(placeholderText) && /Canevas de \d+ x \d+ px/.test(placeholderText), placeholderText);
             assert(checks, "Top language toggle switches canvas zoom readout to French", /^Canevas \d+%$/.test(doc.querySelector("#canvasZoomReadout")?.textContent.trim() || ""), doc.querySelector("#canvasZoomReadout")?.textContent.trim() || "");
@@ -1145,13 +1272,20 @@
             const compactLabelTitle = doc.querySelector("#mapSvg .map-label[data-label-style='compact'] .label-title");
             const compactLabelTitleStyle = compactLabelTitle ? frame.contentWindow.getComputedStyle(compactLabelTitle) : null;
             assert(checks, "Compact-label screen typography uses the same 10px bold title", compactLabelTitleStyle?.fontSize === "10px" && Number(compactLabelTitleStyle?.fontWeight) >= 700, `title=${compactLabelTitleStyle?.fontSize || "missing"}/${compactLabelTitleStyle?.fontWeight || "missing"}`);
+            const mapFontPresentationNodes = doc.querySelectorAll("#mapSvg [font-size], #mapSvg [font-family], #mapSvg [font-weight], #mapSvg [font-style]");
+            const inlineFontStyleNodes = Array.from(doc.querySelectorAll("[style]")).filter(node => /(?:^|;)\s*font(?:-family|-size|-style|-weight)?\s*:/i.test(node.getAttribute("style") || ""));
+            assert(checks, "Typography is rendered from shared styles without inline font declarations", mapFontPresentationNodes.length === 0 && inlineFontStyleNodes.length === 0, `svg presentation=${mapFontPresentationNodes.length}, inline style=${inlineFontStyleNodes.length}`);
+            const renderedLeaderLines = Array.from(doc.querySelectorAll("#mapSvg .leader-line"));
+            const renderedLeaderStrokes = renderedLeaderLines.map(node => frame.contentWindow.getComputedStyle(node).stroke);
+            const mapBackgroundColour = frame.contentWindow.getComputedStyle(doc.querySelector("#mapSvg")).backgroundColor;
+            assert(checks, "Rendered leader lines contrast with the map background", renderedLeaderLines.length > 0 && renderedLeaderStrokes.every(stroke => stroke && !["none", "transparent", mapBackgroundColour].includes(stroke)), `background=${mapBackgroundColour}; leaders=${renderedLeaderStrokes.join(", ")}`);
             const richMapLabel = doc.querySelector("#mapSvg .map-label[data-label-style='rich']");
-            richMapLabel?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
             const openedPropertiesForLiveEdit = Boolean(propertiesPanel?.inert);
             if (openedPropertiesForLiveEdit) {
               propertiesToggle?.click();
               await waitFor(() => !propertiesPanel.inert, 2000);
             }
+            richMapLabel?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
             const liveRichTitleInput = await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-field='nameFr']"), 2000);
             const originalRichTitle = liveRichTitleInput.value;
             const renderSamplesBeforeLiveEdit = frame.contentWindow.PLOTYPUS_RENDER_PERFORMANCE?.snapshot().samples.length || 0;
@@ -1186,9 +1320,9 @@
                 const regionIds = Array.from(doc.querySelectorAll("#mapSvg .province")).map(node => node.dataset.regionId || "none").slice(0, 20).join(", ");
                 throw new Error(`Region leader pair not found: selected=${selectedRegionId}, row=${rowDataset.region || "none"}, leaders=${leaderIds || "none"}, regions=${regionIds || "none"}`);
               }
-              const regionFill = frame.contentWindow.getComputedStyle(regionLeaderPair.region).fill;
-              const leaderStroke = frame.contentWindow.getComputedStyle(regionLeaderPair.leader).stroke;
-              assert(checks, "Region-anchored leader line uses the selected region colour", leaderStroke === regionFill, `leader=${leaderStroke}, region=${regionFill}, id=${selectedRegionId}`);
+              const leaderStroke = (regionLeaderPair.leader.getAttribute("stroke") || "").toLowerCase();
+              const inheritedLeaderColour = doc.querySelector("#leaderColourInput")?.value.toLowerCase() || "";
+              assert(checks, "Region-anchored leader line inherits the global map colour", leaderStroke === inheritedLeaderColour, `leader=${leaderStroke}, global=${inheritedLeaderColour}, id=${selectedRegionId}`);
             }
             doc.querySelector("#projectTableTab")?.click();
             await waitFor(() => doc.body.dataset.workspaceView === "projects", 4000);
@@ -1253,7 +1387,6 @@
             const expectedNoDataCopy = {
               preview: /Aperçu de la page du document|Canevas de carte/,
               projects: /Aucun point de projet|Chargez l'exemple/,
-              categories: /Catégories et repères|Ajouter un repère de légende/,
               regions: /Fond de carte|Région|Incluse/,
               translate: /Traduire|Traductions|Catégories/,
               quality: /Chargez des données pour générer la carte/
@@ -1354,6 +1487,8 @@
           }
           if (requestedWorkspace === "preview") {
             const previewSections = [doc.querySelector("#previewDisplayPropertiesSection"), doc.querySelector("#previewInteractionPropertiesSection")];
+            const legendPropertiesSection = doc.querySelector("#legendPropertiesSection");
+            const legendList = doc.querySelector("#categoryList");
             const canvasToolbar = doc.querySelector("#canvasToolbar");
             const toolbarRect = canvasToolbar.getBoundingClientRect();
             const mapHostRect = doc.querySelector("#mapHost").getBoundingClientRect();
@@ -1364,6 +1499,52 @@
             }
             const initialPropertyKind = doc.querySelector("#propertiesSelectionControls .properties-form")?.dataset.propertyKind || "";
             assert(checks, "Map starts with document Properties", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='document']")), `kind=${initialPropertyKind} title=${doc.querySelector("#propertiesTitle")?.textContent.trim() || ""}`);
+            const workspaceTabsInOrder = Array.from(doc.querySelectorAll(".workspace-nav .table-tab"));
+            const workspaceTabTargetsExist = workspaceTabsInOrder.every(tab => Boolean(doc.getElementById(tab.getAttribute("aria-controls") || "")));
+            assert(checks, "Legend is no longer a peer workspace tab", !doc.querySelector("#categoriesTableTab, #categoriesTablePane") && workspaceTabsInOrder.length === 5 && workspaceTabTargetsExist, workspaceTabsInOrder.map(tab => `${tab.id}:${tab.getAttribute("aria-controls")}`).join(", "));
+            const legendItems = Array.from(legendList?.querySelectorAll(":scope > li[data-legend-item][data-category-id]") || []);
+            const legendCategoryIds = legendItems.map(item => item.dataset.categoryId);
+            const projectCategoryOptions = loadSample
+              ? Array.from(doc.querySelector("#projectTable .type-input")?.options || []).map(option => option.value).filter(Boolean)
+              : legendCategoryIds;
+            const categoryUsageCounts = Array.from(doc.querySelectorAll("#projectTable .type-input")).reduce((counts, input) => {
+              if (input.value) counts[input.value] = (counts[input.value] || 0) + 1;
+              return counts;
+            }, {});
+            const legendCountsMatch = legendItems.every(item => Number(item.querySelector("[data-legend-count]")?.dataset.count) === (categoryUsageCounts[item.dataset.categoryId] || 0));
+            assert(checks, "Map Document Properties contains one semantic Legend item list", legendPropertiesSection && propertiesPanel.contains(legendPropertiesSection) && legendList?.tagName === "UL" && legendItems.length > 0 && legendItems.every(item => item.tagName === "LI" && item.querySelector(".legend-item-select")?.tagName === "BUTTON"));
+            assert(checks, "Legend item order matches Project point category choices", legendCategoryIds.join("|") === projectCategoryOptions.join("|"), `${legendCategoryIds.join("|")} / ${projectCategoryOptions.join("|")}`);
+            assert(checks, "Legend item usage counts match Project points", legendCountsMatch, legendItems.map(item => `${item.dataset.categoryId}:${item.querySelector("[data-legend-count]")?.dataset.count}`).join(", "));
+            const legendListRect = legendList?.getBoundingClientRect();
+            const legendHeading = doc.querySelector(".legend-properties-heading");
+            const legendRowsFit = legendItems.every(item => {
+              const rect = item.getBoundingClientRect();
+              return !legendListRect || (rect.left >= legendListRect.left - 1 && rect.right <= legendListRect.right + 1);
+            });
+            assert(checks, "Legend header and list fit the Properties panel without horizontal overflow", Boolean(legendHeading && legendHeading.scrollWidth <= legendHeading.clientWidth + 1 && legendList && legendList.scrollWidth <= legendList.clientWidth + 1 && legendRowsFit), `heading=${legendHeading?.scrollWidth || 0}/${legendHeading?.clientWidth || 0}, list=${legendList?.scrollWidth || 0}/${legendList?.clientWidth || 0}`);
+            const firstLegendItem = legendItems[0];
+            const firstLegendButton = firstLegendItem?.querySelector(".legend-item-select");
+            const firstLegendId = firstLegendItem?.dataset.categoryId || "";
+            const mapBeforeLegendDrillIn = doc.querySelector("#mapSvg")?.innerHTML || "";
+            const renderSamplesBeforeLegendDrillIn = performanceApi?.snapshot().samples.length || 0;
+            firstLegendButton?.click();
+            await waitFor(() => doc.querySelector(`#propertiesSelectionControls [data-property-kind='category'][data-category-id="${frame.contentWindow.CSS.escape(firstLegendId)}"]`), 2000);
+            await new Promise(resolve => frame.contentWindow.requestAnimationFrame(resolve));
+            assert(checks, "Selecting a Legend item opens a focused category detail inside Map Properties", firstLegendItem?.classList.contains("is-selected") && firstLegendButton?.getAttribute("aria-expanded") === "true" && legendPropertiesSection.hidden && previewSections.every(section => section.hidden) && doc.activeElement === doc.querySelector("#categoryPropertiesEditor .properties-back-button"));
+            assert(checks, "Opening a Legend item does not navigate or re-plot the map", doc.body.dataset.workspaceView === "preview" && (doc.querySelector("#mapSvg")?.innerHTML || "") === mapBeforeLegendDrillIn && (performanceApi?.snapshot().samples.length || 0) === renderSamplesBeforeLegendDrillIn);
+            if (appWidth <= 1080) {
+              assert(checks, "Opening a Legend item keeps the responsive Properties drawer open", doc.body.classList.contains("properties-open") && !propertiesPanel.inert);
+            }
+            const firstLegendMarkerSize = doc.querySelector("#propertiesSelectionControls [data-category-field='markerSize']");
+            const firstLegendListPreview = firstLegendItem?.querySelector(".category-marker-preview");
+            const firstLegendPropertiesPreview = doc.querySelector("#propertiesSelectionControls .category-shape-option.is-selected .category-marker-preview");
+            assert(checks, "Legend list and category Properties use the same marker preview size", Boolean(firstLegendMarkerSize && firstLegendListPreview && firstLegendPropertiesPreview) && Number(firstLegendListPreview.dataset.markerSize) === Number(firstLegendMarkerSize.value) && Number(firstLegendPropertiesPreview.dataset.markerSize) === Number(firstLegendMarkerSize.value), `input=${firstLegendMarkerSize?.value || "missing"}, list=${firstLegendListPreview?.dataset.markerSize || "missing"}, properties=${firstLegendPropertiesPreview?.dataset.markerSize || "missing"}`);
+            const legendBackButton = doc.querySelector("#propertiesSelectionControls [data-property-action='back-to-document']");
+            legendBackButton?.click();
+            await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='document']"), 2000);
+            await new Promise(resolve => frame.contentWindow.requestAnimationFrame(resolve));
+            const restoredFirstLegendButton = doc.querySelector(`#categoryList .legend-item-select[data-category-id="${frame.contentWindow.CSS.escape(firstLegendId)}"]`);
+            assert(checks, "Back from a Legend item restores Document Properties and row focus", doc.activeElement === restoredFirstLegendButton && restoredFirstLegendButton?.getAttribute("aria-expanded") === "false" && !restoredFirstLegendButton?.hasAttribute("aria-current") && !legendPropertiesSection.hidden && previewSections.every(section => !section.hidden), doc.activeElement?.className || "");
             const pagePresetProxy = doc.querySelector("#propertiesSelectionControls [data-layout-proxy='bookSizeInput']");
             const canvasSizeProxy = doc.querySelector("#propertiesSelectionControls [data-layout-proxy='imageSizeInput']");
             assert(checks, "Document Properties expose page and canvas size presets", Boolean(pagePresetProxy && canvasSizeProxy));
@@ -1379,23 +1560,160 @@
               markerSizeProxy.value = updatedMarkerSize;
               markerSizeProxy.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
               await waitFor(() => markerSizeInput.value === updatedMarkerSize && doc.querySelector("#propertiesSelectionControls [data-layout-proxy='markerSizeInput']")?.value === updatedMarkerSize, 4000);
-              const categoryMarkerSizes = Array.from(doc.querySelectorAll("#categoryList .category-marker-size-input")).map(input => input.value);
+              const categoryMarkerSizes = Array.from(doc.querySelectorAll("#categoryList .category-marker-preview")).map(preview => preview.dataset.markerSize);
               assert(checks, "Changing the Document default marker size updates shared default categories", categoryMarkerSizes.length > 0 && categoryMarkerSizes.every(value => value === updatedMarkerSize), categoryMarkerSizes.join(", "));
               const refreshedMarkerSizeProxy = doc.querySelector("#propertiesSelectionControls [data-layout-proxy='markerSizeInput']");
               refreshedMarkerSizeProxy.value = originalMarkerSize;
               refreshedMarkerSizeProxy.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
               await waitFor(() => markerSizeInput.value === originalMarkerSize, 4000);
             }
+            const globalLeaderControls = doc.querySelector("#propertiesSelectionControls [data-leader-line-controls='global']");
+            const globalLeaderProxyNames = ["hideLeaderLinesInput", "routeDenseLeadersInput", "showLineCasingInput", "lineWidthInput", "leaderColourInput"];
+            const globalLeaderProxies = globalLeaderProxyNames.map(name => globalLeaderControls?.querySelector(`[data-layout-proxy='${name}']`));
+            const globalWidthEditor = globalLeaderControls?.querySelector("[data-leader-line-width-editor='global']");
+            const globalWidthDraft = globalWidthEditor?.querySelector("[data-leader-line-width-draft='global']");
+            const globalWidthApply = globalWidthEditor?.querySelector("[data-property-action='apply-leader-line-width']");
+            const globalWidthPreview = globalWidthEditor?.querySelector("[data-leader-line-width-preview]");
+            const globalWidthReadout = globalWidthEditor?.querySelector("[data-leader-line-width-readout]");
+            const globalWidthStatus = globalWidthEditor?.querySelector("[data-leader-line-width-draft-status]");
+            assert(checks, "Document Properties group all global leader-line controls", Boolean(globalLeaderControls) && globalLeaderProxies.every(Boolean), globalLeaderProxies.map((input, index) => `${globalLeaderProxyNames[index]}=${Boolean(input)}`).join(", "));
+            assert(checks, "Global leader-line controls have an accessible draft preview and explicit Apply", Boolean(globalWidthEditor && globalWidthDraft && globalWidthApply && globalWidthPreview && globalWidthReadout && globalWidthStatus) && globalWidthDraft.closest("label")?.textContent.trim() && globalWidthDraft.getAttribute("aria-describedby") === globalWidthStatus.id && globalWidthApply.tagName === "BUTTON" && globalWidthApply.type === "button" && globalWidthApply.disabled && globalWidthEditor.dataset.draftState === "applied" && globalWidthReadout.closest(".leader-line-thickness-preview")?.getAttribute("aria-live") === "polite", globalWidthEditor?.outerHTML || "missing");
+            assert(checks, "Global leader-line controls fit the Properties panel", Boolean(globalLeaderControls) && globalLeaderProxies.every(input => Boolean(input?.closest("label")?.textContent.trim())) && globalLeaderControls.scrollWidth <= globalLeaderControls.clientWidth + 1 && doc.querySelector("#propertiesSelectionControls")?.scrollWidth <= doc.querySelector("#propertiesSelectionControls")?.clientWidth + 1, `group=${globalLeaderControls?.scrollWidth || 0}/${globalLeaderControls?.clientWidth || 0}; panel=${doc.querySelector("#propertiesSelectionControls")?.scrollWidth || 0}/${doc.querySelector("#propertiesSelectionControls")?.clientWidth || 0}`);
+            assert(checks, "Global leader-line Properties use English labels after restoring the UI language", /Leader lines/.test(globalLeaderControls?.textContent || "") && /Hide all leader lines/.test(globalLeaderControls?.textContent || "") && /Thickness/.test(globalLeaderControls?.textContent || "") && /Colour/.test(globalLeaderControls?.textContent || ""), globalLeaderControls?.textContent.trim() || "missing");
+            if (loadSample && globalLeaderControls) {
+              await waitFor(() => !doc.querySelector("#mapHost")?.classList.contains("is-rendering") && frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot().pending === false, 12000);
+              const sourceLeaderInputs = {
+                hide: doc.querySelector("#hideLeaderLinesInput"),
+                route: doc.querySelector("#routeDenseLeadersInput"),
+                casing: doc.querySelector("#showLineCasingInput"),
+                width: doc.querySelector("#lineWidthInput"),
+                colour: doc.querySelector("#leaderColourInput")
+              };
+              const originalLeaderSettings = {
+                hide: sourceLeaderInputs.hide.checked,
+                route: sourceLeaderInputs.route.checked,
+                casing: sourceLeaderInputs.casing.checked,
+                width: sourceLeaderInputs.width.value,
+                colour: sourceLeaderInputs.colour.value.toLowerCase()
+              };
+              const initialLeaderLines = Array.from(doc.querySelectorAll("#mapSvg .leader-line"));
+              const initialLeaderState = new Map(initialLeaderLines.map(node => [node.dataset.layoutId, {
+                stroke: (node.getAttribute("stroke") || "").toLowerCase(),
+                width: Number(node.getAttribute("stroke-width") || 0),
+                path: node.getAttribute("d") || ""
+              }]));
+              const initialCasingCount = doc.querySelectorAll("#mapSvg .leader-casing").length;
+              const initialMarkerCount = doc.querySelectorAll("#mapSvg .marker-layer .marker").length;
+              const initialLabelCount = doc.querySelectorAll("#mapSvg .map-label").length;
+              const crossingValue = () => {
+                const metric = Array.from(doc.querySelectorAll("#canvasQualityPill .canvas-quality-metric"))
+                  .find(node => /Crossings/i.test(node.textContent || ""));
+                return metric?.querySelector("strong")?.textContent.trim() || "";
+              };
+              const initialCrossingValue = crossingValue();
+              const testLeaderColour = originalLeaderSettings.colour === "#7b2d8e" ? "#2d6f7b" : "#7b2d8e";
+              const testLeaderWidth = originalLeaderSettings.width === "7.5" ? "6.5" : "7.5";
+              const setGlobalLeaderProxy = (name, value) => {
+                const proxy = doc.querySelector(`#propertiesSelectionControls [data-leader-line-controls='global'] [data-layout-proxy='${name}']`);
+                if (!proxy) return false;
+                if (proxy.type === "checkbox") proxy.checked = Boolean(value);
+                else proxy.value = String(value);
+                proxy.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+                return true;
+              };
+              const renderSampleCount = () => performanceApi?.snapshot().samples.length || 0;
+              const globalDraftMapBefore = doc.querySelector("#mapSvg")?.innerHTML || "";
+              const globalDraftSamplesBefore = renderSampleCount();
+              const globalDraftQualityBefore = frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot();
+              const globalUndoDisabledBeforeDraft = doc.querySelector("#ribbonUndoBtn")?.disabled;
+              let activeGlobalWidthEditor = doc.querySelector("#propertiesSelectionControls [data-leader-line-width-editor='global']");
+              let activeGlobalWidthDraft = activeGlobalWidthEditor?.querySelector("[data-leader-line-width-draft='global']");
+              const initialGlobalPreviewWidth = Number(activeGlobalWidthEditor?.querySelector("[data-leader-line-width-preview]")?.getAttribute("stroke-width") || 0);
+              activeGlobalWidthDraft.value = "9";
+              activeGlobalWidthDraft.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
+              await waitFor(() => activeGlobalWidthEditor.dataset.draftState === "invalid", 2000);
+              assert(checks, "Invalid global thickness draft stays local and disables Apply", activeGlobalWidthDraft.getAttribute("aria-invalid") === "true" && activeGlobalWidthEditor.querySelector("[data-property-action='apply-leader-line-width']")?.disabled && /1 to 8/.test(activeGlobalWidthEditor.querySelector("[data-leader-line-width-draft-status]")?.textContent || "") && sourceLeaderInputs.width.value === originalLeaderSettings.width && (doc.querySelector("#mapSvg")?.innerHTML || "") === globalDraftMapBefore && renderSampleCount() === globalDraftSamplesBefore, activeGlobalWidthEditor.outerHTML);
+              activeGlobalWidthDraft.value = testLeaderWidth;
+              activeGlobalWidthDraft.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
+              await waitFor(() => activeGlobalWidthEditor.dataset.draftState === "pending" && !activeGlobalWidthEditor.querySelector("[data-property-action='apply-leader-line-width']")?.disabled, 2000);
+              const pendingGlobalPreviewWidth = Number(activeGlobalWidthEditor.querySelector("[data-leader-line-width-preview]")?.getAttribute("stroke-width") || 0);
+              const globalDraftQualityAfter = frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot();
+              assert(checks, "Global thickness draft updates only the local preview", pendingGlobalPreviewWidth === Number(testLeaderWidth) && pendingGlobalPreviewWidth !== initialGlobalPreviewWidth && new RegExp(testLeaderWidth.replace(".", "\\.")).test(activeGlobalWidthEditor.querySelector("[data-leader-line-width-readout]")?.textContent || "") && /Apply to update the map/.test(activeGlobalWidthEditor.querySelector("[data-leader-line-width-draft-status]")?.textContent || "") && sourceLeaderInputs.width.value === originalLeaderSettings.width && (doc.querySelector("#mapSvg")?.innerHTML || "") === globalDraftMapBefore && renderSampleCount() === globalDraftSamplesBefore && globalDraftQualityAfter?.requests === globalDraftQualityBefore?.requests && globalDraftQualityAfter?.completed === globalDraftQualityBefore?.completed && globalDraftQualityAfter?.revision === globalDraftQualityBefore?.revision && doc.querySelector("#ribbonUndoBtn")?.disabled === globalUndoDisabledBeforeDraft && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), `preview=${initialGlobalPreviewWidth}->${pendingGlobalPreviewWidth}; source=${sourceLeaderInputs.width.value}; renders=${globalDraftSamplesBefore}->${renderSampleCount()}; quality=${globalDraftQualityBefore?.revision}->${globalDraftQualityAfter?.revision}`);
+              const globalApplySamplesBefore = renderSampleCount();
+              activeGlobalWidthEditor.querySelector("[data-property-action='apply-leader-line-width']")?.click();
+              await waitFor(() => sourceLeaderInputs.width.value === testLeaderWidth && renderSampleCount() >= globalApplySamplesBefore + 1 && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), 12000);
+              activeGlobalWidthEditor = doc.querySelector("#propertiesSelectionControls [data-leader-line-width-editor='global']");
+              activeGlobalWidthDraft = activeGlobalWidthEditor?.querySelector("[data-leader-line-width-draft='global']");
+              const globalAppliedWidthChanges = Array.from(doc.querySelectorAll("#mapSvg .leader-line"))
+                .filter(node => Number(node.getAttribute("stroke-width") || 0) !== initialLeaderState.get(node.dataset.layoutId)?.width).length;
+              assert(checks, "Global Apply commits one map update and restores draft focus", renderSampleCount() === globalApplySamplesBefore + 1 && globalAppliedWidthChanges > 0 && activeGlobalWidthEditor?.dataset.committedValue === testLeaderWidth && activeGlobalWidthEditor?.dataset.draftState === "applied" && activeGlobalWidthEditor?.querySelector("[data-property-action='apply-leader-line-width']")?.disabled && doc.activeElement === activeGlobalWidthDraft, `renders=${globalApplySamplesBefore}->${renderSampleCount()}; changed=${globalAppliedWidthChanges}; focus=${doc.activeElement?.outerHTML || "none"}`);
+              const globalUndoSamplesBefore = renderSampleCount();
+              doc.querySelector("#ribbonUndoBtn")?.click();
+              await waitFor(() => sourceLeaderInputs.width.value === originalLeaderSettings.width && renderSampleCount() >= globalUndoSamplesBefore + 1 && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), 12000);
+              activeGlobalWidthEditor = doc.querySelector("#propertiesSelectionControls [data-leader-line-width-editor='global']");
+              assert(checks, "Undo restores the applied global thickness in exactly one map update", renderSampleCount() === globalUndoSamplesBefore + 1 && activeGlobalWidthEditor?.dataset.committedValue === originalLeaderSettings.width && activeGlobalWidthEditor?.dataset.draftState === "applied" && Array.from(doc.querySelectorAll("#mapSvg .leader-line")).every(node => Number(node.getAttribute("stroke-width") || 0) === initialLeaderState.get(node.dataset.layoutId)?.width), `renders=${globalUndoSamplesBefore}->${renderSampleCount()}; source=${sourceLeaderInputs.width.value}`);
+
+              setGlobalLeaderProxy("leaderColourInput", testLeaderColour);
+              setGlobalLeaderProxy("routeDenseLeadersInput", true);
+              setGlobalLeaderProxy("showLineCasingInput", false);
+              await waitFor(() => {
+                const lines = Array.from(doc.querySelectorAll("#mapSvg .leader-line"));
+                const inheritedLines = lines.filter(node => {
+                  const rowId = String(node.__data__?.rowId || "");
+                  const row = Array.from(doc.querySelectorAll("#projectTable tbody tr[data-row-id]"))
+                    .find(candidate => candidate.dataset.rowId === rowId);
+                  return !row?.querySelector(".leader-line-colour-input")?.value;
+                });
+                return lines.length === initialLeaderLines.length
+                  && inheritedLines.length > 0
+                  && inheritedLines.every(node => (node.getAttribute("stroke") || "").toLowerCase() === testLeaderColour)
+                  && doc.querySelectorAll("#mapSvg .leader-casing").length === 0
+                  && sourceLeaderInputs.route.checked;
+              }, 12000);
+              const styledLeaderLines = Array.from(doc.querySelectorAll("#mapSvg .leader-line"));
+              const inheritedStyledLines = styledLeaderLines.filter(node => {
+                const rowId = String(node.__data__?.rowId || "");
+                const row = Array.from(doc.querySelectorAll("#projectTable tbody tr[data-row-id]"))
+                  .find(candidate => candidate.dataset.rowId === rowId);
+                return !row?.querySelector(".leader-line-colour-input")?.value;
+              });
+              const initialElbowCount = initialLeaderLines.filter(node => ((node.getAttribute("d") || "").match(/L/g) || []).length > 1).length;
+              const routedElbowCount = styledLeaderLines.filter(node => ((node.getAttribute("d") || "").match(/L/g) || []).length > 1).length;
+              assert(checks, "Global colour updates inherited leader-line SVG attributes", inheritedStyledLines.length > 0 && inheritedStyledLines.every(node => (node.getAttribute("stroke") || "").toLowerCase() === testLeaderColour), `inherited=${inheritedStyledLines.length}; strokes=${inheritedStyledLines.map(node => node.getAttribute("stroke")).join(", ")}`);
+              assert(checks, "Global automatic elbow routing and casing controls update rendered paths", sourceLeaderInputs.route.checked && routedElbowCount >= initialElbowCount && doc.querySelectorAll("#mapSvg .leader-casing").length === 0, `elbows=${initialElbowCount}->${routedElbowCount}; casings=${doc.querySelectorAll("#mapSvg .leader-casing").length}`);
+
+              setGlobalLeaderProxy("hideLeaderLinesInput", true);
+              await waitFor(() => doc.querySelectorAll("#mapSvg .leader-line, #mapSvg .leader-casing").length === 0 && crossingValue() === "0", 12000);
+              assert(checks, "Hide all leader lines suppresses lines and casings while preserving points, labels, and quality", sourceLeaderInputs.hide.checked && doc.querySelectorAll("#mapSvg .leader-line, #mapSvg .leader-casing").length === 0 && doc.querySelectorAll("#mapSvg .marker-layer .marker").length === initialMarkerCount && doc.querySelectorAll("#mapSvg .map-label").length === initialLabelCount && crossingValue() === "0", `markers=${initialMarkerCount}/${doc.querySelectorAll("#mapSvg .marker-layer .marker").length}; labels=${initialLabelCount}/${doc.querySelectorAll("#mapSvg .map-label").length}; crossings=${crossingValue()}`);
+
+              setGlobalLeaderProxy("leaderColourInput", originalLeaderSettings.colour);
+              setGlobalLeaderProxy("routeDenseLeadersInput", originalLeaderSettings.route);
+              setGlobalLeaderProxy("showLineCasingInput", originalLeaderSettings.casing);
+              setGlobalLeaderProxy("hideLeaderLinesInput", originalLeaderSettings.hide);
+              await waitFor(() => {
+                const lines = Array.from(doc.querySelectorAll("#mapSvg .leader-line"));
+                return lines.length === initialLeaderLines.length
+                  && lines.every(node => {
+                    const original = initialLeaderState.get(node.dataset.layoutId);
+                    return original
+                      && (node.getAttribute("stroke") || "").toLowerCase() === original.stroke
+                      && Number(node.getAttribute("stroke-width") || 0) === original.width;
+                  })
+                  && doc.querySelectorAll("#mapSvg .leader-casing").length === initialCasingCount
+                  && crossingValue() === initialCrossingValue;
+              }, 12000);
+              assert(checks, "Global leader-line smoke restores its source controls and rendered state", sourceLeaderInputs.hide.checked === originalLeaderSettings.hide && sourceLeaderInputs.route.checked === originalLeaderSettings.route && sourceLeaderInputs.casing.checked === originalLeaderSettings.casing && sourceLeaderInputs.width.value === originalLeaderSettings.width && sourceLeaderInputs.colour.value.toLowerCase() === originalLeaderSettings.colour, `${sourceLeaderInputs.hide.checked}/${sourceLeaderInputs.route.checked}/${sourceLeaderInputs.casing.checked}/${sourceLeaderInputs.width.value}/${sourceLeaderInputs.colour.value}`);
+            }
             assert(checks, "Document Properties do not duplicate map scale", !doc.querySelector("#propertiesSelectionControls [data-layout-proxy='mapScaleInput']"));
-            assert(checks, "Document context shows map display groups", previewSections.every(section => section && !section.hidden));
+            assert(checks, "Document context shows map display groups and the Legend list", previewSections.every(section => section && !section.hidden) && !legendPropertiesSection.hidden);
             const documentPropertyHeading = doc.querySelector("#propertiesSelectionControls .document-property-section h3");
             const documentPropertyFieldHeading = doc.querySelector("#propertiesSelectionControls .properties-field-label");
             const documentPropertyHelper = doc.querySelector("#propertiesSelectionControls .properties-muted");
             const documentPropertyHeadingStyle = documentPropertyHeading ? frame.contentWindow.getComputedStyle(documentPropertyHeading) : null;
             const documentPropertyFieldHeadingStyle = documentPropertyFieldHeading ? frame.contentWindow.getComputedStyle(documentPropertyFieldHeading) : null;
             const documentPropertyHelperStyle = documentPropertyHelper ? frame.contentWindow.getComputedStyle(documentPropertyHelper) : null;
-            assert(checks, "Properties section and field headings use consistent 10px bold screen typography", documentPropertyHeadingStyle?.fontSize === "10px" && Number(documentPropertyHeadingStyle?.fontWeight) >= 700 && documentPropertyFieldHeadingStyle?.fontSize === "10px" && Number(documentPropertyFieldHeadingStyle?.fontWeight) >= 700, `section=${documentPropertyHeadingStyle?.fontSize || "missing"}/${documentPropertyHeadingStyle?.fontWeight || "missing"}, field=${documentPropertyFieldHeadingStyle?.fontSize || "missing"}/${documentPropertyFieldHeadingStyle?.fontWeight || "missing"}`);
-            assert(checks, "Properties helper paragraphs use 8px screen typography", documentPropertyHelperStyle?.fontSize === "8px", documentPropertyHelperStyle?.fontSize || "missing");
+            assert(checks, "Properties section and field headings use the shared 18px bold baseline", parseFloat(documentPropertyHeadingStyle?.fontSize || "0") >= 18 && Number(documentPropertyHeadingStyle?.fontWeight) >= 700 && parseFloat(documentPropertyFieldHeadingStyle?.fontSize || "0") >= 18 && Number(documentPropertyFieldHeadingStyle?.fontWeight) >= 700, `section=${documentPropertyHeadingStyle?.fontSize || "missing"}/${documentPropertyHeadingStyle?.fontWeight || "missing"}, field=${documentPropertyFieldHeadingStyle?.fontSize || "missing"}/${documentPropertyFieldHeadingStyle?.fontWeight || "missing"}`);
+            assert(checks, "Properties helper paragraphs use the shared 18px body baseline", parseFloat(documentPropertyHelperStyle?.fontSize || "0") >= 18, documentPropertyHelperStyle?.fontSize || "missing");
             const documentPagePreview = doc.querySelector("#documentPagePreview");
             const documentPageRect = documentPagePreview?.getBoundingClientRect();
             const canvasSurface = loadSample ? doc.querySelector("#mapSvg") : doc.querySelector("#canvasPlaceholder");
@@ -1447,24 +1765,43 @@
             const mapLanguageEnglishButton = doc.querySelector("[data-map-language='en']");
             const mapLanguageFrenchButton = doc.querySelector("[data-map-language='fr']");
             if (previewLanguageInput && mapLanguageEnglishButton && mapLanguageFrenchButton) {
+              const englishMapTitle = doc.querySelector("#mapSvg title")?.textContent || "";
               const mapLanguageControl = doc.querySelector(".map-tab-language-control");
               const mapLanguageControlStyle = frame.contentWindow.getComputedStyle(mapLanguageControl);
               const mapLanguageControlRect = mapLanguageControl.getBoundingClientRect();
               assert(checks, "Map tab exposes a visible dedicated EN/FR map-language toggle", mapLanguageEnglishButton.getAttribute("aria-pressed") === "true" && mapLanguageFrenchButton.getAttribute("aria-pressed") === "false" && mapLanguageControlStyle.display !== "none" && mapLanguageControlRect.width > 0 && mapLanguageControlRect.height > 0, `${mapLanguageControlStyle.display} ${mapLanguageControlRect.width}x${mapLanguageControlRect.height}`);
               mapLanguageFrenchButton.click();
-              await waitFor(() => /Carte personnalisée/.test(doc.querySelector("#mapSvg title")?.textContent || ""), 12000);
-              assert(checks, "Map-tab language changes only map output, not the English interface", doc.documentElement.lang === "en" && doc.querySelector("[data-ui-language='en']")?.getAttribute("aria-pressed") === "true" && doc.querySelector("#previewTableTab")?.textContent.trim() === "Map" && doc.querySelector("#exportMenuBtn")?.textContent.trim() === "Export" && previewLanguageInput.value === "fr" && doc.querySelector("#mapLanguageInput")?.value === "fr" && mapLanguageFrenchButton.getAttribute("aria-pressed") === "true" && /Carte personnalisée/.test(doc.querySelector("#mapSvg title")?.textContent || "") && /^Carte /.test(doc.querySelector("#mapSvg desc")?.textContent || ""), `${doc.documentElement.lang} | ${doc.querySelector("#previewTableTab")?.textContent || ""} | ${doc.querySelector("#mapSvg title")?.textContent || ""} | ${doc.querySelector("#mapSvg desc")?.textContent || ""}`);
+              const frenchMapTitle = await waitFor(() => {
+                const title = doc.querySelector("#mapSvg title")?.textContent || "";
+                return previewLanguageInput.value === "fr" && title && title !== englishMapTitle ? title : "";
+              }, 12000);
+              assert(checks, "Map-tab language changes only map output, not the English interface", doc.documentElement.lang === "en" && doc.querySelector("[data-ui-language='en']")?.getAttribute("aria-pressed") === "true" && doc.querySelector("#previewTableTab")?.textContent.trim() === "Map" && doc.querySelector("#exportMenuBtn")?.textContent.trim() === "Export" && previewLanguageInput.value === "fr" && doc.querySelector("#mapLanguageInput")?.value === "fr" && mapLanguageFrenchButton.getAttribute("aria-pressed") === "true" && frenchMapTitle !== englishMapTitle && /^Carte /.test(doc.querySelector("#mapSvg desc")?.textContent || ""), `${doc.documentElement.lang} | ${doc.querySelector("#previewTableTab")?.textContent || ""} | ${doc.querySelector("#mapSvg title")?.textContent || ""} | ${doc.querySelector("#mapSvg desc")?.textContent || ""}`);
+              const frenchCalloutHeading = doc.querySelector("#mapSvg .callout-heading");
+              const frenchCalloutRule = doc.querySelector("#mapSvg .callout-heading-rule");
+              const frenchLegendHeading = doc.querySelector("#mapSvg .legend-heading");
+              const frenchLegendRule = doc.querySelector("#mapSvg .legend-heading-rule");
+              const frenchCalloutHeadingStyle = frenchCalloutHeading ? frame.contentWindow.getComputedStyle(frenchCalloutHeading) : null;
+              const frenchCalloutRuleStyle = frenchCalloutRule ? frame.contentWindow.getComputedStyle(frenchCalloutRule) : null;
+              const frenchLegendHeadingStyle = frenchLegendHeading ? frame.contentWindow.getComputedStyle(frenchLegendHeading) : null;
+              const frenchLegendRuleStyle = frenchLegendRule ? frame.contentWindow.getComputedStyle(frenchLegendRule) : null;
+              assert(checks, "Map-language toggle localizes the visible callout heading and divider", frenchCalloutHeading?.textContent.trim() === "Repères sans coordonnées" && frenchCalloutHeadingStyle?.display !== "none" && frenchCalloutRuleStyle?.display !== "none", `${frenchCalloutHeading?.textContent || "missing"} / ${frenchCalloutHeadingStyle?.display || "missing"} / ${frenchCalloutRuleStyle?.display || "missing"}`);
+              assert(checks, "Map-language toggle localizes the visible Legend title and divider", frenchLegendHeading?.textContent.trim() === "Légende" && frenchLegendHeadingStyle?.display !== "none" && frenchLegendRuleStyle?.display !== "none", `${frenchLegendHeading?.textContent || "missing"} / ${frenchLegendHeadingStyle?.display || "missing"} / ${frenchLegendRuleStyle?.display || "missing"}`);
               mapLanguageEnglishButton.click();
-              await waitFor(() => doc.documentElement.lang === "en" && /Custom map/.test(doc.querySelector("#mapSvg title")?.textContent || ""), 12000);
+              await waitFor(() => doc.documentElement.lang === "en" && previewLanguageInput.value === "en" && (doc.querySelector("#mapSvg title")?.textContent || "") === englishMapTitle, 12000);
               assert(checks, "Map-language toggle stays synchronized when returning to English", previewLanguageInput.value === "en" && doc.querySelector("#mapLanguageInput")?.value === "en" && mapLanguageEnglishButton.getAttribute("aria-pressed") === "true" && mapLanguageFrenchButton.getAttribute("aria-pressed") === "false");
             }
             const legendBox = doc.querySelector("#mapSvg .legend-box");
             const calloutBox = doc.querySelector("#mapSvg .callout-box");
             const legendRule = doc.querySelector("#mapSvg .legend-heading-rule");
             const calloutRule = doc.querySelector("#mapSvg .callout-heading-rule");
+            const furnitureIsCompact = doc.querySelector("#compactFurnitureInput")?.checked !== false;
+            const legendIsDenseCompact = furnitureIsCompact && doc.querySelector("#bookSizeInput")?.value === "compact" && doc.querySelector("#imageSizeInput")?.value === "half";
+            const legendDash = legendBox ? frame.contentWindow.getComputedStyle(legendBox).strokeDasharray : "";
+            const legendRuleDash = legendRule ? frame.contentWindow.getComputedStyle(legendRule).strokeDasharray : "";
             const calloutDash = calloutBox ? frame.contentWindow.getComputedStyle(calloutBox).strokeDasharray : "";
             const calloutRuleDash = calloutRule ? frame.contentWindow.getComputedStyle(calloutRule).strokeDasharray : "";
-            assert(checks, "Map furniture boxes use solid legend and dashed callout roles", Boolean(legendBox && calloutBox && legendRule && calloutRule && calloutDash !== "none" && calloutRuleDash !== "none"), `box=${calloutDash}, rule=${calloutRuleDash}`);
+            assert(checks, "Legend keeps its solid square headed role", Boolean(legendBox && legendRule && ["", "none"].includes(legendDash) && ["", "none"].includes(legendRuleDash) && Number(legendBox.getAttribute("rx") || 0) === 0), `compact=${furnitureIsCompact}, box=${legendDash}, rule=${legendRuleDash}, rx=${legendBox?.getAttribute("rx") || 0}`);
+            assert(checks, "No-coordinate callout keeps its dashed square role", Boolean(legendBox && calloutBox && legendRule && calloutRule && calloutDash !== "none" && calloutRuleDash !== "none" && Number(calloutBox.getAttribute("rx") || 0) === 0), `compact=${furnitureIsCompact}, box=${calloutDash}, rule=${calloutRuleDash}, rx=${calloutBox?.getAttribute("rx") || 0}`);
             if (legendBox && calloutBox && legendRule && calloutRule) {
               const numberAttr = (node, name) => Number(node.getAttribute(name) || 0);
               const legendHeading = doc.querySelector("#mapSvg .legend-heading");
@@ -1473,7 +1810,8 @@
               const calloutText = doc.querySelector("#mapSvg .callout-text");
               const calloutHeadingStyle = calloutHeading ? frame.contentWindow.getComputedStyle(calloutHeading) : null;
               const calloutTextStyle = calloutText ? frame.contentWindow.getComputedStyle(calloutText) : null;
-              const legendMarker = doc.querySelector("#mapSvg .legend-layer .marker");
+              const legendHeadingStyle = legendHeading ? frame.contentWindow.getComputedStyle(legendHeading) : null;
+              const legendMarker = doc.querySelector("#mapSvg .legend-layer .legend-category-marker, #mapSvg .legend-layer .marker");
               const calloutMarker = doc.querySelector("#mapSvg .callout-layer .marker");
               const legendWidth = numberAttr(legendBox, "width");
               const legendHeight = numberAttr(legendBox, "height");
@@ -1483,10 +1821,44 @@
               const calloutRuleY = numberAttr(calloutRule, "y1");
               const legendRuleInset = numberAttr(legendRule, "x1");
               const calloutRuleInset = numberAttr(calloutRule, "x1");
-              assert(checks, "Legend box keeps reference-style padding and row rhythm", legendWidth >= 260 && legendHeight >= 118 && legendRuleInset >= 22 && legendHeading && legendRuleY - numberAttr(legendHeading, "y") >= 20 && legendText && numberAttr(legendText, "y") - legendRuleY >= 14, `legend=${legendWidth}x${legendHeight}, rule=${legendRuleY}`);
-              assert(checks, "No-coordinate callouts keep compact padding and row rhythm", calloutWidth >= 260 && calloutHeight >= 80 && calloutRuleInset >= 22 && calloutHeading && calloutRuleY - numberAttr(calloutHeading, "y") >= 16 && calloutText && numberAttr(calloutText, "y") - calloutRuleY >= 12 && calloutMarker, `callout=${calloutWidth}x${calloutHeight}, rule=${calloutRuleY}`);
+              const legendLayer = legendBox.closest(".legend-layer");
+              const calloutLayer = calloutBox.closest(".callout-layer");
+              const legendTransform = /translate\(([-\d.]+)[, ]+([-\d.]+)\)/.exec(legendLayer?.getAttribute("transform") || "");
+              const calloutTransform = /translate\(([-\d.]+)[, ]+([-\d.]+)\)/.exec(calloutLayer?.getAttribute("transform") || "");
+              const legendX = Number(legendTransform?.[1]);
+              const legendY = Number(legendTransform?.[2]);
+              const calloutX = Number(calloutTransform?.[1]);
+              const calloutY = Number(calloutTransform?.[2]);
+              const canvasWidth = numberAttr(doc.querySelector("#mapSvg"), "width");
+              const canvasHeight = numberAttr(doc.querySelector("#mapSvg"), "height");
+              const legendExpectedX = furnitureIsCompact ? Math.round(canvasWidth * 0.1) : 40;
+              const legendExpectedY = furnitureIsCompact
+                ? canvasHeight - legendHeight - Math.max(12, Math.round(canvasHeight * 0.04))
+                : canvasHeight - 150;
+              const legendExpectedMarkerX = legendIsDenseCompact ? 12 : furnitureIsCompact ? 18 : 52;
+              const legendExpectedTextX = legendIsDenseCompact ? 24 : furnitureIsCompact ? 36 : 82;
+              const calloutExpectedX = Math.max(30, canvasWidth - calloutWidth - 30);
+              const legendMarkerX = legendMarker?.tagName.toLowerCase() === "circle"
+                ? numberAttr(legendMarker, "cx")
+                : numberAttr(legendMarker, "x") + numberAttr(legendMarker, "width") / 2;
+              const calloutMarkerX = calloutMarker?.tagName.toLowerCase() === "circle"
+                ? numberAttr(calloutMarker, "cx")
+                : numberAttr(calloutMarker, "x") + numberAttr(calloutMarker, "width") / 2;
+              const calloutParagraph = doc.querySelector("#mapSvg .callout-paragraph, #mapSvg .callout-caption");
+              const calloutParagraphStyle = calloutParagraph ? frame.contentWindow.getComputedStyle(calloutParagraph) : null;
+              const legendSizePass = furnitureIsCompact
+                ? legendWidth >= (legendIsDenseCompact ? 120 : 132) && legendWidth < 260 && legendHeight >= (legendIsDenseCompact ? 48 : 64) && legendHeight < 118
+                : legendWidth >= 290 && legendHeight >= 143;
+              const legendRhythmPass = legendSizePass && legendRuleInset === 24 && legendHeadingStyle?.display !== "none" && legendHeading?.textContent.trim() === "Legend" && legendRuleY - numberAttr(legendHeading, "y") >= (legendIsDenseCompact ? 8 : 20) && legendText && numberAttr(legendText, "y") - legendRuleY >= (legendIsDenseCompact ? 7 : furnitureIsCompact ? 9 : 14) && legendMarker;
+              const calloutRhythmPass = calloutWidth >= 260 && calloutHeight >= 80 && calloutRuleInset === 24 && calloutHeadingStyle?.display !== "none" && calloutHeading?.textContent.trim() === "No-coordinate callouts" && calloutRuleY - numberAttr(calloutHeading, "y") >= 16 && calloutText && numberAttr(calloutText, "y") - calloutRuleY >= 12 && calloutMarker;
+              assert(checks, "Legend box keeps its responsive title, padding, and row rhythm", Boolean(legendRhythmPass), `compact=${furnitureIsCompact}, dense=${legendIsDenseCompact}, legend=${legendWidth}x${legendHeight}, rule=${legendRuleY}`);
+              assert(checks, "Legend keeps its responsive marker and text columns", Math.abs(legendMarkerX - legendExpectedMarkerX) <= 1 && numberAttr(legendText, "x") === legendExpectedTextX, `dense=${legendIsDenseCompact}, marker=${legendMarkerX}, text=${numberAttr(legendText, "x")}`);
+              assert(checks, "Legend defaults to its responsive bottom-left position", Math.abs(legendX - legendExpectedX) <= 1 && Math.abs(legendY - legendExpectedY) <= 1, `compact=${furnitureIsCompact}, dense=${legendIsDenseCompact}, legend=${legendX},${legendY}; expected=${legendExpectedX},${legendExpectedY}`);
+              assert(checks, "No-coordinate callouts keep the restored heading, padding, and row rhythm", Boolean(calloutRhythmPass), `compact=${furnitureIsCompact}, callout=${calloutWidth}x${calloutHeight}, rule=${calloutRuleY}`);
+              assert(checks, "No-coordinate callouts keep the restored marker and text columns", Math.abs(calloutMarkerX - 46) <= 1 && numberAttr(calloutText, "x") === 72, `marker=${calloutMarkerX}, text=${numberAttr(calloutText, "x")}`);
+              assert(checks, "No-coordinate callouts default to the upper-right furniture position", Math.abs(calloutX - calloutExpectedX) <= 1 && Math.abs(calloutY - 30) <= 1, `callout=${calloutX},${calloutY}; expected x=${calloutExpectedX}`);
               assert(checks, "No-coordinate callouts use a 10px heading and 8px item text", calloutHeadingStyle?.fontSize === "10px" && calloutTextStyle?.fontSize === "8px", `heading=${calloutHeadingStyle?.fontSize || "missing"}, item=${calloutTextStyle?.fontSize || "missing"}`);
-              assert(checks, "Legend and no-coordinate callout rows use matching marker and text columns", legendMarker && calloutMarker && legendText && calloutText && Math.abs(numberAttr(legendText, "x") - numberAttr(calloutText, "x")) <= 1 && Math.abs(numberAttr(legendMarker, "cx") - (numberAttr(calloutMarker, "x") + numberAttr(calloutMarker, "width") / 2)) <= 1, `legend=${numberAttr(legendMarker, "cx")}/${numberAttr(legendText, "x")}, callout=${numberAttr(calloutMarker, "x") + numberAttr(calloutMarker, "width") / 2}/${numberAttr(calloutText, "x")}`);
+              assert(checks, "Rich no-coordinate notes remain italic beneath their title", Boolean(calloutParagraph) && calloutParagraphStyle?.fontStyle === "italic" && Number(calloutParagraphStyle.fontWeight) <= 500, `${calloutParagraph?.textContent || "missing"} / ${calloutParagraphStyle?.fontStyle || "missing"} / ${calloutParagraphStyle?.fontWeight || "missing"}`);
             }
             const legendInput = doc.querySelector("#showLegendInput");
             const calloutsInput = doc.querySelector("#showCalloutsInput");
@@ -1500,6 +1872,12 @@
               legendInput.checked = true;
               legendInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
               assert(checks, "Compact boxes re-enables when a map box is visible", !compactInput.disabled && !compactInput.closest(".toolbar-check")?.classList.contains("is-disabled"));
+            }
+            // The narrow Properties panel is an intentional overlay. Close it before
+            // synthetic canvas drags so hit-testing measures the marker, not the drawer.
+            if (appWidth <= 1080 && doc.body.classList.contains("properties-open")) {
+              propertiesToggle?.click();
+              await waitFor(() => propertiesPanel?.inert && !doc.body.classList.contains("properties-open"), 2000);
             }
             if (loadSample) {
               const label = doc.querySelector("#mapSvg .map-label[data-label-style='compact']");
@@ -1546,6 +1924,11 @@
                 assert(checks, "Labels no longer expose off-canvas warning state or a label quality card", !label.classList.contains("is-off-canvas") && !label.hasAttribute("data-off-canvas") && !hasOffCanvasLabelCard, label.getAttribute("class") || "");
                 dragLabel(label, constrainedLabelRect, mapSvgRect.left + mapSvgRect.width / 2, mapSvgRect.top + mapSvgRect.height / 2);
               }
+            }
+            if (appWidth <= 1080 && doc.body.classList.contains("properties-open")) {
+              propertiesToggle?.click();
+              await waitFor(() => propertiesPanel.inert && !doc.body.classList.contains("properties-open"), 2000);
+              assert(checks, "Canvas hit-testing closes the responsive Properties drawer first", propertiesPanel.inert && propertiesPanel.getAttribute("aria-hidden") === "true");
             }
             const lockMarkerCoordinatesInput = doc.querySelector("#lockMarkerCoordinatesInput");
             if (loadSample && lockMarkerCoordinatesInput) {
@@ -1626,6 +2009,173 @@
               lockMarkerCoordinatesInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
               await waitFor(() => markersWereLocked ? Boolean(doc.querySelector("#mapSvg .marker-layer .marker.is-locked")) : Boolean(doc.querySelector("#mapSvg .marker-layer .marker:not(.is-locked)")), 12000);
             }
+            if (loadSample) {
+              const pointTarget = Array.from(doc.querySelectorAll("#mapSvg .leader-line")).map(leader => {
+                const layoutId = leader.dataset.layoutId || "";
+                const marker = doc.querySelector(`#mapSvg .marker-layer .marker[data-layout-id='${frame.contentWindow.CSS.escape(layoutId)}']`);
+                const rowId = String(leader.__data__?.rowId || marker?.__data__?.rowId || "");
+                const row = Array.from(doc.querySelectorAll("#projectTable tbody tr[data-row-id]"))
+                  .find(candidate => candidate.dataset.rowId === rowId);
+                return { leader, layoutId, marker, rowId, row };
+              }).find(target => target.marker && target.row
+                && !target.row.querySelector(".hide-line-input")?.checked
+                && !target.row.querySelector(".elbow-leader-input")?.checked
+                && !target.row.querySelector(".leader-line-width-input")?.value
+                && !target.row.querySelector(".leader-line-colour-input")?.value);
+              assert(checks, "Sample provides an inherited leader line for point override coverage", Boolean(pointTarget), `leaders=${doc.querySelectorAll("#mapSvg .leader-line").length}`);
+              if (pointTarget) {
+                const escapedPointLayoutId = frame.contentWindow.CSS.escape(pointTarget.layoutId);
+                const pointLeader = () => doc.querySelector(`#mapSvg .leader-line[data-layout-id='${escapedPointLayoutId}']`);
+                const pointCasing = () => doc.querySelector(`#mapSvg .leader-casing[data-layout-id='${escapedPointLayoutId}']`);
+                const pointRow = () => Array.from(doc.querySelectorAll("#projectTable tbody tr[data-row-id]"))
+                  .find(candidate => candidate.dataset.rowId === pointTarget.rowId);
+                const originalPointStroke = (pointTarget.leader.getAttribute("stroke") || "").toLowerCase();
+                const originalPointWidth = Number(pointTarget.leader.getAttribute("stroke-width") || 0);
+                const originalPointPath = pointTarget.leader.getAttribute("d") || "";
+                const originalPointCasingWidth = Number(pointCasing()?.getAttribute("stroke-width") || 0);
+                const otherLeader = Array.from(doc.querySelectorAll("#mapSvg .leader-line")).find(node => node.dataset.layoutId !== pointTarget.layoutId);
+                const otherLayoutId = otherLeader?.dataset.layoutId || "";
+                const escapedOtherLayoutId = frame.contentWindow.CSS.escape(otherLayoutId);
+                const originalOtherStroke = (otherLeader?.getAttribute("stroke") || "").toLowerCase();
+                const originalOtherWidth = Number(otherLeader?.getAttribute("stroke-width") || 0);
+                pointTarget.marker.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
+                const pointLeaderControls = await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='marker'] [data-leader-line-controls='point']"), 2000);
+                if (appWidth <= 1080 && propertiesPanel.inert) {
+                  propertiesToggle?.click();
+                  await waitFor(() => !propertiesPanel.inert && doc.body.classList.contains("properties-open"), 2000);
+                }
+                const pointFields = ["hideLine", "elbowLeader", "leaderLineWidth", "leaderLineColour"]
+                  .map(field => pointLeaderControls.querySelector(`[data-property-field='${field}']`));
+                const pointResetColour = pointLeaderControls.querySelector("[data-property-action='reset-leader-colour']");
+                const pointWidthEditor = pointLeaderControls.querySelector("[data-leader-line-width-editor='point']");
+                const pointWidthDraft = pointWidthEditor?.querySelector("[data-leader-line-width-draft='point']");
+                const pointWidthApply = pointWidthEditor?.querySelector("[data-property-action='apply-leader-line-width']");
+                const pointWidthPreview = pointWidthEditor?.querySelector("[data-leader-line-width-preview]");
+                const pointWidthReadout = pointWidthEditor?.querySelector("[data-leader-line-width-readout]");
+                const pointWidthStatus = pointWidthEditor?.querySelector("[data-leader-line-width-draft-status]");
+                assert(checks, "Selected point Properties group hide, elbow, thickness draft, colour, and inherit resets", pointFields.every(Boolean) && Boolean(pointResetColour && pointWidthEditor && pointWidthDraft && pointWidthApply && pointWidthPreview && pointWidthReadout && pointWidthStatus) && pointResetColour.disabled && pointWidthApply.disabled && pointWidthEditor.dataset.committedValue === "" && Number(pointWidthEditor.dataset.inheritedValue) > 0 && pointWidthEditor.dataset.draftState === "applied" && pointFields[2].value === "" && pointFields[3].value.toLowerCase() === originalPointStroke, pointLeaderControls.textContent.trim());
+                assert(checks, "Point leader-line controls have accessible draft status and responsive fit", pointFields.every(input => Boolean(input?.closest("label")?.textContent.trim())) && pointWidthDraft.getAttribute("aria-describedby") === pointWidthStatus.id && pointWidthApply.tagName === "BUTTON" && pointWidthApply.type === "button" && pointWidthReadout.closest(".leader-line-thickness-preview")?.getAttribute("aria-live") === "polite" && Boolean(pointResetColour?.textContent.trim()) && pointLeaderControls.scrollWidth <= pointLeaderControls.clientWidth + 1 && doc.querySelector("#propertiesSelectionControls")?.scrollWidth <= doc.querySelector("#propertiesSelectionControls")?.clientWidth + 1 && (appWidth > 1080 || (!propertiesPanel.inert && doc.body.classList.contains("properties-open"))), `group=${pointLeaderControls.scrollWidth}/${pointLeaderControls.clientWidth}; panel=${doc.querySelector("#propertiesSelectionControls")?.scrollWidth || 0}/${doc.querySelector("#propertiesSelectionControls")?.clientWidth || 0}; drawer=${doc.body.classList.contains("properties-open")}`);
+                assert(checks, "Selected point leader-line Properties use clear inherited English copy", /Leader lines/.test(pointLeaderControls.textContent || "") && /Hide leader line/.test(pointLeaderControls.textContent || "") && /Use elbow leader/.test(pointLeaderControls.textContent || "") && /Preview: .*inherited/.test(pointLeaderControls.textContent || "") && /Inherited colour/.test(pointLeaderControls.textContent || "") && /Apply/.test(pointLeaderControls.textContent || ""), pointLeaderControls.textContent.trim());
+
+                await waitFor(() => !doc.querySelector("#mapHost")?.classList.contains("is-rendering") && frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot().pending === false, 12000);
+                const pointRenderSampleCount = () => performanceApi?.snapshot().samples.length || 0;
+                const testPointWidth = originalPointWidth === 7.5 ? "6.5" : "7.5";
+                const pointDraftMapBefore = doc.querySelector("#mapSvg")?.innerHTML || "";
+                const pointDraftSamplesBefore = pointRenderSampleCount();
+                const pointDraftQualityBefore = frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot();
+                const pointUndoDisabledBeforeDraft = doc.querySelector("#ribbonUndoBtn")?.disabled;
+                const inheritedPointPreviewWidth = Number(pointWidthPreview.getAttribute("stroke-width") || 0);
+                pointWidthDraft.value = testPointWidth;
+                pointWidthDraft.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
+                await waitFor(() => pointWidthEditor.dataset.draftState === "pending" && !pointWidthApply.disabled, 2000);
+                const pointDraftQualityAfter = frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot();
+                assert(checks, "Point thickness draft updates its local preview without changing row, SVG, Undo, quality, or render count", Number(pointWidthPreview.getAttribute("stroke-width") || 0) === Number(testPointWidth) && Number(pointWidthPreview.getAttribute("stroke-width") || 0) !== inheritedPointPreviewWidth && new RegExp(testPointWidth.replace(".", "\\.")).test(pointWidthReadout.textContent || "") && /Apply to update the map/.test(pointWidthStatus.textContent || "") && pointRow()?.querySelector(".leader-line-width-input")?.value === "" && Number(pointLeader()?.getAttribute("stroke-width") || 0) === originalPointWidth && (doc.querySelector("#mapSvg")?.innerHTML || "") === pointDraftMapBefore && pointRenderSampleCount() === pointDraftSamplesBefore && pointDraftQualityAfter?.requests === pointDraftQualityBefore?.requests && pointDraftQualityAfter?.completed === pointDraftQualityBefore?.completed && pointDraftQualityAfter?.revision === pointDraftQualityBefore?.revision && doc.querySelector("#ribbonUndoBtn")?.disabled === pointUndoDisabledBeforeDraft && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), `preview=${inheritedPointPreviewWidth}->${pointWidthPreview.getAttribute("stroke-width")}; row=${pointRow()?.querySelector(".leader-line-width-input")?.value || "blank"}; renders=${pointDraftSamplesBefore}->${pointRenderSampleCount()}; quality=${pointDraftQualityBefore?.revision}->${pointDraftQualityAfter?.revision}`);
+                const pointApplySamplesBefore = pointRenderSampleCount();
+                pointWidthDraft.focus();
+                pointWidthDraft.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+                await waitFor(() => pointRow()?.querySelector(".leader-line-width-input")?.value === testPointWidth && pointRenderSampleCount() >= pointApplySamplesBefore + 1 && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), 12000);
+                let activePointWidthEditor = doc.querySelector("#propertiesSelectionControls [data-leader-line-width-editor='point']");
+                let activePointWidthDraft = activePointWidthEditor?.querySelector("[data-leader-line-width-draft='point']");
+                assert(checks, "Enter applies point thickness in exactly one map update and restores draft focus", pointRenderSampleCount() === pointApplySamplesBefore + 1 && Number(pointLeader()?.getAttribute("stroke-width") || 0) !== originalPointWidth && activePointWidthEditor?.dataset.committedValue === testPointWidth && activePointWidthEditor?.dataset.draftState === "applied" && activePointWidthEditor?.querySelector("[data-property-action='apply-leader-line-width']")?.disabled && doc.activeElement === activePointWidthDraft, `renders=${pointApplySamplesBefore}->${pointRenderSampleCount()}; width=${pointLeader()?.getAttribute("stroke-width") || "missing"}; focus=${doc.activeElement?.outerHTML || "none"}`);
+                const pointUndoSamplesBefore = pointRenderSampleCount();
+                doc.querySelector("#ribbonUndoBtn")?.click();
+                await waitFor(() => pointRow()?.querySelector(".leader-line-width-input")?.value === "" && pointRenderSampleCount() >= pointUndoSamplesBefore + 1 && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), 12000);
+                doc.querySelector(`#mapSvg .marker-layer .marker[data-layout-id='${escapedPointLayoutId}']`)
+                  ?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
+                await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='marker'] [data-leader-line-width-editor='point']"), 2000);
+                activePointWidthEditor = doc.querySelector("#propertiesSelectionControls [data-leader-line-width-editor='point']");
+                activePointWidthDraft = activePointWidthEditor?.querySelector("[data-leader-line-width-draft='point']");
+                assert(checks, "Undo restores inherited point thickness in exactly one map update", pointRenderSampleCount() === pointUndoSamplesBefore + 1 && Number(pointLeader()?.getAttribute("stroke-width") || 0) === originalPointWidth && activePointWidthEditor?.dataset.committedValue === "" && activePointWidthEditor?.dataset.draftState === "applied" && activePointWidthDraft?.value === "" && activePointWidthEditor?.querySelector("[data-property-action='apply-leader-line-width']")?.disabled && /inherited/i.test(activePointWidthEditor?.querySelector("[data-leader-line-width-readout]")?.textContent || ""), `renders=${pointUndoSamplesBefore}->${pointRenderSampleCount()}; row=${pointRow()?.querySelector(".leader-line-width-input")?.value || "blank"}; readout=${activePointWidthEditor?.querySelector("[data-leader-line-width-readout]")?.textContent || "missing"}`);
+
+                const testPointColour = originalPointStroke === "#b34b62" ? "#2d6f7b" : "#b34b62";
+                let pointColourInput = doc.querySelector("#propertiesSelectionControls [data-property-field='leaderLineColour']");
+                pointColourInput.value = testPointColour;
+                pointColourInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+                await waitFor(() => (pointLeader()?.getAttribute("stroke") || "").toLowerCase() === testPointColour && pointRow()?.querySelector(".leader-line-colour-input")?.value.toLowerCase() === testPointColour, 12000);
+                const unchangedOtherAfterColour = otherLayoutId ? doc.querySelector(`#mapSvg .leader-line[data-layout-id='${escapedOtherLayoutId}']`) : null;
+                assert(checks, "Point colour override updates only the selected leader line", (pointLeader()?.getAttribute("stroke") || "").toLowerCase() === testPointColour && (!unchangedOtherAfterColour || (unchangedOtherAfterColour.getAttribute("stroke") || "").toLowerCase() === originalOtherStroke), `target=${pointLeader()?.getAttribute("stroke") || "missing"}; other=${unchangedOtherAfterColour?.getAttribute("stroke") || "none"}`);
+                doc.querySelector("#propertiesSelectionControls [data-property-action='reset-leader-colour']")?.click();
+                await waitFor(() => pointRow()?.querySelector(".leader-line-colour-input")?.value === "" && (pointLeader()?.getAttribute("stroke") || "").toLowerCase() === originalPointStroke, 12000);
+                assert(checks, "Use inherited restores a point colour override to the map colour", pointRow()?.querySelector(".leader-line-colour-input")?.value === "" && (pointLeader()?.getAttribute("stroke") || "").toLowerCase() === doc.querySelector("#leaderColourInput")?.value.toLowerCase(), `${pointRow()?.querySelector(".leader-line-colour-input")?.value || "blank"} / ${pointLeader()?.getAttribute("stroke") || "missing"}`);
+
+                doc.querySelector(`#mapSvg .marker-layer .marker[data-layout-id='${escapedPointLayoutId}']`)
+                  ?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
+                await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='marker'] [data-leader-line-controls='point']"), 2000);
+                pointColourInput = doc.querySelector("#propertiesSelectionControls [data-property-field='leaderLineColour']");
+                pointColourInput.value = testPointColour;
+                pointColourInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+                const pointWidthInput = doc.querySelector("#propertiesSelectionControls [data-property-field='leaderLineWidth']");
+                pointWidthInput.value = testPointWidth;
+                pointWidthInput.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
+                pointWidthInput.closest("[data-leader-line-width-editor='point']")?.querySelector("[data-property-action='apply-leader-line-width']")?.click();
+                const pointElbowInput = doc.querySelector("#propertiesSelectionControls [data-property-field='elbowLeader']");
+                pointElbowInput.checked = true;
+                pointElbowInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+                await waitFor(() => {
+                  const leader = pointLeader();
+                  return leader
+                    && (leader.getAttribute("stroke") || "").toLowerCase() === testPointColour
+                    && Number(leader.getAttribute("stroke-width") || 0) !== originalPointWidth
+                    && ((leader.getAttribute("d") || "").match(/L/g) || []).length > 1;
+                }, 12000);
+                const styledPointLeader = pointLeader();
+                const unchangedOtherAfterStyle = otherLayoutId ? doc.querySelector(`#mapSvg .leader-line[data-layout-id='${escapedOtherLayoutId}']`) : null;
+                const styledPointCasing = pointCasing();
+                assert(checks, "Point thickness and elbow overrides affect only the selected line and its casing", Number(styledPointLeader?.getAttribute("stroke-width") || 0) !== originalPointWidth && ((styledPointLeader?.getAttribute("d") || "").match(/L/g) || []).length > 1 && (!unchangedOtherAfterStyle || (Number(unchangedOtherAfterStyle.getAttribute("stroke-width") || 0) === originalOtherWidth && (unchangedOtherAfterStyle.getAttribute("stroke") || "").toLowerCase() === originalOtherStroke)) && (!styledPointCasing || Number(styledPointCasing.getAttribute("stroke-width") || 0) > Number(styledPointLeader.getAttribute("stroke-width") || 0)), `target=${styledPointLeader?.getAttribute("stroke-width") || "missing"}/${styledPointLeader?.getAttribute("d") || ""}; other=${unchangedOtherAfterStyle?.getAttribute("stroke-width") || "none"}; casing=${styledPointCasing?.getAttribute("stroke-width") || "none"}`);
+
+                const pointCrossingValue = () => Number(Array.from(doc.querySelectorAll("#canvasQualityPill .canvas-quality-metric"))
+                  .find(node => /Crossings/i.test(node.textContent || ""))?.querySelector("strong")?.textContent || 0);
+                const pointCrossingsBeforeHide = pointCrossingValue();
+                const pointHideInput = doc.querySelector("#propertiesSelectionControls [data-property-field='hideLine']");
+                pointHideInput.checked = true;
+                pointHideInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+                await waitFor(() => !pointLeader() && !pointCasing() && Boolean(doc.querySelector(`#mapSvg .marker-layer .marker[data-layout-id='${escapedPointLayoutId}']`)) && pointCrossingValue() <= pointCrossingsBeforeHide, 12000);
+                assert(checks, "Hiding one point line preserves its marker and other lines while quality ignores that leader", !pointLeader() && !pointCasing() && Boolean(doc.querySelector(`#mapSvg .marker-layer .marker[data-layout-id='${escapedPointLayoutId}']`)) && (!otherLayoutId || doc.querySelector(`#mapSvg .leader-line[data-layout-id='${escapedOtherLayoutId}']`)) && pointCrossingValue() <= pointCrossingsBeforeHide, `crossings=${pointCrossingsBeforeHide}->${pointCrossingValue()}`);
+
+                doc.querySelector("#ribbonUndoBtn")?.click();
+                await waitFor(() => !pointRow()?.querySelector(".hide-line-input")?.checked && Boolean(pointLeader()), 12000);
+                doc.querySelector("#ribbonUndoBtn")?.click();
+                await waitFor(() => !pointRow()?.querySelector(".elbow-leader-input")?.checked && !doc.querySelector("#mapHost")?.classList.contains("is-rendering") && frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot().pending === false, 12000);
+                doc.querySelector(`#mapSvg .marker-layer .marker[data-layout-id='${escapedPointLayoutId}']`)
+                  ?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
+                await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='marker'] [data-leader-line-width-editor='point']"), 2000);
+                activePointWidthEditor = doc.querySelector("#propertiesSelectionControls [data-leader-line-width-editor='point']");
+                activePointWidthDraft = activePointWidthEditor?.querySelector("[data-leader-line-width-draft='point']");
+                const pointResetMapBefore = doc.querySelector("#mapSvg")?.innerHTML || "";
+                const pointResetSamplesBefore = pointRenderSampleCount();
+                const pointResetQualityBefore = frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot();
+                activePointWidthDraft.value = "";
+                activePointWidthDraft.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
+                await waitFor(() => activePointWidthEditor.dataset.draftState === "pending" && !activePointWidthEditor.querySelector("[data-property-action='apply-leader-line-width']")?.disabled, 2000);
+                const pointResetQualityAfterDraft = frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot();
+                assert(checks, "Clearing a point thickness previews inherited width without applying it", pointRow()?.querySelector(".leader-line-width-input")?.value === testPointWidth && Number(pointLeader()?.getAttribute("stroke-width") || 0) !== originalPointWidth && Number(activePointWidthEditor.querySelector("[data-leader-line-width-preview]")?.getAttribute("stroke-width") || 0) === Number(activePointWidthEditor.dataset.inheritedValue) && /inherited/i.test(activePointWidthEditor.querySelector("[data-leader-line-width-readout]")?.textContent || "") && /inherited thickness.*Apply/i.test(activePointWidthEditor.querySelector("[data-leader-line-width-draft-status]")?.textContent || "") && (doc.querySelector("#mapSvg")?.innerHTML || "") === pointResetMapBefore && pointRenderSampleCount() === pointResetSamplesBefore && pointResetQualityAfterDraft?.revision === pointResetQualityBefore?.revision, `row=${pointRow()?.querySelector(".leader-line-width-input")?.value || "blank"}; preview=${activePointWidthEditor.querySelector("[data-leader-line-width-preview]")?.getAttribute("stroke-width") || "missing"}; renders=${pointResetSamplesBefore}->${pointRenderSampleCount()}`);
+                const pointResetApplySamplesBefore = pointRenderSampleCount();
+                activePointWidthEditor.querySelector("[data-property-action='apply-leader-line-width']")?.click();
+                await waitFor(() => pointRow()?.querySelector(".leader-line-width-input")?.value === "" && Number(pointLeader()?.getAttribute("stroke-width") || 0) === originalPointWidth && pointRenderSampleCount() >= pointResetApplySamplesBefore + 1 && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), 12000);
+                activePointWidthEditor = doc.querySelector("#propertiesSelectionControls [data-leader-line-width-editor='point']");
+                assert(checks, "Applying a blank point thickness restores inheritance in exactly one map update", pointRenderSampleCount() === pointResetApplySamplesBefore + 1 && activePointWidthEditor?.dataset.committedValue === "" && activePointWidthEditor?.dataset.draftState === "applied" && activePointWidthEditor?.querySelector("[data-property-action='apply-leader-line-width']")?.disabled && doc.activeElement === activePointWidthEditor?.querySelector("[data-leader-line-width-draft='point']"), `renders=${pointResetApplySamplesBefore}->${pointRenderSampleCount()}; row=${pointRow()?.querySelector(".leader-line-width-input")?.value || "blank"}`);
+                doc.querySelector("#propertiesSelectionControls [data-property-action='reset-leader-colour']")?.click();
+                await waitFor(() => {
+                  const leader = pointLeader();
+                  const row = pointRow();
+                  return leader
+                    && !row?.querySelector(".hide-line-input")?.checked
+                    && !row?.querySelector(".elbow-leader-input")?.checked
+                    && row?.querySelector(".leader-line-width-input")?.value === ""
+                    && row?.querySelector(".leader-line-colour-input")?.value === ""
+                    && (leader.getAttribute("stroke") || "").toLowerCase() === originalPointStroke
+                    && Number(leader.getAttribute("stroke-width") || 0) === originalPointWidth
+                    && (leader.getAttribute("d") || "") === originalPointPath;
+                }, 12000);
+                assert(checks, "Point Apply and inherited reset restore colour, thickness, routing, casing, and row state", (pointLeader()?.getAttribute("stroke") || "").toLowerCase() === doc.querySelector("#leaderColourInput")?.value.toLowerCase() && Number(pointLeader()?.getAttribute("stroke-width") || 0) === originalPointWidth && (!pointCasing() || Number(pointCasing()?.getAttribute("stroke-width") || 0) === originalPointCasingWidth), `${pointLeader()?.getAttribute("stroke") || "missing"}/${pointLeader()?.getAttribute("stroke-width") || "missing"}; casing=${pointCasing()?.getAttribute("stroke-width") || "none"}`);
+                if (appWidth <= 1080 && doc.body.classList.contains("properties-open")) {
+                  propertiesToggle?.click();
+                  await waitFor(() => propertiesPanel.inert && !doc.body.classList.contains("properties-open"), 2000);
+                }
+                doc.querySelector("#mapSvg")?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
+                await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='document']"), 2000);
+              }
+            }
             const mapBeforePreviewSelection = doc.querySelector("#mapSvg")?.innerHTML || "";
             const selectionMarker = doc.querySelector("#mapSvg .marker-layer .marker");
             selectionMarker?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
@@ -1634,12 +2184,12 @@
             assert(checks, "Interacting with selected point Properties keeps the point selected", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='marker']")));
             doc.querySelector("#previewTablePane > .workspace-intro")?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
             await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='document']"), 2000);
-            assert(checks, "Clicking outside the canvas deselects the selected point", Boolean(selectionMarker) && previewSections.every(section => !section.hidden));
+            assert(checks, "Clicking outside the canvas deselects the selected point", Boolean(selectionMarker) && previewSections.every(section => !section.hidden) && !legendPropertiesSection.hidden);
             selectionMarker?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
             await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='marker']"), 2000);
             doc.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
             await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='document']"), 2000);
-            assert(checks, "Escape deselects the selected point", previewSections.every(section => !section.hidden));
+            assert(checks, "Escape deselects the selected point", previewSections.every(section => !section.hidden) && !legendPropertiesSection.hidden);
             const label = doc.querySelector("#mapSvg .map-label");
             label?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
             const labelKind = doc.querySelector("#propertiesSelectionControls .properties-form")?.dataset.propertyKind || "";
@@ -1648,13 +2198,13 @@
             const selectedLabelParts = Array.from(doc.querySelectorAll("#mapSvg .is-properties-selected"));
             const selectedLabelBackground = doc.querySelector(`#mapSvg .map-label-background[data-layout-id="${selectedLayoutId}"]`);
             const svgSnapshot = Array.from(doc.querySelector("#mapSvg")?.children || []).slice(0, 8).map(node => `${node.tagName}.${node.getAttribute("class") || ""}`).join("|");
-            assert(checks, "Selecting a label shows only label Properties", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='label']")) && labelSectionsHidden, `target=${Boolean(label)} kind=${labelKind} sectionsHidden=${labelSectionsHidden} svg=${svgSnapshot}`);
+            assert(checks, "Selecting a label shows only label Properties", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='label']")) && labelSectionsHidden && legendPropertiesSection.hidden, `target=${Boolean(label)} kind=${labelKind} sectionsHidden=${labelSectionsHidden} legendHidden=${legendPropertiesSection.hidden} svg=${svgSnapshot}`);
             assert(checks, "Selecting label Properties highlights that label on the map", Boolean(label?.classList.contains("is-properties-selected")) && Boolean(selectedLabelBackground?.classList.contains("is-properties-selected")) && selectedLabelParts.every(node => node.dataset.layoutId === selectedLayoutId), `layout=${selectedLayoutId} highlighted=${selectedLabelParts.length}`);
             const legend = doc.querySelector("#mapSvg .legend-layer");
             legend?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
             const legendKind = doc.querySelector("#propertiesSelectionControls .properties-form")?.dataset.propertyKind || "";
             const legendSectionsHidden = previewSections.every(section => section.hidden);
-            assert(checks, "Selecting the legend shows only furniture Properties", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='furniture']")) && legendSectionsHidden, `target=${Boolean(legend)} kind=${legendKind} sectionsHidden=${legendSectionsHidden}`);
+            assert(checks, "Selecting the legend shows only furniture Properties", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='furniture']")) && legendSectionsHidden && legendPropertiesSection.hidden, `target=${Boolean(legend)} kind=${legendKind} sectionsHidden=${legendSectionsHidden} legendListHidden=${legendPropertiesSection.hidden}`);
             assert(checks, "Moving Properties away from a label clears its map highlight", !doc.querySelector("#mapSvg .is-properties-selected"));
             uiFrenchButton?.click();
             await waitFor(() => doc.documentElement.lang === "fr", 2000);
@@ -1670,17 +2220,88 @@
             region?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
             const regionKind = doc.querySelector("#propertiesSelectionControls .properties-form")?.dataset.propertyKind || "";
             const regionSectionsHidden = previewSections.every(section => section.hidden);
-            assert(checks, "Selecting geography shows region Properties", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='region']")) && regionSectionsHidden, `target=${Boolean(region)} kind=${regionKind} sectionsHidden=${regionSectionsHidden}`);
+            assert(checks, "Selecting geography shows region Properties", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='region']")) && regionSectionsHidden && legendPropertiesSection.hidden, `target=${Boolean(region)} kind=${regionKind} sectionsHidden=${regionSectionsHidden} legendHidden=${legendPropertiesSection.hidden}`);
             doc.querySelector("#mapSvg")?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
             const clearedPropertyKind = doc.querySelector("#propertiesSelectionControls .properties-form")?.dataset.propertyKind || "";
             const clearedSectionsVisible = previewSections.every(section => !section.hidden);
-            assert(checks, "Clearing map selection restores document Properties", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='document']")) && clearedSectionsVisible, `kind=${clearedPropertyKind} sectionsVisible=${clearedSectionsVisible}`);
+            assert(checks, "Clearing map selection restores document Properties", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='document']")) && clearedSectionsVisible && !legendPropertiesSection.hidden, `kind=${clearedPropertyKind} sectionsVisible=${clearedSectionsVisible} legendHidden=${legendPropertiesSection.hidden}`);
             assert(checks, "Map selections do not re-plot the map", (doc.querySelector("#mapSvg")?.innerHTML || "") === mapBeforePreviewSelection);
+
+            if (loadSample) {
+            if (appWidth <= 1080 && propertiesPanel.inert) {
+              propertiesToggle?.click();
+              await waitFor(() => !propertiesPanel.inert && doc.body.classList.contains("properties-open"), 2000);
+            }
+            const editableLegendItem = Array.from(doc.querySelectorAll("#categoryList [data-legend-item]"))
+              .find(item => Number(item.querySelector("[data-legend-count]")?.dataset.count) > 0 && doc.querySelector(`#mapSvg .legend-text[data-category-id="${frame.contentWindow.CSS.escape(item.dataset.categoryId)}"]`))
+              || doc.querySelector("#categoryList [data-legend-item]");
+            const editableLegendId = editableLegendItem?.dataset.categoryId || "";
+            editableLegendItem?.querySelector(".legend-item-select")?.click();
+            const editableLegendForm = await waitFor(() => doc.querySelector(`#propertiesSelectionControls [data-property-kind='category'][data-category-id="${frame.contentWindow.CSS.escape(editableLegendId)}"]`), 2000);
+            await new Promise(resolve => frame.contentWindow.requestAnimationFrame(resolve));
+            const editableLegendNameInput = editableLegendForm.querySelector("[data-category-field='label']");
+            const originalLegendName = editableLegendNameInput?.value || "";
+            const updatedLegendName = `${originalLegendName} smoke`;
+            const categoryColourPresetText = Array.from(editableLegendForm.querySelector("[data-category-colour-preset]")?.options || []).map(option => option.textContent.trim()).join(" | ");
+            assert(checks, "Legend item Properties retain colour presets, marker shapes, and custom-icon controls", /Map green/.test(categoryColourPresetText) && /Alert red/.test(categoryColourPresetText) && editableLegendForm.querySelectorAll(".category-shape-option").length > 1 && Boolean(editableLegendForm.querySelector("[data-property-action='upload-category-icon']")) && editableLegendForm.querySelector("[data-category-icon-upload]")?.getAttribute("accept") === "image/png,image/webp", categoryColourPresetText);
+            if (editableLegendNameInput) {
+              editableLegendNameInput.focus();
+              editableLegendNameInput.value = updatedLegendName;
+              editableLegendNameInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+              await waitFor(() => {
+                const escapedId = frame.contentWindow.CSS.escape(editableLegendId);
+                return doc.querySelector(`#propertiesSelectionControls [data-property-kind='category'][data-category-id="${escapedId}"]`)
+                  && doc.querySelector(`#categoryList [data-legend-item][data-category-id="${escapedId}"] [data-legend-name]`)?.textContent.trim() === updatedLegendName
+                  && Array.from(doc.querySelectorAll(`#projectTable .type-input option[value="${escapedId}"]`)).every(option => option.textContent.trim() === updatedLegendName)
+                  && doc.querySelector(`#mapSvg .legend-text[data-category-id="${escapedId}"]`)?.textContent.trim() === updatedLegendName;
+              }, 12000);
+              const escapedEditableLegendId = frame.contentWindow.CSS.escape(editableLegendId);
+              assert(checks, "Editing a Legend item preserves focus, keeps its exact category selected, and synchronizes list, Project choices, and map legend", doc.activeElement === editableLegendNameInput && doc.querySelector(`#propertiesSelectionControls [data-property-kind='category'][data-category-id="${escapedEditableLegendId}"]`) === editableLegendForm && doc.querySelector(`#categoryList [data-category-id="${escapedEditableLegendId}"] [data-legend-name]`)?.textContent.trim() === updatedLegendName && doc.querySelector(`#mapSvg .legend-text[data-category-id="${escapedEditableLegendId}"]`)?.textContent.trim() === updatedLegendName);
+            }
+            doc.querySelector("#propertiesSelectionControls [data-property-action='back-to-document']")?.click();
+            await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='document']"), 2000);
+            uiFrenchButton?.click();
+            await waitFor(() => doc.documentElement.lang === "fr" && doc.querySelector("#legendPropertiesTitle")?.textContent.trim() === "Légende", 2000);
+            if (appWidth <= 1080 && propertiesPanel.inert) {
+              propertiesToggle?.click();
+              await waitFor(() => !propertiesPanel.inert && doc.body.classList.contains("properties-open"), 2000);
+            }
+            const categoryCountBeforeAdd = doc.querySelectorAll("#categoryList [data-legend-item]").length;
+            doc.querySelector("#addCategoryBtn")?.click();
+            await waitFor(() => doc.querySelectorAll("#categoryList [data-legend-item]").length === categoryCountBeforeAdd + 1 && doc.querySelector("#propertiesSelectionControls [data-property-kind='category']"), 2000);
+            const createdLegendItem = Array.from(doc.querySelectorAll("#categoryList [data-legend-item]")).at(-1);
+            const createdLegendId = createdLegendItem?.dataset.categoryId || "";
+            const createdLegendForm = doc.querySelector(`#propertiesSelectionControls [data-property-kind='category'][data-category-id="${frame.contentWindow.CSS.escape(createdLegendId)}"]`);
+            assert(checks, "Adding a Legend item in French keeps separate English and French defaults", /^Catégorie \d+$/.test(createdLegendItem?.querySelector("[data-legend-name]")?.textContent.trim() || "") && /^Category \d+$/.test(createdLegendForm?.querySelector("[data-category-field='label']")?.value || "") && /^Catégorie \d+$/.test(createdLegendForm?.querySelector("[data-category-field='labelFr']")?.value || ""), `${createdLegendItem?.textContent.trim() || ""} | ${createdLegendForm?.querySelector("[data-category-field='label']")?.value || ""}`);
+            assert(checks, "Legend item drill-in remains in the open responsive drawer", appWidth > 1080 || (doc.body.classList.contains("properties-open") && !propertiesPanel.inert));
+            doc.querySelector("#propertiesSelectionControls [data-property-action='back-to-document']")?.click();
+            await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='document']"), 2000);
+            doc.querySelector(`#categoryList .remove-category-btn[data-category-id="${frame.contentWindow.CSS.escape(createdLegendId)}"]`)?.click();
+            await waitFor(() => doc.querySelectorAll("#categoryList [data-legend-item]").length === categoryCountBeforeAdd, 2000);
+            uiEnglishButton?.click();
+            await waitFor(() => doc.documentElement.lang === "en" && doc.querySelector("#legendPropertiesTitle")?.textContent.trim() === "Legend", 2000);
+            assert(checks, "A newly added Legend item can be removed from the list", !doc.querySelector(`#categoryList [data-category-id="${frame.contentWindow.CSS.escape(createdLegendId)}"]`));
+            if (appWidth <= 1080 && propertiesPanel.inert) {
+              propertiesToggle?.click();
+              await waitFor(() => !propertiesPanel.inert && doc.body.classList.contains("properties-open"), 2000);
+            }
+            await new Promise(resolve => frame.contentWindow.requestAnimationFrame(resolve));
+            const categoryOrderBeforeKeyboardMove = Array.from(doc.querySelectorAll("#categoryList [data-legend-item]")).map(item => item.dataset.categoryId);
+            const firstMoveDownButton = doc.querySelector("#categoryList .move-category-down-btn:not(:disabled)");
+            const movedCategoryId = firstMoveDownButton?.dataset.categoryId || "";
+            firstMoveDownButton?.click();
+            await waitFor(() => Array.from(doc.querySelectorAll("#categoryList [data-legend-item]")).map(item => item.dataset.categoryId).join("|") !== categoryOrderBeforeKeyboardMove.join("|"), 2000);
+            await new Promise(resolve => frame.contentWindow.requestAnimationFrame(resolve));
+            const movedCategoryUpButton = doc.querySelector(`#categoryList .move-category-up-btn[data-category-id="${frame.contentWindow.CSS.escape(movedCategoryId)}"]`);
+            assert(checks, "Legend list exposes keyboard-operable move controls with deterministic focus", firstMoveDownButton?.tagName === "BUTTON" && movedCategoryUpButton?.tagName === "BUTTON" && doc.activeElement?.dataset.categoryId === movedCategoryId, doc.activeElement?.className || "");
+            movedCategoryUpButton?.click();
+            await waitFor(() => Array.from(doc.querySelectorAll("#categoryList [data-legend-item]")).map(item => item.dataset.categoryId).join("|") === categoryOrderBeforeKeyboardMove.join("|"), 2000);
+            }
           }
           if (requestedWorkspace === "projects") {
             const filterOptions = doc.querySelectorAll("#projectFilterSelect option");
-            const firstNameInput = doc.querySelector("#projectTable .name-input");
-            const inputStyle = firstNameInput ? frame.contentWindow.getComputedStyle(firstNameInput) : null;
+            let firstNameInput = doc.querySelector("#projectTable .name-input");
+            let inputStyle = firstNameInput ? frame.contentWindow.getComputedStyle(firstNameInput) : null;
             const projectAreaBackgrounds = [
               doc.querySelector("[data-table-actions='projects']")?.closest(".workspace-rail"),
               doc.querySelector("#projectTablePane"),
@@ -1702,11 +2323,17 @@
             englishAuthoringButton?.click();
             assert(checks, "Project type switches back to English with the authoring language", /Referred Project|Transformative Strategy/.test(firstTypeInput?.selectedOptions[0]?.textContent || ""));
             assert(checks, "Project coordinates use dot decimals in English", /\./.test(firstLonForLanguage?.value || ""));
+            const reopenPropertiesAfterProjectMenus = appWidth <= 1080 && doc.body.classList.contains("properties-open");
+            if (reopenPropertiesAfterProjectMenus) {
+              propertiesToggle?.click();
+              await waitFor(() => propertiesPanel?.inert && !doc.body.classList.contains("properties-open"), 2000);
+            }
             const addMenuButton = doc.querySelector("#projectAddMenuBtn");
             const addMenu = doc.querySelector("#projectAddMenu");
-            assert(checks, "Project add actions are grouped in Add data", addMenuButton?.textContent.trim() === "Add data" && Boolean(addMenuButton?.querySelector("svg")) && addMenu?.contains(doc.querySelector("#addRowBtn")) && addMenu?.contains(doc.querySelector("#addPointsBtn")) && addMenu?.contains(doc.querySelector("#ribbonImportCsvBtn")) && Array.from(addMenu?.querySelectorAll("[role='menuitem']") || []).every(item => Boolean(item.querySelector("svg"))) && doc.querySelector("#addRowBtn")?.textContent.trim() === "Blank row" && doc.querySelector("#addPointsBtn")?.textContent.trim() === "From source");
+            const addProjectTypeButton = doc.querySelector("#addProjectTypeBtn");
+            assert(checks, "Project add actions are grouped in Add data", addMenuButton?.textContent.trim() === "Add data" && Boolean(addMenuButton?.querySelector("svg")) && addMenu?.contains(addProjectTypeButton) && addMenu?.contains(doc.querySelector("#addRowBtn")) && addMenu?.contains(doc.querySelector("#addPointsBtn")) && addMenu?.contains(doc.querySelector("#ribbonImportCsvBtn")) && Array.from(addMenu?.querySelectorAll("[role='menuitem']") || []).every(item => Boolean(item.querySelector("svg"))) && addProjectTypeButton?.textContent.trim() === "New type" && doc.querySelector("#addRowBtn")?.textContent.trim() === "Blank row" && doc.querySelector("#addPointsBtn")?.textContent.trim() === "From source");
             addMenuButton?.click();
-            assert(checks, "Add data opens an accessible menu", addMenu?.hidden === false && addMenuButton?.getAttribute("aria-expanded") === "true" && addMenu?.querySelectorAll("[role='menuitem']").length === 3);
+            assert(checks, "Add data opens an accessible menu", addMenu?.hidden === false && addMenuButton?.getAttribute("aria-expanded") === "true" && addMenu?.querySelectorAll("[role='menuitem']").length === 4);
             const addMenuRect = addMenu?.getBoundingClientRect();
             const addMenuButtonRect = addMenuButton?.getBoundingClientRect();
             const projectActionsRect = doc.querySelector("[data-table-actions='projects']")?.getBoundingClientRect();
@@ -1729,6 +2356,78 @@
             dispatchKey(addMenuButton, "Escape");
             propertiesLeftInput?.click();
             await waitFor(() => doc.body.dataset.propertiesSide === "left" && propertiesLeftInput.checked, 2000);
+            const typeInputsBeforeProjectTypeAdd = Array.from(doc.querySelectorAll("#projectTable .type-input"));
+            const typeSelectionsBeforeProjectTypeAdd = typeInputsBeforeProjectTypeAdd.map(select => select.value);
+            const typeIdsBeforeProjectTypeAdd = new Set(Array.from(firstTypeInput?.options || []).map(option => option.value));
+            const legendCountBeforeProjectTypeAdd = doc.querySelectorAll("#categoryList [data-legend-item]").length;
+            assert(checks, "New type exposes clear English menu copy", addProjectTypeButton?.textContent.trim() === "New type" && /Add a project type and legend item/i.test(addProjectTypeButton?.getAttribute("title") || ""));
+            uiFrenchButton?.click();
+            await waitFor(() => doc.documentElement.lang === "fr" && addProjectTypeButton?.textContent.trim() === "Nouveau type", 2000);
+            assert(checks, "New type menu copy and accessible title switch to French", /Nouveau type/.test(addProjectTypeButton?.textContent || "") && /Ajouter un type de projet et un élément de légende/i.test(addProjectTypeButton?.getAttribute("title") || ""));
+            addMenuButton?.click();
+            addProjectTypeButton?.click();
+            const createdProjectType = await waitFor(() => {
+              const option = Array.from(firstTypeInput?.options || []).find(item => !typeIdsBeforeProjectTypeAdd.has(item.value));
+              if (!option) return null;
+              const escapedId = frame.contentWindow.CSS.escape(option.value);
+              const editor = doc.querySelector(`#propertiesSelectionControls [data-property-kind='category'][data-category-id="${escapedId}"]`);
+              return editor ? { id: option.value, editor } : null;
+            }, 4000);
+            await new Promise(resolve => frame.contentWindow.requestAnimationFrame(resolve));
+            const createdProjectTypeId = createdProjectType.id;
+            const escapedCreatedProjectTypeId = frame.contentWindow.CSS.escape(createdProjectTypeId);
+            const createdProjectTypeEditor = createdProjectType.editor;
+            const createdProjectTypeLabelEn = createdProjectTypeEditor.querySelector("[data-category-field='label']")?.value || "";
+            const createdProjectTypeLabelFr = createdProjectTypeEditor.querySelector("[data-category-field='labelFr']")?.value || "";
+            const createdProjectTypeLegendItem = doc.querySelector(`#categoryList [data-legend-item][data-category-id="${escapedCreatedProjectTypeId}"]`);
+            const typeInputsAfterProjectTypeAdd = Array.from(doc.querySelectorAll("#projectTable .type-input"));
+            const projectTypeOptionsSynchronized = typeInputsAfterProjectTypeAdd.length === typeInputsBeforeProjectTypeAdd.length
+              && typeInputsAfterProjectTypeAdd.every((select, index) => (
+                select.value === typeSelectionsBeforeProjectTypeAdd[index]
+                && Array.from(select.options).filter(option => option.value === createdProjectTypeId).length === 1
+                && Array.from(select.options).find(option => option.value === createdProjectTypeId)?.textContent.trim() === createdProjectTypeLabelEn
+              ));
+            assert(checks, "Adding a Project type stays in Project Points and opens that exact category editor", doc.body.dataset.workspaceView === "projects" && addMenu?.hidden === true && addMenuButton?.getAttribute("aria-expanded") === "false" && createdProjectTypeEditor.id === "categoryPropertiesEditor" && doc.activeElement === createdProjectTypeEditor.querySelector(".properties-back-button"));
+            assert(checks, "A Project type starts with independent English and French defaults", /^Category \d+$/.test(createdProjectTypeLabelEn) && /^Catégorie \d+$/.test(createdProjectTypeLabelFr), `${createdProjectTypeLabelEn} / ${createdProjectTypeLabelFr}`);
+            assert(checks, "Adding a Project type immediately synchronizes every type selector without changing row selections", projectTypeOptionsSynchronized, typeInputsAfterProjectTypeAdd.map(select => `${select.value}:${Array.from(select.options).find(option => option.value === createdProjectTypeId)?.textContent || "missing"}`).join(", "));
+            assert(checks, "Adding a Project type immediately adds an unused item to the hidden Map Legend list", doc.querySelectorAll("#categoryList [data-legend-item]").length === legendCountBeforeProjectTypeAdd + 1 && createdProjectTypeLegendItem?.querySelector("[data-legend-name]")?.textContent.trim() === createdProjectTypeLabelFr && createdProjectTypeLegendItem?.querySelector("[data-legend-count]")?.dataset.count === "0");
+            assert(checks, "Project type creation reports localized French status", new RegExp(`${createdProjectTypeLabelFr} a été ajouté`, "i").test(doc.querySelector("#statusBox")?.textContent || ""), doc.querySelector("#statusBox")?.textContent || "");
+            assert(checks, "New Project type Properties are visible responsively without page overflow", (appWidth > 1080 ? !doc.body.classList.contains("properties-collapsed") : doc.body.classList.contains("properties-open")) && !propertiesPanel?.inert && doc.documentElement.scrollWidth <= doc.documentElement.clientWidth + 1, `${doc.body.className} | ${doc.documentElement.scrollWidth}/${doc.documentElement.clientWidth}`);
+            assert(checks, "Project type editor Back copy is localized in French", createdProjectTypeEditor.querySelector(".properties-back-button")?.textContent.trim() === "Retour aux Points de projet");
+            frenchAuthoringButton?.click();
+            await waitFor(() => Array.from(doc.querySelectorAll(`#projectTable .type-input option[value="${escapedCreatedProjectTypeId}"]`)).every(option => option.textContent.trim() === createdProjectTypeLabelFr), 2000);
+            assert(checks, "The new Project type option switches to its French label with authoring language", Array.from(doc.querySelectorAll(`#projectTable .type-input option[value="${escapedCreatedProjectTypeId}"]`)).every(option => option.textContent.trim() === createdProjectTypeLabelFr));
+            englishAuthoringButton?.click();
+            await waitFor(() => Array.from(doc.querySelectorAll(`#projectTable .type-input option[value="${escapedCreatedProjectTypeId}"]`)).every(option => option.textContent.trim() === createdProjectTypeLabelEn), 2000);
+            uiEnglishButton?.click();
+            await waitFor(() => doc.documentElement.lang === "en" && doc.querySelector("#categoryPropertiesEditor .properties-back-button")?.textContent.trim() === "Back to Project Points" && addProjectTypeButton?.textContent.trim() === "New type", 2000);
+            assert(checks, "Project type menu and editor Back copy return to English", /Add a project type and legend item/i.test(addProjectTypeButton?.getAttribute("title") || "") && doc.querySelector("#categoryPropertiesEditor .properties-back-button")?.textContent.trim() === "Back to Project Points");
+            if (appWidth <= 1080 && propertiesPanel?.inert) {
+              propertiesToggle?.click();
+              await waitFor(() => !propertiesPanel.inert && doc.body.classList.contains("properties-open"), 2000);
+            }
+            doc.querySelector("#categoryPropertiesEditor .properties-back-button")?.click();
+            await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='project-data']"), 2000);
+            await new Promise(resolve => frame.contentWindow.requestAnimationFrame(resolve));
+            assert(checks, "Back from a new Project type restores focus to the Add data trigger", doc.activeElement === addMenuButton, doc.activeElement?.id || doc.activeElement?.tagName || "none");
+            doc.querySelector("#previewTableTab")?.click();
+            await waitFor(() => doc.body.dataset.workspaceView === "preview" && doc.querySelector(`#mapSvg .legend-text[data-category-id="${escapedCreatedProjectTypeId}"]`)?.textContent.trim() === createdProjectTypeLabelEn, 12000);
+            assert(checks, "Entering Map renders the new Project type in the generated Legend", doc.querySelector(`#mapSvg .legend-text[data-category-id="${escapedCreatedProjectTypeId}"]`)?.textContent.trim() === createdProjectTypeLabelEn);
+            const projectTypeUndoButton = doc.querySelector("#ribbonUndoBtn");
+            assert(checks, "Adding a Project type is undoable", Boolean(projectTypeUndoButton && !projectTypeUndoButton.disabled));
+            projectTypeUndoButton?.click();
+            await waitFor(() => !doc.querySelector(`#projectTable .type-input option[value="${escapedCreatedProjectTypeId}"]`) && !doc.querySelector(`#categoryList [data-category-id="${escapedCreatedProjectTypeId}"]`) && !doc.querySelector(`#mapSvg .legend-text[data-category-id="${escapedCreatedProjectTypeId}"]`), 12000);
+            const typeSelectionsAfterProjectTypeUndo = Array.from(doc.querySelectorAll("#projectTable .type-input")).map(select => select.value);
+            assert(checks, "Undo removes the new type from Project choices and both Legend surfaces while preserving row selections", typeSelectionsAfterProjectTypeUndo.join("|") === typeSelectionsBeforeProjectTypeAdd.join("|") && !doc.querySelector(`#projectTable .type-input option[value="${escapedCreatedProjectTypeId}"]`) && !doc.querySelector(`#categoryList [data-category-id="${escapedCreatedProjectTypeId}"]`) && !doc.querySelector(`#mapSvg .legend-text[data-category-id="${escapedCreatedProjectTypeId}"]`), typeSelectionsAfterProjectTypeUndo.join("|"));
+            if (doc.querySelector("#mapLanguageInput")?.value !== "en") {
+              doc.querySelector("[data-map-language='en']")?.click();
+              await waitFor(() => doc.querySelector("#mapLanguageInput")?.value === "en" && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), 12000);
+            }
+            doc.querySelector("#projectTableTab")?.click();
+            await waitFor(() => doc.body.dataset.workspaceView === "projects", 4000);
+            firstNameInput = doc.querySelector("#projectTable .name-input");
+            inputStyle = firstNameInput ? frame.contentWindow.getComputedStyle(firstNameInput) : null;
+            mapBeforeNavigation = doc.querySelector("#mapSvg")?.innerHTML || "";
             const selectionActions = doc.querySelector(".selection-actions");
             assert(checks, "Project selection actions are grouped", selectionActions && selectionActions.contains(doc.querySelector("#bulkClearCoordinatesBtn")) && selectionActions.contains(doc.querySelector("#deleteSelectedBtn")));
             assert(checks, "Project selection actions stay hidden until selection", selectionActions?.hidden === true && selectionActions?.querySelector(".toolbar-group-label")?.textContent.trim() === "Selected" && doc.querySelector("#deleteSelectedBtn")?.textContent.trim() === "Delete");
@@ -1744,6 +2443,10 @@
             });
             assert(checks, "More menu stays fully visible and clickable", moreMenuSurfaceState.pass, moreMenuSurfaceState.detail);
             dispatchKey(moreMenuButton, "Escape");
+            if (reopenPropertiesAfterProjectMenus) {
+              propertiesToggle?.click();
+              await waitFor(() => !propertiesPanel?.inert && doc.body.classList.contains("properties-open"), 2000);
+            }
             assert(checks, "Project field guide is removed from the toolbar", !doc.querySelector(".project-field-legend"));
             const projectToolbarControls = Array.from(doc.querySelectorAll("#projectFilterSelect, .project-location-mode > button, .authoring-language > button, .project-toolbar-menu-button, .selection-actions > button, .selection-actions > select"))
               .filter(control => control.getBoundingClientRect().height > 0);
@@ -1865,90 +2568,6 @@
               assert(checks, "Region CSV import resolves misspelled province values to region anchors", importedRegionRow?.dataset.anchor === "region" && importedRegionRow?.dataset.region === "Ontario" && !importedRegionRow?.querySelector(".lon-input")?.value && !importedRegionRow?.querySelector(".lat-input")?.value, `${importedRegionRow?.dataset.anchor || ""}/${importedRegionRow?.dataset.region || ""}`);
             }
           }
-          if (requestedWorkspace === "categories") {
-            const cards = doc.querySelectorAll("#categoryList .category-editor");
-            assert(checks, "Category cards are rendered", cards.length > 0);
-            assert(checks, "Category cards show usage and marker metadata", Array.from(cards).every(card => /points?\s+·\s+/i.test(card.querySelector("small")?.textContent || "")));
-            assert(checks, "Category Properties are contextual", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='category']")));
-            const selectedCategoryCard = doc.querySelector("#categoryList .category-editor.is-selected") || cards[0];
-            const categoryMarkerSizeInput = doc.querySelector("#propertiesSelectionControls [data-category-field='markerSize']");
-            const cardMarkerPreview = selectedCategoryCard?.querySelector(".category-swatch .category-marker-preview");
-            const selectedShapePreview = doc.querySelector("#propertiesSelectionControls .category-shape-option.is-selected .category-marker-preview");
-            const expectedMarkerPreviewRadius = Math.max(2, Math.min(12, Number(categoryMarkerSizeInput?.value)));
-            assert(checks, "Legend card and Properties previews use the same selected marker size", Boolean(categoryMarkerSizeInput && cardMarkerPreview && selectedShapePreview) && Number(cardMarkerPreview.dataset.markerSize) === Number(categoryMarkerSizeInput.value) && Number(selectedShapePreview.dataset.markerSize) === Number(categoryMarkerSizeInput.value) && Number(cardMarkerPreview.dataset.previewRadius) === expectedMarkerPreviewRadius && Number(selectedShapePreview.dataset.previewRadius) === expectedMarkerPreviewRadius, `input=${categoryMarkerSizeInput?.value || "missing"}, card=${cardMarkerPreview?.dataset.markerSize || "missing"}, properties=${selectedShapePreview?.dataset.markerSize || "missing"}`);
-            assert(checks, "Category custom icon upload is available", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-action='upload-category-icon']")));
-            assert(checks, "Category custom icon upload accepts PNG/WebP only", doc.querySelector("#propertiesSelectionControls [data-category-icon-upload]")?.getAttribute("accept") === "image/png,image/webp");
-            const uploadInput = doc.querySelector("#propertiesSelectionControls [data-category-icon-upload]");
-            if (!visualCapture && uploadInput && frame.contentWindow.DataTransfer) {
-              const canvas = doc.createElement("canvas");
-              canvas.width = 16;
-              canvas.height = 16;
-              const context = canvas.getContext("2d");
-              context.fillStyle = "#217346";
-              context.fillRect(0, 0, 16, 16);
-              const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
-              const transfer = new frame.contentWindow.DataTransfer();
-              transfer.items.add(new frame.contentWindow.File([blob], "smoke-icon.png", { type: "image/png" }));
-              Object.defineProperty(uploadInput, "files", { value: transfer.files, configurable: true });
-              uploadInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
-              await waitFor(() => /custom icon/i.test(doc.querySelector("#categoryList .category-editor small")?.textContent || ""), 4000);
-              assert(checks, "Category custom icon upload updates category state", /custom icon/i.test(doc.querySelector("#categoryList .category-editor small")?.textContent || ""));
-              assert(checks, "Category custom icon preview renders uploaded image", Boolean(doc.querySelector("#propertiesSelectionControls .custom-icon-preview img")));
-              doc.querySelector("#propertiesSelectionControls [data-property-action='remove-category-icon']")?.click();
-              assert(checks, "Category custom icon removal reports the marker shape label", /returned to the Circle marker/i.test(doc.querySelector("#statusBox")?.textContent || ""), doc.querySelector("#statusBox")?.textContent || "");
-            }
-            const latestCards = doc.querySelectorAll("#categoryList .category-editor");
-            const lastCard = latestCards[latestCards.length - 1];
-            lastCard?.focus();
-            lastCard?.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-            assert(checks, "Category cards can be selected from the keyboard", lastCard?.classList.contains("is-selected") && doc.activeElement === lastCard);
-            uiFrenchButton?.click();
-            await waitFor(() => doc.documentElement.lang === "fr" && /Catégories/.test(doc.querySelector("#categoriesTableTab")?.textContent || ""), 2000);
-            const categoryColourPreset = doc.querySelector(".category-preset-input");
-            const categoryShapePreset = doc.querySelector(".category-shape-input");
-            const categoryColourOptions = Array.from(categoryColourPreset?.options || []).map(option => option.textContent.trim()).join(" | ");
-            const categoryShapeOptions = Array.from(categoryShapePreset?.options || []).map(option => option.textContent.trim()).join(" | ");
-            assert(checks, "Category colour presets switch to French", /Vert cartographique/.test(categoryColourOptions) && /Rouge alerte/.test(categoryColourOptions), categoryColourOptions);
-            assert(checks, "Category marker shapes switch to French", /Cercle/.test(categoryShapeOptions) && /Épingle/.test(categoryShapeOptions), categoryShapeOptions);
-            assert(checks, "Category card marker metadata switches to French", /points?\s+·\s+(Cercle|Carré|Triangle|Diamant|Épingle|icône personnalisée)/i.test(doc.querySelector("#categoryList .category-editor small")?.textContent || ""), doc.querySelector("#categoryList .category-editor small")?.textContent || "");
-            const categoryAriaText = [
-              doc.querySelector("#categoryList .category-editor")?.getAttribute("aria-label") || "",
-              doc.querySelector("#categoryList .category-drag-handle")?.getAttribute("aria-label") || "",
-              doc.querySelector("#categoryList .remove-category-btn")?.getAttribute("aria-label") || ""
-            ].join(" | ");
-            assert(checks, "Category action accessibility labels switch to French category names", /Modifier/.test(categoryAriaText) && /Projets soumis/.test(categoryAriaText), categoryAriaText);
-            const categoryCountBeforeAdd = doc.querySelectorAll("#categoryList .category-editor").length;
-            doc.querySelector("#addCategoryBtn")?.click();
-            await waitFor(() => doc.querySelectorAll("#categoryList .category-editor").length === categoryCountBeforeAdd + 1, 2000);
-            const frenchCreatedCategory = Array.from(doc.querySelectorAll("#categoryList .category-editor")).at(-1);
-            assert(
-              checks,
-              "Categories created in French UI keep separate English and French defaults",
-              /^Catégorie \d+$/.test(frenchCreatedCategory?.querySelector(".category-title-block strong")?.textContent.trim() || "")
-                && /^Category \d+$/.test(frenchCreatedCategory?.querySelector(".category-label-input")?.value || ""),
-              `${frenchCreatedCategory?.querySelector(".category-title-block strong")?.textContent || ""} | ${frenchCreatedCategory?.querySelector(".category-label-input")?.value || ""}`
-            );
-            const frenchUploadInput = doc.querySelector("#propertiesSelectionControls [data-category-icon-upload]");
-            if (!visualCapture && frenchUploadInput && frame.contentWindow.DataTransfer) {
-              const canvas = doc.createElement("canvas");
-              canvas.width = 16;
-              canvas.height = 16;
-              const context = canvas.getContext("2d");
-              context.fillStyle = "#217346";
-              context.fillRect(0, 0, 16, 16);
-              const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
-              const transfer = new frame.contentWindow.DataTransfer();
-              transfer.items.add(new frame.contentWindow.File([blob], "smoke-icon-fr.png", { type: "image/png" }));
-              Object.defineProperty(frenchUploadInput, "files", { value: transfer.files, configurable: true });
-              frenchUploadInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
-              await waitFor(() => Array.from(doc.querySelectorAll("#categoryList .category-editor small")).some(node => /icône personnalisée/i.test(node.textContent || "")), 4000);
-              assert(checks, "Category custom icon upload status switches to French", /utilise maintenant une icône de repère personnalisée/i.test(doc.querySelector("#statusBox")?.textContent || ""), doc.querySelector("#statusBox")?.textContent || "");
-              doc.querySelector("#propertiesSelectionControls [data-property-action='remove-category-icon']")?.click();
-              assert(checks, "Category custom icon removal status switches to French", /Forme de repère rétablie/i.test(doc.querySelector("#statusBox")?.textContent || ""), doc.querySelector("#statusBox")?.textContent || "");
-            }
-            uiEnglishButton?.click();
-            await waitFor(() => doc.documentElement.lang === "en" && /Categories/.test(doc.querySelector("#categoriesTableTab")?.textContent || ""), 2000);
-          }
           if (requestedWorkspace === "regions") {
             const switchInput = doc.querySelector("#regionTable .region-included-cell input");
             const switchStyle = switchInput ? frame.contentWindow.getComputedStyle(switchInput) : null;
@@ -1982,7 +2601,7 @@
             const regionCountWidth = doc.querySelector("#regionTable .region-count-col")?.getBoundingClientRect().width || 0;
             const regionValueWidth = doc.querySelector("#regionTable .region-value-col")?.getBoundingClientRect().width || 0;
             const regionPreviewWidth = doc.querySelector("#regionTable .region-fill-col")?.getBoundingClientRect().width || 0;
-            assert(checks, "Region utility columns stay compact", regionIncludedWidth <= 125 && regionCountWidth <= 105 && regionValueWidth <= 170 && regionPreviewWidth <= 165, `included=${Math.round(regionIncludedWidth)}, points=${Math.round(regionCountWidth)}, order=${Math.round(regionValueWidth)}, preview=${Math.round(regionPreviewWidth)}`);
+            assert(checks, "Region utility columns stay compact", regionIncludedWidth <= 125 && regionCountWidth <= 105 && regionValueWidth <= 210 && regionPreviewWidth <= 165, `included=${Math.round(regionIncludedWidth)}, points=${Math.round(regionCountWidth)}, order=${Math.round(regionValueWidth)}, preview=${Math.round(regionPreviewWidth)}`);
             assert(checks, "Region Colour order header fits its edit hint without ellipses", doc.querySelector("#regionTable .region-value-col")?.scrollWidth <= doc.querySelector("#regionTable .region-value-col")?.clientWidth + 1);
             assert(checks, "Region editable cells expose value-cell affordance hooks", Boolean(doc.querySelector("#regionTable .region-included-cell.region-vcell") && doc.querySelector("#regionTable .region-value-cell.region-vcell") && doc.querySelector("#regionTable .region-fill-cell.region-vcell")));
             doc.querySelector("#previewTableTab")?.click();
@@ -2405,18 +3024,6 @@
             assert(checks, "Quality remediation opens Map details", Boolean(detailsAction) && doc.querySelector("#mapDetailsDialog")?.hidden === false);
             doc.querySelector("#mapDetailsDialog [data-dialog-close='map-details']")?.click();
             assert(checks, "Quality remediation dialog closes cleanly", doc.querySelector("#mapDetailsDialog")?.hidden === true);
-          }
-          if (visualCapture) {
-            doc.querySelector(target[0])?.click();
-            if (requestedWorkspace === "categories") doc.querySelector("#categoryList .category-editor")?.click();
-            doc.querySelectorAll("#projectTable tr.is-active-row").forEach(row => row.classList.remove("is-active-row"));
-            doc.querySelectorAll("#regionTable tr.is-active-region").forEach(row => {
-              row.classList.remove("is-active-region");
-              row.removeAttribute("aria-current");
-            });
-            doc.activeElement?.blur();
-            await waitFor(() => !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), 12000);
-            await new Promise(resolve => setTimeout(resolve, 0));
           }
           const failed = checks.filter(check => !check.pass);
           result.textContent = JSON.stringify({

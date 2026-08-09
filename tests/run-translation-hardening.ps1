@@ -11,7 +11,6 @@ $scenarios = @(
   @{ Name = "workspace-preview-empty"; Parameters = @{ Workspace = "preview" } },
   @{ Name = "workspace-preview-sample"; Parameters = @{ Workspace = "preview"; LoadSample = $true } },
   @{ Name = "workspace-projects"; Parameters = @{ Workspace = "projects"; LoadSample = $true } },
-  @{ Name = "workspace-categories"; Parameters = @{ Workspace = "categories"; LoadSample = $true } },
   @{ Name = "workspace-regions"; Parameters = @{ Workspace = "regions"; LoadSample = $true } },
   @{ Name = "workspace-translate"; Parameters = @{ Workspace = "translate"; LoadSample = $true } },
   @{ Name = "workspace-quality"; Parameters = @{ Workspace = "quality"; LoadSample = $true } },

@@ -3,13 +3,18 @@ param(
   [int]$MapScale = 50,
   [int]$LabelSize = 12,
   [int]$LabelChars = 24,
+  [ValidateSet("", "letter", "compact")]
+  [string]$BookSize = "",
+  [ValidateSet("", "full", "two-thirds", "half", "third", "quarter")]
+  [string]$ImageSize = "",
   [switch]$SkipScreenshot,
   [int]$MaxLabelOverlaps = 0,
   [int]$MaxFurnitureOverlaps = 0,
   [int]$MaxMapLabelOverlaps = 0,
   [int]$MaxLeaderCrossings = 0,
+  [int]$MaxLeaderLabelCrossings = 0,
   [int]$MaxWrongSideLabels = 0,
-  [int]$MinLabelFontSize = 12
+  [int]$MinLabelFontSize = 5
 )
 
 $ErrorActionPreference = "Stop"
@@ -22,7 +27,10 @@ $profileDir = Join-Path $runDir "browser-profile"
 $domPath = Join-Path $runDir "smoke-labels-dom.html"
 $errPath = Join-Path $runDir "smoke-labels-dom.err"
 $screenshotPath = Join-Path $runDir "smoke-labels.png"
-$smokeUrl = "file:///$($repoRoot.Replace('\', '/'))/tests/smoke-labels.html?scale=$MapScale&labelSize=$LabelSize&labelChars=$LabelChars"
+$queryParts = @("scale=$MapScale", "labelSize=$LabelSize", "labelChars=$LabelChars")
+if ($BookSize) { $queryParts += "bookSize=$([Uri]::EscapeDataString($BookSize))" }
+if ($ImageSize) { $queryParts += "imageSize=$([Uri]::EscapeDataString($ImageSize))" }
+$smokeUrl = "file:///$($repoRoot.Replace('\', '/'))/tests/smoke-labels.html?$($queryParts -join '&')"
 
 New-Item -ItemType Directory -Force -Path $runDir | Out-Null
 
@@ -81,6 +89,10 @@ $summary = [ordered]@{
   requestedMapScale = $MapScale
   requestedLabelSize = $LabelSize
   requestedLabelChars = $LabelChars
+  requestedBookSize = if ($BookSize) { $BookSize } else { $null }
+  requestedImageSize = if ($ImageSize) { $ImageSize } else { $null }
+  bookSize = $result.bookSize
+  imageSize = $result.imageSize
   mapScale = $result.mapScale
   renderedMapPreview = $result.renderedMapPreview
   previewActive = $result.previewActive
@@ -89,8 +101,20 @@ $summary = [ordered]@{
   labelOverlaps = $result.labelOverlaps
   furnitureOverlaps = $result.furnitureOverlaps
   mapLabelOverlaps = $result.mapLabelOverlaps
+  mapFillLabelOverlaps = $result.mapFillLabelOverlaps
+  mapFillSamplingSupported = $result.mapFillSamplingSupported
+  mapFillOccupiedSampleCount = $result.mapFillOccupiedSampleCount
+  mapBoundsLabelOverlaps = $result.mapBoundsLabelOverlaps
   leaderCrossings = $result.leaderCrossings
+  leaderLabelCrossings = $result.leaderLabelCrossings
   wrongSideLabels = $result.wrongSideLabelCount
+  mapBBoxWidthRatio = $result.mapBBoxMetrics.widthRatio
+  mapBBoxHeightRatio = $result.mapBBoxMetrics.heightRatio
+  mapBBoxAreaRatio = $result.mapBBoxMetrics.areaRatio
+  mapCenterXRatio = $result.mapBBoxMetrics.centerXRatio
+  mapCenterYRatio = $result.mapBBoxMetrics.centerYRatio
+  mapTransformPersisted = $result.mapTransformPersisted
+  mapTransformDelta = $result.mapTransformDelta
   maxLeaderLength = $result.maxLeaderLength
   averageLeaderLength = $result.averageLeaderLength
   leaderLengthLimit = $result.leaderLengthLimit
@@ -99,6 +123,7 @@ $summary = [ordered]@{
   minLabelGap = $result.minLabelGap
   labelsNearCanvasEdge = $result.labelsNearCanvasEdgeCount
   renderPerformance = $result.renderPerformance
+  autoFitDiagnostics = $result.autoFitDiagnostics
   screenshot = if ($SkipScreenshot) { $null } else { $screenshotPath }
   dom = $domPath
 }
@@ -113,18 +138,34 @@ if (-not $result.renderedMapPreview) {
   throw "Smoke test did not render the cloned map preview."
 }
 
+if (-not $result.mapTransformPersisted) {
+  throw "Auto-fit map scale or translation did not survive the next ordinary render."
+}
+
 $thresholdFailures = @()
+if ($BookSize -and $result.bookSize -ne $BookSize) {
+  $thresholdFailures += "bookSize=$($result.bookSize) != $BookSize"
+}
+if ($ImageSize -and $result.imageSize -ne $ImageSize) {
+  $thresholdFailures += "imageSize=$($result.imageSize) != $ImageSize"
+}
 if ($result.labelOverlaps -gt $MaxLabelOverlaps) {
   $thresholdFailures += "labelOverlaps=$($result.labelOverlaps) > $MaxLabelOverlaps"
 }
 if ($result.furnitureOverlaps -gt $MaxFurnitureOverlaps) {
   $thresholdFailures += "furnitureOverlaps=$($result.furnitureOverlaps) > $MaxFurnitureOverlaps"
 }
+if (-not $result.mapFillSamplingSupported) {
+  $thresholdFailures += "mapFillSamplingSupported=false"
+}
 if ($result.mapLabelOverlaps -gt $MaxMapLabelOverlaps) {
   $thresholdFailures += "mapLabelOverlaps=$($result.mapLabelOverlaps) > $MaxMapLabelOverlaps"
 }
 if ($result.leaderCrossings -gt $MaxLeaderCrossings) {
   $thresholdFailures += "leaderCrossings=$($result.leaderCrossings) > $MaxLeaderCrossings"
+}
+if ($result.leaderLabelCrossings -gt $MaxLeaderLabelCrossings) {
+  $thresholdFailures += "leaderLabelCrossings=$($result.leaderLabelCrossings) > $MaxLeaderLabelCrossings"
 }
 if ($result.wrongSideLabelCount -gt $MaxWrongSideLabels) {
   $thresholdFailures += "wrongSideLabels=$($result.wrongSideLabelCount) > $MaxWrongSideLabels"

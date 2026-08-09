@@ -187,7 +187,7 @@ test("compact label titles use the same 10 px screen size as rich-label titles",
   assert.equal(title.lineHeight, 12);
 });
 
-test("no-coordinate callouts use 10 px headings and 8 px item text on screen", () => {
+test("no-coordinate callouts preserve the headed compact-box rhythm on screen", () => {
   const api = loadApi();
   const sizes = api.getLabelTypographyRenderSizes(12, "web");
   const layout = api.getCalloutContentLayout([
@@ -203,9 +203,18 @@ test("no-coordinate callouts use 10 px headings and 8 px item text on screen", (
 
   assert.equal(layout.headingSize, 10);
   assert.equal(layout.nameSize, 8);
+  assert.equal(layout.headingText, "No-coordinate callouts");
+  assert.equal(layout.headingHeight, 22);
+  assert.equal(layout.padV, 16);
+  assert.equal(layout.headingRuleY, 38);
+  assert.equal(layout.rowGap, 6);
+  assert.equal(layout.markerX, 46);
+  assert.equal(layout.textX, 72);
+  assert.equal(layout.rightPad, 24);
   assert.equal(layout.lineH, 12);
   assert.equal(layout.rows[0].rowHeight >= layout.lineH, true);
   assert.equal(layout.rows[0].textY >= layout.rows[0].rowY, true);
+  assert.equal(layout.contentHeight, 80);
 });
 
 test("localized config fallbacks prefer the requested language", () => {
@@ -434,7 +443,7 @@ test("rich label image sizing stays proportional and expands label geometry", ()
   assert.ok(visualHeight >= imageBottom + fontSize);
 });
 
-test("project snapshots round-trip portable assets, styles, elbow settings, metadata, and layouts", () => {
+test("project snapshots round-trip portable assets, leader settings, metadata, and layouts", () => {
   const projectIo = loadProjectIo();
   const projectFile = require("../project-file.js");
   const richImageBlock = {
@@ -457,12 +466,16 @@ test("project snapshots round-trip portable assets, styles, elbow settings, meta
     en: {
       manualLabelPositions: { "row:row-elbow": { x: 101.5, y: 202.5, side: "right" } },
       manualBoxPositions: { legend: { x: 11, y: 12, width: 140, height: 80 } },
-      mapScale: 95
+      mapScale: 95,
+      mapOffsetX: 11.2,
+      mapOffsetY: 21
     },
     fr: {
       manualLabelPositions: { "row:row-elbow": { x: 303.5, y: 404.5, side: "left" } },
       manualBoxPositions: { callouts: { x: 21, y: 22, width: 180, height: 90 } },
-      mapScale: 105
+      mapScale: 105,
+      mapOffsetX: -8.5,
+      mapOffsetY: 14.25
     }
   };
 
@@ -472,6 +485,13 @@ test("project snapshots round-trip portable assets, styles, elbow settings, meta
     generator: { name: "Plotypus", version: "2026.07.14" },
     boundary: "canada",
     mapStyle: "goc-green",
+    settings: {
+      lineWidth: 2,
+      leaderColour: "#334455",
+      hideLeaderLines: true,
+      routeDenseLeaders: true,
+      showLineCasing: false
+    },
     categories: [{
       id: "infrastructure",
       label: "Infrastructure",
@@ -483,8 +503,8 @@ test("project snapshots round-trip portable assets, styles, elbow settings, meta
       customIcon
     }],
     rows: [
-      { rowId: "row-elbow", name: "Elbow", type: "infrastructure", elbowLeader: true, labelStyle: "rich", labelBorder: true, content: [richImageBlock] },
-      { rowId: "row-default", name: "Default routing", type: "infrastructure", elbowLeader: false }
+      { rowId: "row-elbow", name: "Elbow", type: "infrastructure", hideLine: true, elbowLeader: true, leaderLineWidth: 4.5, leaderLineColour: "#7b2d8e", labelStyle: "rich", labelBorder: true, content: [richImageBlock] },
+      { rowId: "row-default", name: "Default routing", type: "infrastructure", hideLine: false, elbowLeader: false, leaderLineWidth: "", leaderLineColour: "" }
     ],
     languageLayouts,
     manualLabelPositions: { "row:legacy": { x: 1, y: 2, side: "top" } },
@@ -507,11 +527,24 @@ test("project snapshots round-trip portable assets, styles, elbow settings, meta
   assert.equal(new Date(restored.savedAt).toISOString(), restored.savedAt);
   assert.equal(restored.categories[0].stroke, "#abcdef");
   assert.deepEqual(restored.categories[0].customIcon, customIcon);
+  assert.deepEqual(restored.settings, {
+    lineWidth: 2,
+    leaderColour: "#334455",
+    hideLeaderLines: true,
+    routeDenseLeaders: true,
+    showLineCasing: false
+  });
+  assert.equal(restored.rows[0].hideLine, true);
   assert.equal(restored.rows[0].elbowLeader, true);
+  assert.equal(restored.rows[0].leaderLineWidth, 4.5);
+  assert.equal(restored.rows[0].leaderLineColour, "#7b2d8e");
   assert.equal(restored.rows[0].labelBorder, true);
   assert.deepEqual(restored.rows[0].content, [richImageBlock]);
   assert.equal(Object.hasOwn(restored.rows[1], "elbowLeader"), true);
   assert.equal(restored.rows[1].elbowLeader, false);
+  assert.equal(restored.rows[1].hideLine, false);
+  assert.equal(restored.rows[1].leaderLineWidth, "");
+  assert.equal(restored.rows[1].leaderLineColour, "");
   assert.deepEqual(restored.languageLayouts, languageLayouts);
   assert.deepEqual(restored.manualLabelPositions, { "row:legacy": { x: 1, y: 2, side: "top" } });
   assert.deepEqual(restored.manualBoxPositions, { legend: { x: 3, y: 4 } });
@@ -543,6 +576,22 @@ test("segment crossing and segment-rectangle intersection catch leader conflicts
   assert.equal(api.segmentsCross(diagonalA, diagonalB, parallelC, parallelD), false);
   assert.equal(api.segmentIntersectsRect(diagonalA, diagonalB, rect), true);
   assert.equal(api.segmentIntersectsRect({ x: 0, y: 20 }, { x: 10, y: 20 }, rect), false);
+});
+
+test("map quality counts a leader crossing another label", () => {
+  const api = loadApi();
+  const placed = [
+    makeLabel({ rowId: "row-line", name: "Line owner", x: 20, y: 100, labelX: 250, labelY: 100 }),
+    makeLabel({ rowId: "row-label", name: "Crossed label", x: 120, y: 150, labelX: 120, labelY: 100, hideLine: true })
+  ];
+  const analyzer = api.createLayoutQualityAnalyzer(placed, makeSettings(), [], [], makeMapBounds());
+  analyzer.step();
+  const report = analyzer.getReport();
+
+  assert.equal(report.leaderLabelCrossings, 1);
+  assert.equal(report.crossings, 1);
+  assert.ok(report.qualityTargets.some(target => target.type === "crossing" && target.rowId === "row-line"));
+  assert.ok(report.qualityTargets.some(target => target.type === "crossing" && target.rowId === "row-label"));
 });
 
 test("quality reports recompute from current moved label positions", () => {

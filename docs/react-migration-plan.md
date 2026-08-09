@@ -351,7 +351,7 @@ Acceptance criteria:
 - Display controls disable/enable correctly, such as Compact boxes.
 - No duplicate bottom guidance text returns.
 
-## Phase 9: Migrate Map Baselayer and Categories Views
+## Phase 9: Migrate Map Baselayer and Legend Properties
 
 Move the remaining data-management tables/cards.
 
@@ -363,9 +363,9 @@ Map Baselayer:
 - Region colour preview and hex display.
 - Immediate UI updates before background render.
 
-Categories:
+Legend Properties:
 
-- Category cards.
+- Compact legend-item list inside Map Document Properties.
 - Custom marker icon upload.
 - Marker styling controls.
 - Reorder/remove behavior.
@@ -374,6 +374,7 @@ Acceptance criteria:
 
 - Region preset state remains visible after applying.
 - Region inclusion/colour order updates immediately.
+- The Legend does not return as a peer workspace tab.
 - Custom icons remain PNG/WebP-only and project-file portable.
 
 ## Phase 10: Migrate Translate and Map Quality

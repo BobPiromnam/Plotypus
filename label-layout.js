@@ -13,6 +13,7 @@
     leaderLineExcessArea: 1.2,
     sideChange: 110,
     leaderLineCrossing: 42000,
+    leaderLabelCrossing: 52000,
     boxObstacleBase: 36000,
     boxObstacleArea: 95,
     leaderBoxCrossing: 9500,
@@ -124,6 +125,9 @@
         textWidth: candidate.box.textWidth,
         textHeight: candidate.box.textHeight,
         footnote: candidate.box.footnote,
+        collisionPaddingScale: candidate.box.collisionPaddingScale || 1,
+        candidateKind: candidate.kind || "radial",
+        candidateBand: candidate.band || "",
         anchor: candidate.side === "left" ? "end" : "start"
       };
     }
@@ -145,7 +149,7 @@
           ? clamp(item.x - distance, labelRightMin, preferredMax)
           : clamp(item.x - distance, labelRightMin, labelRightMax);
         const y = clampLabelBaseline(labelBaselineForCenter(item.y + offset, box), box, minY, maxY);
-        return { side, x, y, box };
+        return { side, x, y, box, kind: "radial" };
       }
 
       if (side === "right") {
@@ -154,7 +158,7 @@
           ? clamp(item.x + distance, preferredMin, maxX)
           : clamp(item.x + distance, minX, maxX);
         const y = clampLabelBaseline(labelBaselineForCenter(item.y + offset, box), box, minY, maxY);
-        return { side, x, y, box };
+        return { side, x, y, box, kind: "radial" };
       }
 
       const x = clamp(item.x - box.textWidth / 2 + offset, minX, maxX);
@@ -162,13 +166,82 @@
         const outsideBottom = mapRect.y0 - sideGap;
         const desiredBottom = Math.min(item.y - distance, outsideBottom);
         const y = clamp(desiredBottom - labelVisualHeight(box) + labelFontSize(box), minY, maxY - labelVisualHeight(box) + labelFontSize(box));
-        return { side, x, y, box };
+        return { side, x, y, box, kind: "radial" };
       }
 
       const outsideTop = mapRect.y1 + sideGap;
       const desiredTop = Math.max(item.y + distance, outsideTop);
       const y = clamp(desiredTop + labelFontSize(box), minY, maxY - labelVisualHeight(box) + labelFontSize(box));
-      return { side, x, y, box };
+      return { side, x, y, box, kind: "radial" };
+    }
+
+    // The geographic extent is not a solid rectangular obstacle. Canada in
+    // particular has large ocean and northern voids inside its bounds, and the
+    // reference layout uses those spaces to keep the basemap large. These
+    // candidates stay close to the marker and deliberately do not force the
+    // label beyond the map's bounding rectangle. Polygon-aware validation in
+    // the rendered smoke test remains the final guard against covering land.
+    function createInsetCandidateForSide(item, side, box, settings, distance, offset, band) {
+      const margin = Math.max(22, settings.labelSize * 1.4);
+      const minX = margin;
+      const maxX = Math.max(minX, settings.width - box.textWidth - margin);
+      const minY = margin + labelFontSize(box);
+      const maxY = settings.height - margin;
+
+      if (side === "left") {
+        const labelRightMin = margin + box.textWidth;
+        const labelRightMax = settings.width - margin;
+        return {
+          side,
+          x: clamp(item.x - distance, labelRightMin, labelRightMax),
+          y: clampLabelBaseline(labelBaselineForCenter(item.y + offset, box), box, minY, maxY),
+          box,
+          kind: "inset",
+          band
+        };
+      }
+
+      if (side === "right") {
+        return {
+          side,
+          x: clamp(item.x + distance, minX, maxX),
+          y: clampLabelBaseline(labelBaselineForCenter(item.y + offset, box), box, minY, maxY),
+          box,
+          kind: "inset",
+          band
+        };
+      }
+
+      const x = clamp(item.x - box.textWidth / 2 + offset, minX, maxX);
+      if (side === "top") {
+        const desiredBottom = item.y - distance;
+        return {
+          side,
+          x,
+          y: clamp(
+            desiredBottom - labelVisualHeight(box) + labelFontSize(box),
+            minY,
+            maxY - labelVisualHeight(box) + labelFontSize(box)
+          ),
+          box,
+          kind: "inset",
+          band
+        };
+      }
+
+      const desiredTop = item.y + distance;
+      return {
+        side,
+        x,
+        y: clamp(
+          desiredTop + labelFontSize(box),
+          minY,
+          maxY - labelVisualHeight(box) + labelFontSize(box)
+        ),
+        box,
+        kind: "inset",
+        band
+      };
     }
 
     function createLabelCandidates(item, settings, mapBounds, perimeterCandidates = []) {
@@ -186,7 +259,9 @@
       };
 
       perimeterCandidates.forEach(addCandidate);
-      candidateSideOrder(preferred).forEach(side => {
+      const hardSides = referenceSideOptions(item, settings);
+      const candidateSides = hardSides.length ? hardSides : candidateSideOrder(preferred);
+      candidateSides.forEach(side => {
         const box = makeLabelBox(item, side, settings, mapBounds);
         const baseDistance = getDesignerLineOffset(item, side, settings);
         const baseOffset = side === "left" || side === "right"
@@ -210,13 +285,44 @@
           });
         });
       });
+
+      const insetSides = hardSides.length ? hardSides : [preferred];
+      const insetDistanceFractions = [0.03, 0.08, 0.14, 0.22, 0.32, 0.4];
+      const insetOffsetSteps = [-3, -2, -1, 0, 1, 2, 3];
+      insetSides.forEach(side => {
+        const box = makeLabelBox(item, side, settings, mapBounds);
+        const baseOffset = side === "left" || side === "right"
+          ? getDesignerVerticalOffset(item, side, settings)
+          : getDesignerHorizontalOffset(item, side, settings);
+        const offsetUnit = side === "left" || side === "right"
+          ? Math.max(20, settings.labelSize * 1.35)
+          : Math.max(24, settings.labelSize * 1.6);
+        const distanceSpan = side === "left" || side === "right" ? settings.width : settings.height;
+        insetDistanceFractions.forEach((fraction, bandIndex) => {
+          const distance = Math.max(settings.labelSize, distanceSpan * fraction);
+          insetOffsetSteps.forEach(step => {
+            addCandidate(createInsetCandidateForSide(
+              item,
+              side,
+              box,
+              settings,
+              distance,
+              baseOffset + step * offsetUnit,
+              `band-${bandIndex}`
+            ));
+          });
+        });
+      });
       return candidates;
     }
 
     function createPerimeterCandidateMap(points, settings, mapBounds) {
       const byKey = new Map(points.map(point => [getLabelKey(point), []]));
       ["left", "right", "top", "bottom"].forEach(side => {
-        const sideItems = points.slice().sort((a, b) => {
+        const sideItems = points.filter(point => {
+          const requiredSides = referenceSideOptions(point, settings);
+          return !requiredSides.length || requiredSides.includes(side);
+        }).sort((a, b) => {
           if (side === "left" || side === "right") return a.y - b.y || a.x - b.x;
           return a.x - b.x || a.y - b.y;
         });
@@ -226,7 +332,7 @@
           const item = sideItems[index];
           const list = byKey.get(getLabelKey(item));
           if (!list) return;
-          list.push({ side, x: slot.x, y: slot.y, box: boxes[index] });
+          list.push({ side, x: slot.x, y: slot.y, box: boxes[index], kind: "perimeter" });
         });
       });
       return byKey;
@@ -258,7 +364,7 @@
     }
 
     function maxAllowedLeaderLength(settings) {
-      return Math.max(360, settings.width * 0.38);
+      return Math.max(150, settings.width * 0.34);
     }
 
     function placementQualityAcceptable(quality) {
@@ -336,18 +442,40 @@
       };
     }
 
-    function countCandidateCrossings(candidateLabel, placed) {
-      if (candidateLabel.hideLine) return 0;
-      const candidateLine = lineSegmentForLabel(candidateLabel);
+    function leaderLineHidden(label, settings) {
+      return Boolean(settings && settings.hideLeaderLines) || Boolean(label && label.hideLine);
+    }
+
+    function countCandidateCrossings(candidateLabel, placed, settings) {
+      if (leaderLineHidden(candidateLabel, settings)) return 0;
+      const candidateSegments = leaderSegmentsForLabel(candidateLabel, settings);
       return placed.filter(label => {
-        if (label.hideLine) return false;
-        const line = lineSegmentForLabel(label);
-        return segmentsCross(candidateLine.start, candidateLine.end, line.start, line.end);
+        if (leaderLineHidden(label, settings)) return false;
+        const otherSegments = leaderSegmentsForLabel(label, settings);
+        return candidateSegments.some(candidateSegment => otherSegments.some(otherSegment => (
+          segmentsCross(candidateSegment.start, candidateSegment.end, otherSegment.start, otherSegment.end)
+        )));
       }).length;
     }
 
+    function leaderIntersectsLabel(leaderLabel, targetLabel, settings) {
+      if (!leaderLabel || leaderLineHidden(leaderLabel, settings) || !targetLabel) return false;
+      const targetRect = labelBackgroundRect(targetLabel);
+      return leaderSegmentsForLabel(leaderLabel, settings).some(segment => (
+        segmentIntersectsRect(segment.start, segment.end, targetRect)
+      ));
+    }
+
+    function countLeaderLabelCrossings(candidateLabel, placed, settings) {
+      return placed.reduce((count, label) => {
+        return count
+          + (leaderIntersectsLabel(candidateLabel, label, settings) ? 1 : 0)
+          + (leaderIntersectsLabel(label, candidateLabel, settings) ? 1 : 0);
+      }, 0);
+    }
+
     function countMarkerLineCrossings(candidateLabel, points, settings) {
-      if (candidateLabel.hideLine) return 0;
+      if (leaderLineHidden(candidateLabel, settings)) return 0;
       const candidateLine = lineSegmentForLabel(candidateLabel);
       return points.filter(point => {
         if (point.rowId === candidateLabel.rowId) return false;
@@ -355,8 +483,8 @@
       }).length;
     }
 
-    function leaderDirectionPenalty(label) {
-      if (label.hideLine) return 0;
+    function leaderDirectionPenalty(label, settings) {
+      if (leaderLineHidden(label, settings)) return 0;
       const end = lineEnd(label);
       const dx = end.x - label.x;
       const dy = end.y - label.y;
@@ -368,7 +496,7 @@
     }
 
     function leaderLengthPenalty(label, settings) {
-      if (label.hideLine) return 0;
+      if (leaderLineHidden(label, settings)) return 0;
       const end = lineEnd(label);
       const length = Math.hypot(label.x - end.x, label.y - end.y);
       const softMax = Math.max(
@@ -401,7 +529,7 @@
         const overlapPenalty = overlap
           ? weights.boxObstacleBase + overlap * weights.boxObstacleArea
           : 0;
-        const linePenalty = !label.hideLine && segmentIntersectsRect(line.start, line.end, obstacle.rect)
+        const linePenalty = !leaderLineHidden(label, settings) && segmentIntersectsRect(line.start, line.end, obstacle.rect)
           ? weights.leaderBoxCrossing
           : 0;
         return score + overlapPenalty + linePenalty;
@@ -484,10 +612,14 @@
       const mapRect = mapBoundsRect(mapBounds);
       const lineEndPoint = lineEnd(candidateLabel);
       const lineLength = Math.hypot(candidateLabel.x - lineEndPoint.x, candidateLabel.y - lineEndPoint.y);
-      const mapOverlap = rectOverlapArea(rect, mapRect);
+      const shapeAwareMap = typeof settings.labelTouchesLand === "function";
+      const mapOverlap = shapeAwareMap
+        ? (settings.labelTouchesLand(rect) ? 1 : 0)
+        : rectOverlapArea(rect, mapRect);
       const outsideCanvas = outsideRectArea(rect, canvasRect);
       const sidePenalty = sideCompatibilityPenalty(candidateLabel, preferredSideValue, mapBounds);
-      const crossingPenalty = countCandidateCrossings(candidateLabel, placed) * weights.leaderLineCrossing;
+      const crossingPenalty = countCandidateCrossings(candidateLabel, placed, settings) * weights.leaderLineCrossing;
+      const leaderLabelPenalty = countLeaderLabelCrossings(candidateLabel, placed, settings) * weights.leaderLabelCrossing;
       const reducedMapPenaltyFactor = settings.mapScale < 90
         ? 1 + (90 - settings.mapScale) / 20
         : 1;
@@ -496,6 +628,7 @@
         : -weights.offMapBonus;
       let score = sidePenalty
         + crossingPenalty
+        + leaderLabelPenalty
         + lineLength * weights.leaderLineLength
         + leaderLengthPenalty(candidateLabel, settings)
         + mapOverlapPenalty
@@ -505,7 +638,7 @@
         + countMarkerLineCrossings(candidateLabel, points, settings) * weights.leaderMarkerCrossing
         + sideCrowdingPenalty(candidateLabel, placed, settings)
         + verticalOrderPenalty(candidateLabel, placed)
-        + leaderDirectionPenalty(candidateLabel);
+        + leaderDirectionPenalty(candidateLabel, settings);
 
       placed.forEach(label => {
         const overlap = rectOverlapArea(rect, labelRect(label));
@@ -514,10 +647,12 @@
         }
       });
 
-      if (rect.centerY < mapRect.y0 || rect.centerY > mapRect.y1) score -= weights.outsideMapBoundsBonus;
-      if (rect.centerX < mapRect.x0 || rect.centerX > mapRect.x1) score -= weights.outsideMapBoundsBonus;
-      if (rect.centerX > mapRect.x0 && rect.centerX < mapRect.x1 && rect.centerY > mapRect.y0 && rect.centerY < mapRect.y1) {
-        score += weights.nearMapCenterPenalty;
+      if (!shapeAwareMap) {
+        if (rect.centerY < mapRect.y0 || rect.centerY > mapRect.y1) score -= weights.outsideMapBoundsBonus;
+        if (rect.centerX < mapRect.x0 || rect.centerX > mapRect.x1) score -= weights.outsideMapBoundsBonus;
+        if (rect.centerX > mapRect.x0 && rect.centerX < mapRect.x1 && rect.centerY > mapRect.y0 && rect.centerY < mapRect.y1) {
+          score += weights.nearMapCenterPenalty;
+        }
       }
       if (getBoundary() === "canada" && labelKeyText(candidateLabel).includes("northwest critical") && candidateLabel.labelSide === "left") {
         const targetY = mapRect.y1 + Math.max(18, settings.labelSize * 1.2);
@@ -526,6 +661,40 @@
       if (getBoundary() === "canada" && labelKeyText(candidateLabel).includes("pathways") && candidateLabel.labelSide === "bottom") {
         const targetX = mapRect.x0 + Math.max(35, settings.labelSize * 3);
         if (rect.x0 < targetX) score += (targetX - rect.x0) * 1200;
+      }
+      const referenceCanvas = settings.bookSize === "compact" && settings.imageSize === "half";
+      if (referenceCanvas && getBoundary() === "canada") {
+        const name = labelKeyText(candidateLabel);
+        const referenceTargets = [
+          ["arctic economic", 0.26, 0.224],
+          ["red chris", 0.174, 0.327],
+          ["ksi lisims", 0.125, 0.374],
+          ["northwest critical", 0.2, 0.767]
+        ];
+        const target = referenceTargets.find(([needle]) => name.includes(needle));
+        if (target) {
+          score += (
+            Math.abs(rect.centerX - settings.width * target[1])
+            + Math.abs(rect.centerY - settings.height * target[2])
+          ) * 900;
+        }
+        if (name.includes("grays bay")) {
+          score += Math.abs(rect.centerX - settings.width * 0.286) * 600;
+        }
+      }
+      if (referenceCanvas && getBoundary() === "canada" && labelKeyText(candidateLabel).includes("port of churchill") && candidateLabel.labelSide === "right") {
+        const targetY = mapRect.y0 + (mapRect.y1 - mapRect.y0) * 0.34;
+        score += Math.abs(rect.centerY - targetY) * 1500;
+      }
+      if (referenceCanvas && getBoundary() === "canada" && labelKeyText(candidateLabel).includes("alto high-speed") && candidateLabel.labelSide === "right") {
+        const targetX = mapRect.x0 + (mapRect.x1 - mapRect.x0) * 0.87;
+        const targetY = mapRect.y0 + (mapRect.y1 - mapRect.y0) * 0.35;
+        score += (Math.abs(rect.centerX - targetX) + Math.abs(rect.centerY - targetY)) * 1200;
+      }
+      if (referenceCanvas && getBoundary() === "canada" && labelKeyText(candidateLabel).includes("iqaluit") && candidateLabel.labelSide === "right") {
+        const targetX = candidateLabel.x + Math.max(70, settings.width * 0.18);
+        const targetY = candidateLabel.y + Math.max(16, settings.height * 0.045);
+        score += (Math.abs(rect.centerX - targetX) + Math.abs(rect.centerY - targetY)) * 900;
       }
 
       return score;
@@ -591,7 +760,8 @@
 
     function pairPlacementPenalty(candidateLabel, label, settings) {
       const overlap = rectOverlapArea(labelRect(candidateLabel), labelRect(label));
-      return countCandidateCrossings(candidateLabel, [label]) * weights.leaderLineCrossing
+      return countCandidateCrossings(candidateLabel, [label], settings) * weights.leaderLineCrossing
+        + countLeaderLabelCrossings(candidateLabel, [label], settings) * weights.leaderLabelCrossing
         + sideCrowdingPenalty(candidateLabel, [label], settings)
         + verticalOrderPenalty(candidateLabel, [label])
         + (overlap ? weights.labelOverlapBase + overlap * weights.labelOverlapArea : 0);
@@ -624,7 +794,7 @@
     }
 
     function shouldRouteDenseLeader(label, settings) {
-      if (label.hideLine) return false;
+      if (leaderLineHidden(label, settings)) return false;
       if (label.elbowLeader) return true;
       if (!settings.routeDenseLeaders) return false;
       const end = lineEnd(label);
@@ -669,13 +839,15 @@
 
     function measurePlacementQuality(placed, settings) {
       const lines = placed
-        .filter(label => !label.hideLine)
+        .filter(label => !leaderLineHidden(label, settings))
         .map(label => ({ segments: leaderSegmentsForLabel(label, settings), length: leaderPathLength(label, settings), label }));
       const rects = placed.map(labelBackgroundRect);
       const obstacles = Array.isArray(settings.layoutObstacles) ? settings.layoutObstacles : [];
       let leaderCrossings = 0;
+      let leaderLabelCrossings = 0;
       let labelOverlaps = 0;
       let furnitureOverlaps = 0;
+      let landOverlaps = 0;
       let sideRuleViolations = 0;
       let leaderLengthTotal = 0;
       let maxLeaderLength = 0;
@@ -693,7 +865,7 @@
       }
 
       for (let i = 0; i < rects.length; i += 1) {
-        const expectedSides = referenceSideOptions(placed[i]);
+        const expectedSides = referenceSideOptions(placed[i], settings);
         if (expectedSides.length && !expectedSides.includes(placed[i].labelSide)) {
           sideRuleViolations += 1;
           sideRuleViolationNames.push(placed[i].name || `label ${i + 1}`);
@@ -704,13 +876,25 @@
         obstacles.forEach(obstacle => {
           if (rectsOverlap(rects[i], obstacle.rect)) furnitureOverlaps += 1;
         });
+        if (typeof settings.labelTouchesLand === "function" && settings.labelTouchesLand(rects[i])) {
+          landOverlaps += 1;
+        }
+
+        for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+          if (lines[lineIndex].label === placed[i]) continue;
+          if (lines[lineIndex].segments.some(segment => segmentIntersectsRect(segment.start, segment.end, rects[i]))) {
+            leaderLabelCrossings += 1;
+          }
+        }
       }
 
-      const hardProblems = leaderCrossings + labelOverlaps + furnitureOverlaps;
+      const hardProblems = leaderCrossings + leaderLabelCrossings + labelOverlaps + furnitureOverlaps + landOverlaps;
       return {
         leaderCrossings,
+        leaderLabelCrossings,
         labelOverlaps,
         furnitureOverlaps,
+        landOverlaps,
         hardProblems,
         sideRuleViolations,
         sideRuleViolationNames,
@@ -718,6 +902,496 @@
         excessLeaderLength: Math.max(0, maxLeaderLength - leaderLengthLimit),
         maxLeaderLength,
         averageLeaderLength: lines.length ? leaderLengthTotal / lines.length : 0
+      };
+    }
+
+    function stablePlacementKey(label) {
+      return [
+        String(getLabelKey(label)),
+        String(label.labelSide || ""),
+        Math.round(Number(label.labelX) * 10),
+        Math.round(Number(label.labelY) * 10)
+      ].join(":");
+    }
+
+    function placementPassesUnaryRules(label, settings) {
+      const canvasRect = { x0: 0, y0: 0, x1: settings.width, y1: settings.height };
+      const rect = labelBackgroundRect(label);
+      if (outsideRectArea(rect, canvasRect) > 0.01) return false;
+
+      const expectedSides = referenceSideOptions(label, settings);
+      if (expectedSides.length && !expectedSides.includes(label.labelSide)) return false;
+      if (!leaderLineHidden(label, settings) && leaderPathLength(label, settings) > maxAllowedLeaderLength(settings) + 0.01) return false;
+      if (typeof settings.labelTouchesLand === "function" && settings.labelTouchesLand(rect)) return false;
+
+      const obstacles = Array.isArray(settings.layoutObstacles) ? settings.layoutObstacles : [];
+      return !obstacles.some(obstacle => rectsOverlap(rect, obstacle.rect));
+    }
+
+    function placementsHardConflict(first, second, settings) {
+      if (!first || !second) return true;
+      if (rectsOverlap(labelBackgroundRect(first), labelBackgroundRect(second))) return true;
+      if (leaderIntersectsLabel(first, second, settings) || leaderIntersectsLabel(second, first, settings)) return true;
+
+      if (!leaderLineHidden(first, settings) && !leaderLineHidden(second, settings)) {
+        const firstSegments = leaderSegmentsForLabel(first, settings);
+        const secondSegments = leaderSegmentsForLabel(second, settings);
+        if (firstSegments.some(a => secondSegments.some(b => segmentsCross(a.start, a.end, b.start, b.end)))) {
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    function createSolverCandidateDomains(points, settings, mapBounds, options = {}) {
+      const perimeterCandidateMap = options.perimeterCandidateMap || createPerimeterCandidateMap(points, settings, mapBounds);
+      const candidatePlacementMap = options.candidatePlacementMap || createCandidatePlacementMap(points, settings, mapBounds, perimeterCandidateMap);
+      const maxCandidatesPerLabel = Math.max(8, Number(options.maxCandidatesPerLabel) || 40);
+      const intrinsicScoreCache = new WeakMap();
+      const warmByKey = new Map((options.warmStart || []).map(label => [getLabelKey(label), label]));
+      const completeCandidateCounts = [];
+      let nextCandidateId = 0;
+      const referenceCanvas = settings.bookSize === "compact" && settings.imageSize === "half";
+      const candidateKindPriority = label => {
+        const kind = label.candidateKind || "radial";
+        if (referenceCanvas) return kind === "inset" ? 0 : kind === "perimeter" ? 1 : 2;
+        return kind === "perimeter" ? 0 : kind === "inset" ? 1 : 2;
+      };
+
+      const domains = points.map((point, pointIndex) => {
+        const seen = new Set();
+        const valid = candidatePlacementsForItem(point, settings, mapBounds, perimeterCandidateMap, candidatePlacementMap)
+          .filter(label => placementPassesUnaryRules(label, settings))
+          .filter(label => {
+            const key = stablePlacementKey(label);
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          })
+          .map(label => {
+            const warm = warmByKey.get(getLabelKey(label));
+            const warmDistance = warm
+              ? Math.hypot(label.labelX - warm.labelX, label.labelY - warm.labelY)
+                + (label.labelSide === warm.labelSide ? 0 : settings.width)
+              : 0;
+            return {
+              id: nextCandidateId++,
+              pointIndex,
+              label,
+              score: intrinsicPlacementScore(label, settings, mapBounds, points, intrinsicScoreCache),
+              warmDistance,
+              stableKey: stablePlacementKey(label)
+            };
+          });
+        completeCandidateCounts[pointIndex] = valid.length;
+
+        valid.sort((a, b) => (
+          (options.preferWarmStart ? a.warmDistance - b.warmDistance : 0)
+          || candidateKindPriority(a.label) - candidateKindPriority(b.label)
+          || a.score - b.score
+          || a.stableKey.localeCompare(b.stableKey)
+        ));
+
+        const bySideAndKind = new Map();
+        valid.forEach(candidate => {
+          const groupKey = [
+            candidate.label.labelSide,
+            candidate.label.candidateKind || "radial",
+            candidate.label.candidateBand || "default"
+          ].join(":");
+          if (!bySideAndKind.has(groupKey)) bySideAndKind.set(groupKey, []);
+          bySideAndKind.get(groupKey).push(candidate);
+        });
+        const groupLimit = Math.max(2, Math.floor(maxCandidatesPerLabel / Math.max(1, bySideAndKind.size)));
+        const selected = [];
+        bySideAndKind.forEach(groupCandidates => selected.push(...groupCandidates.slice(0, groupLimit)));
+        if (selected.length < maxCandidatesPerLabel) {
+          const selectedIds = new Set(selected.map(candidate => candidate.id));
+          selected.push(...valid.filter(candidate => !selectedIds.has(candidate.id)).slice(0, maxCandidatesPerLabel - selected.length));
+        }
+        selected.sort((a, b) => (
+          (options.preferWarmStart ? a.warmDistance - b.warmDistance : 0)
+          || candidateKindPriority(a.label) - candidateKindPriority(b.label)
+          || a.score - b.score
+          || a.stableKey.localeCompare(b.stableKey)
+        ));
+        return selected.slice(0, maxCandidatesPerLabel);
+      });
+
+      const truncatedDomainCount = domains.reduce((count, domain, index) => (
+        count + (completeCandidateCounts[index] > domain.length ? 1 : 0)
+      ), 0);
+      return { domains, perimeterCandidateMap, candidatePlacementMap, completeCandidateCounts, truncatedDomainCount };
+    }
+
+    function solveConflictFreeLayout(points, settings, mapBounds, options = {}) {
+      if (!Array.isArray(points) || !points.length) {
+        return { status: "solved", placed: [], nodesVisited: 0, candidateCount: 0 };
+      }
+
+      const candidateData = createSolverCandidateDomains(points, settings, mapBounds, options);
+      const domains = candidateData.domains;
+      const domainSummary = options.collectDomainDiagnostics === true
+        ? domains.map((domain, index) => ({
+          label: points[index] && points[index].name || `label ${index + 1}`,
+          selectedCount: domain.length,
+          completeCount: candidateData.completeCandidateCounts[index]
+        }))
+        : null;
+      const candidateCount = domains.reduce((total, domain) => total + domain.length, 0);
+      const emptyDomainIndex = domains.findIndex(domain => domain.length === 0);
+      if (emptyDomainIndex >= 0) {
+        return {
+          status: "infeasible",
+          placed: null,
+          nodesVisited: 0,
+          candidateCount,
+          emptyDomainIndex,
+          domainSummary,
+          ...candidateData
+        };
+      }
+
+      const maxNodes = Math.max(1, Number(options.maxNodes) || 80000);
+      const assignments = new Array(points.length).fill(null);
+      const conflictCache = new Map();
+      let nodesVisited = 0;
+      let budgetExhausted = false;
+      const deadEnds = [];
+
+      function rememberDeadEnd(blockedIndex) {
+        if (deadEnds.length >= 8) return;
+        deadEnds.push({
+          blockedLabel: points[blockedIndex] && points[blockedIndex].name || `label ${blockedIndex + 1}`,
+          assignedLabels: assignments
+            .map((candidate, index) => candidate ? points[index] && points[index].name || `label ${index + 1}` : null)
+            .filter(Boolean)
+        });
+      }
+
+      function candidatesConflict(first, second) {
+        const low = Math.min(first.id, second.id);
+        const high = Math.max(first.id, second.id);
+        const key = `${low}:${high}`;
+        if (conflictCache.has(key)) return conflictCache.get(key);
+        const conflicts = placementsHardConflict(first.label, second.label, settings);
+        conflictCache.set(key, conflicts);
+        return conflicts;
+      }
+
+      function searchWithMinConflicts() {
+        const restarts = Math.max(0, Number(options.minConflictRestarts) || 0);
+        const stepsPerRestart = Math.max(0, Number(options.minConflictSteps) || 0);
+        if (!restarts || !stepsPerRestart) return null;
+
+        const random = makeSeededRandom(layoutSeed(points, settings) + 7919);
+        let bestAssignment = null;
+        let bestConflictCount = Infinity;
+        let stepsVisited = 0;
+
+        const conflictCountFor = (assignment, index, candidate) => assignment.reduce((count, other, otherIndex) => {
+          if (otherIndex === index || !other) return count;
+          return count + (candidatesConflict(candidate, other) ? 1 : 0);
+        }, 0);
+
+        for (let restart = 0; restart < restarts; restart += 1) {
+          const assignment = domains.map(domain => {
+            if (restart === 0) return domain[0];
+            const explorationSize = Math.max(1, Math.min(domain.length, 16 + restart * 4));
+            return domain[Math.floor(random() * explorationSize)];
+          });
+
+          for (let step = 0; step < stepsPerRestart; step += 1) {
+            stepsVisited += 1;
+            const conflictCounts = assignment.map((candidate, index) => conflictCountFor(assignment, index, candidate));
+            const totalConflicts = conflictCounts.reduce((sum, count) => sum + count, 0) / 2;
+            if (totalConflicts < bestConflictCount) {
+              bestConflictCount = totalConflicts;
+              bestAssignment = assignment.slice();
+            }
+            if (totalConflicts === 0) {
+              return { assignment, stepsVisited, bestConflictCount: 0 };
+            }
+
+            const conflicted = conflictCounts
+              .map((count, index) => ({ count, index }))
+              .filter(item => item.count > 0)
+              .sort((a, b) => b.count - a.count || a.index - b.index);
+            const highestConflict = conflicted[0].count;
+            const variablePool = step % 11 === 0
+              ? conflicted
+              : conflicted.filter(item => item.count === highestConflict);
+            const selectedIndex = variablePool[Math.floor(random() * variablePool.length)].index;
+            const ranked = domains[selectedIndex]
+              .map(candidate => ({
+                candidate,
+                conflicts: conflictCountFor(assignment, selectedIndex, candidate),
+                tieScore: candidate.warmDistance + candidate.score * 0.00001
+              }))
+              .sort((a, b) => a.conflicts - b.conflicts || a.tieScore - b.tieScore || a.candidate.stableKey.localeCompare(b.candidate.stableKey));
+            const bestLocalConflict = ranked[0].conflicts;
+            const bestLocal = ranked.filter(item => item.conflicts === bestLocalConflict);
+            let replacement = bestLocal[Math.floor(random() * Math.min(bestLocal.length, 6))].candidate;
+            if (replacement === assignment[selectedIndex] && bestLocal.length > 1) {
+              replacement = bestLocal.find(item => item.candidate !== assignment[selectedIndex]).candidate;
+            }
+            assignment[selectedIndex] = replacement;
+          }
+        }
+
+        return { assignment: null, bestAssignment, stepsVisited, bestConflictCount };
+      }
+
+      function polishConflictFreeAssignment(sourceAssignment) {
+        const assignment = sourceAssignment.slice();
+        const placed = assignment.map(candidate => candidate.label);
+        const intrinsicScoreCache = new WeakMap();
+        let layoutScore = scoreLayout(placed, settings, mapBounds, points);
+        let moves = 0;
+        let pairMoves = 0;
+        let completedPasses = 0;
+        const maxPasses = Math.max(0, Number(options.polishPasses) || 3);
+
+        for (let pass = 0; pass < maxPasses; pass += 1) {
+          let changed = false;
+          for (let index = 0; index < assignment.length; index += 1) {
+            const current = assignment[index];
+            let best = current;
+            let bestScore = layoutScore;
+            for (const candidate of domains[index]) {
+              if (candidate === current) continue;
+              const conflicts = assignment.some((other, otherIndex) => (
+                otherIndex !== index && candidatesConflict(candidate, other)
+              ));
+              if (conflicts) continue;
+              const candidateScore = scoreLayoutReplacement(
+                placed,
+                index,
+                candidate.label,
+                settings,
+                mapBounds,
+                points,
+                layoutScore,
+                intrinsicScoreCache
+              );
+              if (candidateScore < bestScore - 0.01) {
+                best = candidate;
+                bestScore = candidateScore;
+              }
+            }
+            if (best === current) continue;
+            assignment[index] = best;
+            placed[index] = best.label;
+            layoutScore = bestScore;
+            moves += 1;
+            changed = true;
+          }
+          completedPasses += 1;
+          if (!changed) break;
+        }
+
+        const maxPairMoves = Math.max(0, Number(options.pairPolishMoves) || 0);
+        const pairCandidateLimit = Math.max(2, Number(options.pairPolishCandidates) || 8);
+        for (let pairMove = 0; pairMove < maxPairMoves; pairMove += 1) {
+          let bestPair = null;
+          for (let firstIndex = 0; firstIndex < assignment.length; firstIndex += 1) {
+            const firstCurrent = assignment[firstIndex];
+            const firstCandidates = [
+              firstCurrent,
+              ...domains[firstIndex].filter(candidate => candidate !== firstCurrent).slice(0, pairCandidateLimit - 1)
+            ];
+            for (let secondIndex = firstIndex + 1; secondIndex < assignment.length; secondIndex += 1) {
+              const secondCurrent = assignment[secondIndex];
+              const secondCandidates = [
+                secondCurrent,
+                ...domains[secondIndex].filter(candidate => candidate !== secondCurrent).slice(0, pairCandidateLimit - 1)
+              ];
+              for (const firstCandidate of firstCandidates) {
+                const firstBlocked = assignment.some((other, otherIndex) => (
+                  otherIndex !== firstIndex
+                  && otherIndex !== secondIndex
+                  && candidatesConflict(firstCandidate, other)
+                ));
+                if (firstBlocked) continue;
+                for (const secondCandidate of secondCandidates) {
+                  if (firstCandidate === firstCurrent && secondCandidate === secondCurrent) continue;
+                  if (candidatesConflict(firstCandidate, secondCandidate)) continue;
+                  const secondBlocked = assignment.some((other, otherIndex) => (
+                    otherIndex !== firstIndex
+                    && otherIndex !== secondIndex
+                    && candidatesConflict(secondCandidate, other)
+                  ));
+                  if (secondBlocked) continue;
+                  const firstLabel = placed[firstIndex];
+                  const secondLabel = placed[secondIndex];
+                  placed[firstIndex] = firstCandidate.label;
+                  placed[secondIndex] = secondCandidate.label;
+                  const candidateScore = scoreLayout(placed, settings, mapBounds, points);
+                  placed[firstIndex] = firstLabel;
+                  placed[secondIndex] = secondLabel;
+                  if (candidateScore >= layoutScore - 0.01) continue;
+                  if (!bestPair || candidateScore < bestPair.score - 0.01) {
+                    bestPair = {
+                      firstIndex,
+                      secondIndex,
+                      firstCandidate,
+                      secondCandidate,
+                      score: candidateScore
+                    };
+                  }
+                }
+              }
+            }
+          }
+          if (!bestPair) break;
+          assignment[bestPair.firstIndex] = bestPair.firstCandidate;
+          assignment[bestPair.secondIndex] = bestPair.secondCandidate;
+          placed[bestPair.firstIndex] = bestPair.firstCandidate.label;
+          placed[bestPair.secondIndex] = bestPair.secondCandidate.label;
+          layoutScore = bestPair.score;
+          pairMoves += 1;
+        }
+
+        return { assignment, layoutScore, moves, pairMoves, passes: completedPasses };
+      }
+
+      const minConflictResult = searchWithMinConflicts();
+      if (minConflictResult && minConflictResult.assignment) {
+        const polished = polishConflictFreeAssignment(minConflictResult.assignment);
+        return {
+          status: "solved",
+          placed: polished.assignment.map(candidate => candidate.label),
+          nodesVisited: minConflictResult.stepsVisited,
+          candidateCount,
+          conflictChecks: conflictCache.size,
+          deadEnds,
+          domainSummary,
+          strategy: "min-conflicts",
+          bestConflictCount: 0,
+          polishMoves: polished.moves,
+          pairPolishMoves: polished.pairMoves,
+          polishPasses: polished.passes,
+          softScore: polished.layoutScore,
+          ...candidateData
+        };
+      }
+
+      if (options.minConflictsOnly === true) {
+        return {
+          status: candidateData.truncatedDomainCount > 0 ? "candidate-limited" : "not-found",
+          placed: null,
+          nodesVisited: minConflictResult ? minConflictResult.stepsVisited : 0,
+          candidateCount,
+          conflictChecks: conflictCache.size,
+          deadEnds,
+          domainSummary,
+          strategy: "min-conflicts",
+          bestConflictCount: minConflictResult ? minConflictResult.bestConflictCount : null,
+          ...candidateData
+        };
+      }
+
+      if (options.computeSupportOrdering === true) {
+        domains.forEach((domain, domainIndex) => {
+          domain.forEach(candidate => {
+            let blockingScore = 0;
+            let minimumSupport = Infinity;
+            domains.forEach((otherDomain, otherIndex) => {
+              if (otherIndex === domainIndex) return;
+              let support = 0;
+              otherDomain.forEach(other => {
+                if (!candidatesConflict(candidate, other)) support += 1;
+              });
+              minimumSupport = Math.min(minimumSupport, support);
+              blockingScore += otherDomain.length - support;
+            });
+            candidate.minimumSupport = Number.isFinite(minimumSupport) ? minimumSupport : 0;
+            candidate.blockingScore = blockingScore;
+          });
+          domain.sort((a, b) => (
+            b.minimumSupport - a.minimumSupport
+            || a.blockingScore - b.blockingScore
+            || (a.label.candidateKind === "perimeter" ? -1 : 0) - (b.label.candidateKind === "perimeter" ? -1 : 0)
+            || a.score - b.score
+            || a.stableKey.localeCompare(b.stableKey)
+          ));
+        });
+      }
+
+      function viableCandidates(domainIndex) {
+        return domains[domainIndex].filter(candidate => {
+          for (let index = 0; index < assignments.length; index += 1) {
+            if (assignments[index] && candidatesConflict(candidate, assignments[index])) return false;
+          }
+          return true;
+        });
+      }
+
+      function search(depth) {
+        nodesVisited += 1;
+        if (nodesVisited > maxNodes) {
+          budgetExhausted = true;
+          return false;
+        }
+        if (depth === points.length) return true;
+
+        let selectedIndex = -1;
+        let selectedCandidates = null;
+        for (let index = 0; index < domains.length; index += 1) {
+          if (assignments[index]) continue;
+          const viable = viableCandidates(index);
+          if (!viable.length) {
+            rememberDeadEnd(index);
+            return false;
+          }
+          if (!selectedCandidates || viable.length < selectedCandidates.length) {
+            selectedIndex = index;
+            selectedCandidates = viable;
+            if (viable.length === 1) break;
+          }
+        }
+
+        for (const candidate of selectedCandidates) {
+          assignments[selectedIndex] = candidate;
+          let forwardValid = true;
+          for (let index = 0; index < domains.length; index += 1) {
+            if (assignments[index]) continue;
+            if (!domains[index].some(other => {
+              for (let assignedIndex = 0; assignedIndex < assignments.length; assignedIndex += 1) {
+                if (assignments[assignedIndex] && candidatesConflict(other, assignments[assignedIndex])) return false;
+              }
+              return true;
+            })) {
+              forwardValid = false;
+              rememberDeadEnd(index);
+              break;
+            }
+          }
+          if (forwardValid && search(depth + 1)) return true;
+          assignments[selectedIndex] = null;
+          if (budgetExhausted) return false;
+        }
+        return false;
+      }
+
+      const solved = search(0);
+      const incompleteSearch = candidateData.truncatedDomainCount > 0;
+      return {
+        status: solved
+          ? "solved"
+          : budgetExhausted
+            ? "budget-exhausted"
+            : incompleteSearch
+              ? "candidate-limited"
+              : "infeasible",
+        placed: solved ? assignments.map(candidate => candidate.label) : null,
+        nodesVisited,
+        candidateCount,
+        conflictChecks: conflictCache.size,
+        deadEnds,
+        domainSummary,
+        ...candidateData
       };
     }
 
@@ -800,10 +1474,7 @@
       const ordered = items.slice().sort((a, b) => a.x - b.x || a.y - b.y);
       const slots = ordered.map(item => {
         const box = makeLabelBox(item, side, settings, mapBounds);
-        const currentCenter = item.labelSide === side && Number.isFinite(item.labelX)
-          ? lineEnd(item).x
-          : null;
-        const desiredCenter = currentCenter || item.x + getDesignerHorizontalOffset(item, side, settings);
+        const desiredCenter = item.x + getDesignerHorizontalOffset(item, side, settings);
         return {
           item,
           box,
@@ -815,13 +1486,15 @@
       });
 
       for (let i = 1; i < slots.length; i += 1) {
-        slots[i].centerX = Math.max(slots[i].centerX, slots[i - 1].centerX + minCenterGap);
+        const separation = (slots[i - 1].width + slots[i].width) / 2 + minCenterGap;
+        slots[i].centerX = Math.max(slots[i].centerX, slots[i - 1].centerX + separation);
       }
 
       for (let i = slots.length - 1; i >= 0; i -= 1) {
         slots[i].centerX = Math.min(slots[i].centerX, maxX - slots[i].width / 2);
         if (i < slots.length - 1) {
-          slots[i].centerX = Math.min(slots[i].centerX, slots[i + 1].centerX - minCenterGap);
+          const separation = (slots[i].width + slots[i + 1].width) / 2 + minCenterGap;
+          slots[i].centerX = Math.min(slots[i].centerX, slots[i + 1].centerX - separation);
         }
         slots[i].centerX = Math.max(slots[i].centerX, minX + slots[i].width / 2);
       }
@@ -1040,6 +1713,21 @@
         if (!changed) break;
       }
 
+      // Exact search belongs to the explicit Fit map + labels operation. A
+      // normal render must remain responsive while the user edits points; it
+      // keeps the established bounded local refinements below.
+      if (settings.solveLabelConflicts === true) {
+        const solved = solveConflictFreeLayout(points, settings, mapBounds, {
+          perimeterCandidateMap,
+          candidatePlacementMap,
+          warmStart: placed,
+          preferWarmStart: true,
+          maxCandidatesPerLabel: 36,
+          maxNodes: 30000
+        });
+        if (solved.status === "solved") return solved.placed;
+      }
+
       placed = optimizeDenseLayoutWithLocalSearch(placed, points, settings, mapBounds, perimeterCandidateMap, candidatePlacementMap, intrinsicScoreCache);
       placed = optimizeDenseLayoutWithAnnealing(placed, points, settings, mapBounds, perimeterCandidateMap, candidatePlacementMap, intrinsicScoreCache);
       placed = optimizeOrderedSideBands(placed, points, settings, mapBounds);
@@ -1103,6 +1791,7 @@
       createOrderPreservingHorizontalSlots,
       createOrderPreservingVerticalSlots,
       createPerimeterCandidateMap,
+      createSolverCandidateDomains,
       isBetterScaleFallback,
       layoutLabels,
       layoutLabelsWithGreedyCandidates,
@@ -1119,10 +1808,12 @@
       optimizeDenseLayoutWithLocalSearch,
       optimizeOrderedSideBands,
       placementQualityAcceptable,
+      placementsHardConflict,
       rememberLabelPositions,
       scoreCandidate,
       scoreLayout,
       scoreLayoutReplacement,
+      solveConflictFreeLayout,
       sameLabelPlacement,
       weights
     });

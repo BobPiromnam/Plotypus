@@ -107,7 +107,7 @@
     const key = String(label).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
     const content = `<span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>`;
     if (!action) {
-      return `<span class="workspace-summary-chip" data-summary-key="${escapeHtml(key)}" data-summary-state="${escapeHtml(state)}" style="cursor: default;">${content}</span>`;
+      return `<span class="workspace-summary-chip is-static" data-summary-key="${escapeHtml(key)}" data-summary-state="${escapeHtml(state)}">${content}</span>`;
     }
     const destinationText = destination || label;
     return `

@@ -4,7 +4,7 @@ param(
   [int]$VirtualTimeBudgetMs = 7000,
   [int]$ScreenshotDelayMs = 12000,
   [int]$BrowserTimeoutMs = 0,
-  [ValidateSet("", "preview", "projects", "categories", "regions", "translate", "quality")]
+  [ValidateSet("", "preview", "projects", "regions", "translate", "quality")]
   [string]$Workspace = "",
   [ValidateSet("", "startup", "map-details", "csv-map", "point-catalog", "point-selection", "confirmation", "shortcuts", "export-menu", "add-data-menu", "project-load-error")]
   [string]$Dialog = "",
@@ -151,7 +151,7 @@ try {
   }
 
   $dom = Get-Content -Raw -Path $domPath
-  $match = [regex]::Match($dom, '<pre id="result">(?<json>.*?)</pre>', 'Singleline')
+  $match = [regex]::Match($dom, '<pre\b[^>]*\bid="result"[^>]*>(?<json>.*?)</pre>', 'Singleline')
   if (-not $match.Success) { throw "Shell smoke result JSON was not found in $domPath" }
   $jsonText = [System.Net.WebUtility]::HtmlDecode($match.Groups["json"].Value)
   $result = $jsonText | ConvertFrom-Json

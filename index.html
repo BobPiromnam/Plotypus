@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="style.css?v=20260723-document-bleed" />
   <link id="themeStylesheet" rel="stylesheet" href="themes/goc-green.css?v=20260612-map-only" />
 </head>
-<body data-properties-side="left">
+<body data-properties-side="right">
   <header class="app-header">
     <div class="app-ribbon command-bar" aria-label="Application actions" data-i18n-aria-label="aria.applicationActions">
       <div class="app-brand" aria-label="Application identity" data-i18n-aria-label="aria.applicationIdentity">
@@ -82,7 +82,6 @@
       <nav class="table-tabs workspace-nav" role="tablist" aria-label="Plotypus workspaces" data-i18n-aria-label="aria.workspaces">
         <button id="previewTableTab" class="table-tab is-active" type="button" role="tab" tabindex="0" aria-selected="true" aria-controls="previewTablePane" data-icon="map" title="Map" data-i18n="tab.map" data-i18n-title="tab.map">Map</button>
         <button id="projectTableTab" class="table-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="projectTablePane" data-icon="table" title="Project points" data-i18n="tab.projects" data-i18n-title="tab.projects">Project points</button>
-        <button id="categoriesTableTab" class="table-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="categoriesTablePane" data-icon="layers" title="Legend" data-i18n="tab.categories" data-i18n-title="tab.categories">Legend</button>
         <button id="regionTableTab" class="table-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="regionTablePane" data-icon="regions" title="Map baselayer" data-i18n="tab.regions" data-i18n-title="tab.regions">Map baselayer</button>
         <button id="translateTableTab" class="table-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="translateTablePane" data-icon="languages" title="Translate" data-i18n="tab.translate" data-i18n-title="tab.translate">Translate</button>
         <button id="qualityTableTab" class="table-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="qualityTablePane" data-icon="shield-check" title="Map quality" data-i18n="tab.quality" data-i18n-title="tab.quality">Map quality</button>
@@ -120,6 +119,10 @@
         <input id="mapScaleInput" type="number" min="45" max="115" step="1" value="100" />
         <input id="markerSizeInput" type="number" min="4" max="20" step="1" value="4" />
         <input id="lineWidthInput" type="number" min="1" max="8" step="0.5" value="2" />
+        <input id="leaderColourInput" type="color" value="#333333" />
+        <input id="hideLeaderLinesInput" type="checkbox" />
+        <input id="showLineCasingInput" type="checkbox" checked />
+        <input id="routeDenseLeadersInput" type="checkbox" />
         <input id="labelCharsInput" type="number" min="12" max="42" step="1" value="24" />
       <button id="resetRegionColoursBtn" type="button" data-i18n="region.action.resetColours">Reset colours</button>
     </div>
@@ -165,6 +168,7 @@
             <div class="project-menu-wrap">
               <button id="projectAddMenuBtn" class="project-toolbar-menu-button" type="button" data-icon="plus" aria-haspopup="menu" aria-expanded="false" aria-controls="projectAddMenu"><span data-i18n="toolbar.add.data">Add data</span></button>
               <div id="projectAddMenu" class="project-toolbar-menu" role="menu" aria-labelledby="projectAddMenuBtn" hidden>
+                <button id="addProjectTypeBtn" class="project-toolbar-menu-item" type="button" role="menuitem" data-icon="legend" title="Add a project type and legend item" data-i18n-title="toolbar.add.projectType.title"><span data-i18n="toolbar.add.projectType">New type</span></button>
                 <button id="addRowBtn" class="project-toolbar-menu-item" type="button" role="menuitem" data-icon="plus"><span data-i18n="toolbar.add.blankRow">Blank row</span></button>
                 <button id="addPointsBtn" class="project-toolbar-menu-item" type="button" role="menuitem" data-icon="map-pin"><span data-i18n="toolbar.add.fromSource">From source</span></button>
                 <button id="ribbonImportCsvBtn" class="project-toolbar-menu-item" type="button" role="menuitem" data-icon="upload"><span data-i18n="toolbar.project.importCsv">Import CSV</span></button>
@@ -206,19 +210,6 @@
             <tbody></tbody>
           </table>
         </div>
-        </div>
-        <div id="categoriesTablePane" class="table-pane categories-table-pane" role="tabpanel" aria-labelledby="categoriesTableTab" data-workspace="categories">
-          <header class="workspace-intro categories-workspace-intro">
-            <div class="workspace-intro-copy">
-              <span class="workspace-eyebrow" data-i18n="categories.intro.eyebrow">Legend structure</span>
-              <h2 data-i18n="categories.intro.title">Categories &amp; markers</h2>
-              <p data-i18n="categories.intro.body">Define the legend before importing or editing rows. Marker shape &amp; colour belong to map output and never restyle the app chrome.</p>
-            </div>
-            <div class="workspace-intro-actions">
-              <button id="addCategoryBtn" type="button" data-icon="plus" data-i18n="categories.action.add">Add legend marker</button>
-            </div>
-          </header>
-          <div id="categoryList" class="category-workspace-grid"></div>
         </div>
         <div id="regionTablePane" class="table-pane region-management-panel" role="tabpanel" aria-labelledby="regionTableTab" data-workspace="regions">
           <header class="workspace-intro">
@@ -454,6 +445,16 @@
           <p id="propertiesSubtitle" data-i18n="properties.subtitle.document">Map display &amp; interaction</p>
           <p id="propertiesDescription" class="properties-description" data-i18n="properties.hint.document">Click the map, a label, legend, or callout for object-specific controls.</p>
         </div>
+        <section id="legendPropertiesSection" class="properties-section legend-properties-section" data-props-context="preview-legend" data-property-section="legend" aria-labelledby="legendPropertiesTitle">
+          <div class="legend-properties-heading">
+            <div>
+              <h3 id="legendPropertiesTitle" data-i18n="settings.legend">Legend</h3>
+              <p data-i18n="categories.intro.body">Define the marker styles used by project points and the exported legend.</p>
+            </div>
+            <button id="addCategoryBtn" class="legend-add-button" type="button" data-icon="plus" data-property-action="add-legend-item" data-i18n="categories.action.addShort">Add item</button>
+          </div>
+          <ul id="categoryList" class="legend-item-list" data-legend-list aria-label="Legend items" data-i18n-aria-label="aria.legendItems"></ul>
+        </section>
         <div id="propertiesSelectionControls" class="properties-selection-controls"></div>
 
         <div id="previewDisplayPropertiesSection" class="properties-section" data-props-context="preview-display">
@@ -473,16 +474,6 @@
               <input id="compactFurnitureInput" type="checkbox" checked />
               <span class="setting-icon" data-setting-icon="box" aria-hidden="true"></span>
               <span data-i18n="settings.compactBoxes">Compact boxes</span>
-            </label>
-            <label class="toolbar-check">
-              <input id="showLineCasingInput" type="checkbox" checked />
-              <span class="setting-icon" data-setting-icon="line-casing" aria-hidden="true"></span>
-              <span data-i18n="settings.leaderBorder">Leader border</span>
-            </label>
-            <label class="toolbar-check">
-              <input id="routeDenseLeadersInput" type="checkbox" />
-              <span class="setting-icon" data-setting-icon="elbow" aria-hidden="true"></span>
-              <span data-i18n="settings.elbowLeaders">Elbow leaders</span>
             </label>
           </div>
         </div>
@@ -509,11 +500,11 @@
             <span id="propertiesPositionLabel" data-i18n="settings.propertiesPosition">Properties panel position</span>
             <div class="properties-position-options" role="radiogroup" aria-labelledby="propertiesPositionLabel">
               <label>
-                <input type="radio" name="propertiesPanelSide" value="left" data-properties-side-input checked />
+                <input type="radio" name="propertiesPanelSide" value="left" data-properties-side-input />
                 <span data-i18n="settings.position.left">Left</span>
               </label>
               <label>
-                <input type="radio" name="propertiesPanelSide" value="right" data-properties-side-input />
+                <input type="radio" name="propertiesPanelSide" value="right" data-properties-side-input checked />
                 <span data-i18n="settings.position.right">Right</span>
               </label>
             </div>

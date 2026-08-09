@@ -113,6 +113,68 @@
       return { x0: box.x, y0: box.y, x1: box.x + box.width, y1: box.y + box.height };
     }
 
+    function mapBoundsMetrics(mapRect, canvasRect) {
+      if (!mapRect || !canvasRect) return null;
+      const canvasWidth = Math.max(1, canvasRect.x1 - canvasRect.x0);
+      const canvasHeight = Math.max(1, canvasRect.y1 - canvasRect.y0);
+      const mapWidth = Math.max(0, mapRect.x1 - mapRect.x0);
+      const mapHeight = Math.max(0, mapRect.y1 - mapRect.y0);
+      return {
+        widthRatio: Number((mapWidth / canvasWidth).toFixed(4)),
+        heightRatio: Number((mapHeight / canvasHeight).toFixed(4)),
+        areaRatio: Number(((mapWidth * mapHeight) / (canvasWidth * canvasHeight)).toFixed(4)),
+        centerXRatio: Number((((mapRect.x0 + mapRect.x1) / 2 - canvasRect.x0) / canvasWidth).toFixed(4)),
+        centerYRatio: Number((((mapRect.y0 + mapRect.y1) / 2 - canvasRect.y0) / canvasHeight).toFixed(4))
+      };
+    }
+
+    function sampleMapFillOverlap(rect, mapRect, mapPaths) {
+      const supported = mapPaths.length > 0 && mapPaths.every(path => typeof path.isPointInFill === "function");
+      if (!supported || !mapRect || !rectsOverlap(rect, mapRect)) {
+        return { supported, sampleCount: 0, filledSampleCount: 0, fillRatio: 0 };
+      }
+
+      const clipped = {
+        x0: Math.max(rect.x0, mapRect.x0),
+        y0: Math.max(rect.y0, mapRect.y0),
+        x1: Math.min(rect.x1, mapRect.x1),
+        y1: Math.min(rect.y1, mapRect.y1)
+      };
+      const width = Math.max(0, clipped.x1 - clipped.x0);
+      const height = Math.max(0, clipped.y1 - clipped.y0);
+      if (!width || !height) return { supported, sampleCount: 0, filledSampleCount: 0, fillRatio: 0 };
+
+      const columns = Math.max(2, Math.ceil(width / 3));
+      const rows = Math.max(2, Math.ceil(height / 3));
+      const Point = mapPaths[0].ownerDocument.defaultView.DOMPoint;
+      let sampleCount = 0;
+      let filledSampleCount = 0;
+      for (let row = 0; row < rows; row += 1) {
+        const y = clipped.y0 + height * (row + 0.5) / rows;
+        for (let column = 0; column < columns; column += 1) {
+          const x = clipped.x0 + width * (column + 0.5) / columns;
+          const point = new Point(x, y);
+          sampleCount += 1;
+          if (mapPaths.some(path => {
+            try {
+              return path.isPointInFill(point);
+            } catch (_error) {
+              return false;
+            }
+          })) {
+            filledSampleCount += 1;
+          }
+        }
+      }
+
+      return {
+        supported,
+        sampleCount,
+        filledSampleCount,
+        fillRatio: sampleCount ? Number((filledSampleCount / sampleCount).toFixed(4)) : 0
+      };
+    }
+
     function leaderSegment(path) {
       const length = path.getTotalLength();
       const sampleCount = Math.max(1, Math.ceil(length / 8));
@@ -149,6 +211,39 @@
       return a.segments.some(segmentA => b.segments.some(segmentB => {
         return segmentsCross(segmentA.start, segmentA.end, segmentB.start, segmentB.end);
       }));
+    }
+
+    function segmentIntersectsRect(segment, rect, inset = 0.75) {
+      const safeInsetX = Math.min(inset, Math.max(0, (rect.x1 - rect.x0) / 4));
+      const safeInsetY = Math.min(inset, Math.max(0, (rect.y1 - rect.y0) / 4));
+      const bounds = {
+        x0: rect.x0 + safeInsetX,
+        y0: rect.y0 + safeInsetY,
+        x1: rect.x1 - safeInsetX,
+        y1: rect.y1 - safeInsetY
+      };
+      const dx = segment.end.x - segment.start.x;
+      const dy = segment.end.y - segment.start.y;
+      let minimum = 0;
+      let maximum = 1;
+      const edges = [
+        [-dx, segment.start.x - bounds.x0],
+        [dx, bounds.x1 - segment.start.x],
+        [-dy, segment.start.y - bounds.y0],
+        [dy, bounds.y1 - segment.start.y]
+      ];
+
+      for (const [direction, distance] of edges) {
+        if (Math.abs(direction) < 1e-9) {
+          if (distance < 0) return false;
+          continue;
+        }
+        const ratio = distance / direction;
+        if (direction < 0) minimum = Math.max(minimum, ratio);
+        else maximum = Math.min(maximum, ratio);
+        if (minimum > maximum) return false;
+      }
+      return maximum >= 0 && minimum <= 1;
     }
 
     function normalizeLabelName(name) {
@@ -229,6 +324,24 @@
           doc.querySelector("#ribbonLoadSampleBtn")?.click();
           await waitFor(() => doc.querySelectorAll("#projectTable tbody tr").length > 0, 12000, "sample rows");
           await waitFor(() => renderSampleCount(doc) > samplesBeforeLoad, 12000, "sample render telemetry");
+          const bookSizeInput = doc.querySelector("#bookSizeInput");
+          if (bookSizeInput && params.has("bookSize")) {
+            const requestedBookSize = params.get("bookSize");
+            if (!Array.from(bookSizeInput.options).some(option => option.value === requestedBookSize)) {
+              throw new Error(`Unknown book-size preset: ${requestedBookSize}`);
+            }
+            bookSizeInput.value = requestedBookSize;
+            bookSizeInput.dispatchEvent(new doc.defaultView.Event("change", { bubbles: true }));
+          }
+          const imageSizeInput = doc.querySelector("#imageSizeInput");
+          if (imageSizeInput && params.has("imageSize")) {
+            const requestedImageSize = params.get("imageSize");
+            if (!Array.from(imageSizeInput.options).some(option => option.value === requestedImageSize)) {
+              throw new Error(`Unknown image-size preset for ${bookSizeInput?.value || "the selected book"}: ${requestedImageSize}`);
+            }
+            imageSizeInput.value = requestedImageSize;
+            imageSizeInput.dispatchEvent(new doc.defaultView.Event("change", { bubbles: true }));
+          }
           const mapScaleInput = doc.querySelector("#mapScaleInput");
           if (mapScaleInput) {
             mapScaleInput.value = params.get("scale") || "60";
@@ -251,6 +364,20 @@
             return snapshot?.samples.length > samplesBeforeAutoPlace && snapshot.latestByKind.autoPlace;
           }, 60000, "auto-place render telemetry");
           await waitFor(() => doc.querySelectorAll(".map-label").length > 0, 12000, "rendered labels");
+          const autoPlacedMapBox = doc.querySelector(".map-layer")?.getBBox();
+          const samplesBeforePersistenceRender = renderSampleCount(doc);
+          labelCharsInput?.dispatchEvent(new doc.defaultView.Event("change", { bubbles: true }));
+          await waitFor(() => renderSampleCount(doc) > samplesBeforePersistenceRender, 12000, "post-auto-place render");
+          await waitFor(() => doc.querySelectorAll(".map-label").length > 0, 12000, "post-auto-place labels");
+          const persistedMapBox = doc.querySelector(".map-layer")?.getBBox();
+          const mapTransformDelta = autoPlacedMapBox && persistedMapBox ? {
+            x: Math.abs(autoPlacedMapBox.x - persistedMapBox.x),
+            y: Math.abs(autoPlacedMapBox.y - persistedMapBox.y),
+            width: Math.abs(autoPlacedMapBox.width - persistedMapBox.width),
+            height: Math.abs(autoPlacedMapBox.height - persistedMapBox.height)
+          } : null;
+          const mapTransformPersisted = Boolean(mapTransformDelta)
+            && Object.values(mapTransformDelta).every(value => value <= 0.1);
 
           const measure = () => {
             try {
@@ -261,23 +388,28 @@
             label.getAttribute("data-label-name") || label.textContent.replace(/\s+/g, " ").trim()
           ]));
           const labelFontSizes = mapLabels.flatMap(label => Array.from(label.querySelectorAll(".label-line"))
-            .map(line => Number(line.getAttribute("font-size")) || 0)
+            .map(line => Number.parseFloat(doc.defaultView.getComputedStyle(line).fontSize) || 0)
             .filter(Boolean));
           const rects = labelBackgrounds.map(getRect);
           const labelRects = labelBackgrounds.map((node, index) => ({
+            layoutId: node.getAttribute("data-layout-id") || "",
             name: labelTexts.get(node.getAttribute("data-layout-id")) || `label ${index}`,
             side: node.getAttribute("data-label-side") || "",
             rect: rects[index]
           }));
           const furnitureRects = Array.from(doc.querySelectorAll(".legend-box, .callout-box")).map(getTranslatedRect);
           const mapLayer = doc.querySelector(".map-layer");
+          const mapPaths = Array.from(doc.querySelectorAll(".map-layer .province"));
           const mapRect = mapLayer ? svgBoxToRect(mapLayer.getBBox()) : null;
           const viewBox = doc.querySelector("#mapSvg")?.viewBox?.baseVal;
           const canvasRect = viewBox
             ? { x0: viewBox.x, y0: viewBox.y, x1: viewBox.x + viewBox.width, y1: viewBox.y + viewBox.height }
             : { x0: 0, y0: 0, x1: 1000, y1: 620 };
+          const mapBBoxMetrics = mapBoundsMetrics(mapRect, canvasRect);
+          const mapFillSamplingSupported = mapPaths.length > 0 && mapPaths.every(path => typeof path.isPointInFill === "function");
           const leaderSegments = Array.from(doc.querySelectorAll(".leader-line")).map(path => ({
             ...leaderSegment(path),
+            layoutId: path.getAttribute("data-layout-id") || "",
             name: path.getAttribute("data-label-name") || labelTexts.get(path.getAttribute("data-layout-id")) || path.getAttribute("data-layout-id") || "leader",
             side: path.getAttribute("data-label-side") || ""
           }));
@@ -285,12 +417,19 @@
           let furnitureOverlaps = 0;
           let mapLabelOverlaps = 0;
           let mapLabelOverlapArea = 0;
+          let mapBoundsLabelOverlaps = 0;
+          let mapBoundsLabelOverlapArea = 0;
+          let mapFillSampleCount = 0;
+          let mapFillOccupiedSampleCount = 0;
           const labelOverlapPairs = [];
           const furnitureOverlapNames = [];
           const mapLabelOverlapNames = [];
+          const mapLabelOverlapDetails = [];
+          const mapBoundsLabelOverlapNames = [];
           const labelsNearCanvasEdge = [];
           let minLabelGap = Number.POSITIVE_INFINITY;
           for (let i = 0; i < rects.length; i += 1) {
+            const labelName = labelTexts.get(labelBackgrounds[i].getAttribute("data-layout-id")) || `label ${i}`;
             for (let j = i + 1; j < rects.length; j += 1) {
               if (rectsOverlap(rects[i], rects[j])) {
                 overlaps += 1;
@@ -302,32 +441,58 @@
               minLabelGap = Math.min(minLabelGap, rectGap(rects[i], rects[j]));
             }
             if (edgeDistance(rects[i], canvasRect) < 8) {
-              labelsNearCanvasEdge.push(labelTexts.get(labelBackgrounds[i].getAttribute("data-layout-id")) || `label ${i}`);
+              labelsNearCanvasEdge.push(labelName);
             }
             furnitureRects.forEach(rect => {
               if (rectsOverlap(rects[i], rect)) {
                 furnitureOverlaps += 1;
-                furnitureOverlapNames.push(labelTexts.get(labelBackgrounds[i].getAttribute("data-layout-id")) || `label ${i}`);
+                furnitureOverlapNames.push(labelName);
               }
             });
             if (mapRect) {
               const overlapArea = rectOverlapArea(rects[i], mapRect);
               if (overlapArea / Math.max(1, rectArea(rects[i])) > 0.12) {
-                mapLabelOverlaps += 1;
-                mapLabelOverlapNames.push(labelTexts.get(labelBackgrounds[i].getAttribute("data-layout-id")) || `label ${i}`);
+                mapBoundsLabelOverlaps += 1;
+                mapBoundsLabelOverlapNames.push(labelName);
               }
-              mapLabelOverlapArea += overlapArea;
+              mapBoundsLabelOverlapArea += overlapArea;
+
+              const fillOverlap = sampleMapFillOverlap(rects[i], mapRect, mapPaths);
+              mapFillSampleCount += fillOverlap.sampleCount;
+              mapFillOccupiedSampleCount += fillOverlap.filledSampleCount;
+              if (fillOverlap.filledSampleCount > 0) {
+                mapLabelOverlaps += 1;
+                mapLabelOverlapNames.push(labelName);
+                mapLabelOverlapArea += overlapArea * fillOverlap.fillRatio;
+                mapLabelOverlapDetails.push({
+                  name: labelName,
+                  sampleCount: fillOverlap.sampleCount,
+                  filledSampleCount: fillOverlap.filledSampleCount,
+                  fillRatio: fillOverlap.fillRatio
+                });
+              }
             }
           }
 
           let leaderCrossings = 0;
+          let leaderLabelCrossings = 0;
           const leaderCrossingPairs = [];
+          const leaderLabelCrossingPairs = [];
           const wrongSideLabels = [];
           for (let i = 0; i < leaderSegments.length; i += 1) {
             for (let j = i + 1; j < leaderSegments.length; j += 1) {
               if (leaderSegmentsCross(leaderSegments[i], leaderSegments[j])) {
                 leaderCrossings += 1;
                 leaderCrossingPairs.push([leaderSegments[i].name, leaderSegments[j].name]);
+              }
+            }
+            for (const label of labelRects) {
+              const isOwnLabel = (leaderSegments[i].layoutId && leaderSegments[i].layoutId === label.layoutId)
+                || leaderSegments[i].name === label.name;
+              if (isOwnLabel) continue;
+              if (leaderSegments[i].segments.some(segment => segmentIntersectsRect(segment, label.rect))) {
+                leaderLabelCrossings += 1;
+                leaderLabelCrossingPairs.push([leaderSegments[i].name, label.name]);
               }
             }
           }
@@ -349,6 +514,8 @@
 
           const payload = {
             status: "ok",
+            bookSize: bookSizeInput?.value || null,
+            imageSize: imageSizeInput?.value || null,
             mapScale: mapScaleInput ? Number(mapScaleInput.value) : null,
             renderedMapPreview: showRenderedMap(doc),
             previewActive: doc.querySelector("#previewTablePane")?.classList.contains("is-active") || false,
@@ -360,18 +527,31 @@
             labelOverlaps: overlaps,
             furnitureOverlaps,
             mapLabelOverlaps,
+            mapFillLabelOverlaps: mapLabelOverlaps,
+            mapFillSamplingSupported,
+            mapFillSampleCount,
+            mapFillOccupiedSampleCount,
             labelOverlapPairs,
             furnitureOverlapNames,
             mapLabelOverlapNames,
+            mapFillLabelOverlapNames: mapLabelOverlapNames,
+            mapLabelOverlapDetails,
             mapLabelOverlapArea: Math.round(mapLabelOverlapArea),
+            mapBoundsLabelOverlaps,
+            mapBoundsLabelOverlapNames,
+            mapBoundsLabelOverlapArea: Math.round(mapBoundsLabelOverlapArea),
             labelsNearCanvasEdge,
             labelsNearCanvasEdgeCount: labelsNearCanvasEdge.length,
             minLabelGap: Number.isFinite(minLabelGap) ? Math.round(minLabelGap) : null,
             leaderCrossings,
             leaderCrossingPairs,
+            leaderLabelCrossings,
+            leaderLabelCrossingPairs,
             labelRects,
             leaderSegments,
             mapRect,
+            canvasRect,
+            mapBBoxMetrics,
             wrongSideLabels,
             wrongSideLabelCount: wrongSideLabels.length,
             maxLeaderLength: Math.round(Math.max(0, ...leaderSegments.map(segment => segment.length))),
@@ -381,6 +561,9 @@
             overlongLeaders,
             longestLeader: longestLeader ? { name: longestLeader.name, length: Math.round(longestLeader.length), side: longestLeader.side } : null,
             renderPerformance: doc.defaultView.PLOTYPUS_RENDER_PERFORMANCE?.snapshot() || null,
+            autoFitDiagnostics: doc.defaultView.PLOTYPUS_AUTO_FIT_DIAGNOSTICS?.snapshot() || null,
+            mapTransformPersisted,
+            mapTransformDelta,
             statusText: (doc.querySelector("#statusBox")?.textContent || "").replace(/\s+/g, " ").trim().slice(0, 240)
           };
           report(payload);
