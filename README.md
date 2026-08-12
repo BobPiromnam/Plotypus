@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/plotypus-mark.svg" width="88" alt="Plotypus logo">
+  <img src="assets/plotypus-pin.png" width="88" alt="Plotypus logo">
 </p>
 
 <h1 align="center">Plotypus</h1>
