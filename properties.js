@@ -325,9 +325,8 @@
     const t = translator(options);
     const rowId = escapeHtml(row.rowId || "");
     const safeLabelKey = escapeHtml(labelKey);
-    const effectiveLabelMaxChars = row.labelMaxChars === "" || row.labelMaxChars === undefined
-      ? globalLabelMaxChars
-      : row.labelMaxChars;
+    const hasLabelMaxCharsOverride = row.labelMaxChars !== "" && row.labelMaxChars !== undefined;
+    const effectiveLabelMaxChars = hasLabelMaxCharsOverride ? row.labelMaxChars : globalLabelMaxChars;
     const anchor = projectLocationMode === "regions" ? "region" : "coord";
     const leaderLineWidth = row.leaderLineWidth === "" || row.leaderLineWidth === undefined || row.leaderLineWidth === null
       ? ""
@@ -544,10 +543,13 @@
               ${propertyFieldLabel(options, t("properties.field.footnote"))}
               <input type="text" maxlength="2" pattern="[A-Za-z0-9]*|[*]" data-property-field="footnote" value="${escapeHtml(row.footnote || "")}">
             </label>
-            <label>
+            <div class="properties-field-group properties-label-width-field">
               ${propertyFieldLabel(options, t("properties.field.charactersPerLine"))}
-              <input type="number" min="12" max="42" step="1" data-property-field="labelMaxChars" value="${escapeHtml(String(effectiveLabelMaxChars))}" placeholder="${escapeHtml(t("properties.field.defaultValue", { value: globalLabelMaxChars }))}">
-            </label>
+              <div class="properties-value-reset">
+                <input class="type-numeric-data property-numeric-input" type="number" min="12" max="42" step="1" inputmode="numeric" data-property-field="labelMaxChars" value="${escapeHtml(String(effectiveLabelMaxChars))}" placeholder="${escapeHtml(t("properties.field.defaultValue", { value: globalLabelMaxChars }))}" aria-label="${escapeHtml(t("properties.field.charactersPerLine"))}">
+                <button type="button" class="properties-inline-reset" data-property-action="reset-label-max-chars" aria-label="${escapeHtml(t("properties.button.resetCharactersPerLine"))}" title="${escapeHtml(t("properties.button.resetCharactersPerLine"))}"${hasLabelMaxCharsOverride ? "" : " disabled"}>${iconSvg("reset")}</button>
+              </div>
+            </div>
             <div class="properties-actions">
               <button type="button" data-property-action="reset-label" data-label-key="${safeLabelKey}"${manual ? "" : " disabled"}>${escapeHtml(t("properties.button.resetLabelPosition"))}</button>
               <button type="button" data-property-action="focus-row" data-row-id="${rowId}">${escapeHtml(t("properties.button.editRowInTable"))}</button>

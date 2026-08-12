@@ -28,6 +28,7 @@
       regionColourOverrides,
       regionValues,
       regionStatuses,
+      regionStatusVisibility,
       languageLayouts,
       manualLabelPositions,
       manualBoxPositions,
@@ -89,6 +90,7 @@
       regionColourOverrides,
       regionValues,
       regionStatuses,
+      regionStatusVisibility,
       languageLayouts,
       manualLabelPositions,
       manualBoxPositions

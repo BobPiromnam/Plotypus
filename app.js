@@ -5,6 +5,8 @@
   const cloneConfigList = (items) => Array.isArray(items) ? items.map((item) => ({ ...item })) : [];
   const defaultFontFamily = appConfig.defaultFontFamily || "Lato, Segoe UI, Arial, sans-serif";
   const startupI18n = window.PLOTYPUS_I18N;
+  const labelTextMeasureCache = new Map();
+  let labelTextMeasureContext = null;
 
   function getStartupUiLanguage() {
     const storageKey = appConfig.storageKeys && appConfig.storageKeys.uiLanguage || "plotypus.uiLanguage";
@@ -293,6 +295,8 @@
     projectFilterSelect: document.querySelector("#projectFilterSelect"),
     csvImportPreview: document.querySelector("#csvImportPreview"),
     regionTableBody: document.querySelector("#regionTable tbody"),
+    regionStatusVisibilityAllInput: document.querySelector("#regionStatusVisibilityAllInput"),
+    regionStatusVisibilityOptions: document.querySelector("#regionStatusVisibilityOptions"),
     tablePanelTitle: document.querySelector("#tablePanelTitle"),
     projectTableTab: document.querySelector("#projectTableTab"),
     regionTableTab: document.querySelector("#regionTableTab"),
@@ -473,6 +477,7 @@
   let regionFills = {};
   let regionValues = {};
   let regionStatuses = {};
+  let regionStatusVisibility = {};
   let regionColourOverrides = {};
   const regionStatusOptions = Object.freeze([
     { value: "", labelKey: "region.status.none", colour: "" },
@@ -540,6 +545,8 @@
   let pendingPreviewRefreshOptions = null;
   let pendingRenderFrame = null;
   let pendingRenderFallbackTimer = null;
+  let pendingRenderDelayTimer = null;
+  let pendingRenderIdleCallback = null;
   let pendingRenderOptions = null;
   let pendingRichLabelPreviewFrame = null;
   const pendingRichLabelPreviewRowIds = new Set();
@@ -583,6 +590,14 @@
     coalesced: 0,
     slices: 0,
     failed: 0
+  };
+  const renderSchedulingTelemetry = {
+    requests: 0,
+    coalesced: 0,
+    deferredOffscreen: 0,
+    deferredForNavigation: 0,
+    idleQueued: 0,
+    completed: 0
   };
   const deferredScriptLoads = new Map();
   const normalizedBoundaryCache = new Map();
@@ -682,6 +697,25 @@
     };
   }
 
+  function getRenderSchedulingSnapshot() {
+    return {
+      ...renderSchedulingTelemetry,
+      pending: hasPendingRenderSchedule(),
+      pendingForMap: pendingPreviewRefresh,
+      phase: pendingRenderIdleCallback !== null
+        ? "idle"
+        : pendingRenderDelayTimer !== null
+          ? "delay"
+          : pendingRenderFrame !== null
+            ? "paint"
+            : pendingRenderFallbackTimer !== null
+              ? "fallback"
+              : pendingPreviewRefresh
+                ? "offscreen"
+                : "idle"
+    };
+  }
+
   function performanceMetric(label, sample, budgetMs) {
     if (!sample) {
       return `<div class="performance-metric" data-state="neutral"><span>${escapeHtml(label)}</span><strong>${escapeHtml(t("performance.notRun"))}</strong><small>${escapeHtml(t("performance.budget", { value: Math.round(budgetMs) }))}</small></div>`;
@@ -747,6 +781,9 @@
   window.PLOTYPUS_RENDER_PERFORMANCE = Object.freeze({
     budgets: { ...renderPerformanceBudgets },
     snapshot: getRenderPerformanceSnapshot
+  });
+  window.PLOTYPUS_RENDER_SCHEDULER = Object.freeze({
+    snapshot: getRenderSchedulingSnapshot
   });
   window.PLOTYPUS_AUTO_FIT_DIAGNOSTICS = Object.freeze({
     snapshot: () => ({
@@ -941,6 +978,7 @@
       regionColourOverrides: clonePlainObject(regionColourOverrides),
       regionValues: clonePlainObject(regionValues),
       regionStatuses: clonePlainObject(regionStatuses),
+      regionStatusVisibility: clonePlainObject(regionStatusVisibility),
       languageLayouts: serializeLanguageLayouts()
     };
   }
@@ -989,6 +1027,7 @@
       regionColourOverrides = clonePlainObject(snapshot.regionColourOverrides);
       regionValues = clonePlainObject(snapshot.regionValues);
       regionStatuses = clonePlainObject(snapshot.regionStatuses || {});
+      regionStatusVisibility = normalizeRegionStatusVisibility(snapshot.regionStatusVisibility);
       restoreLanguageLayouts({ languageLayouts: snapshot.languageLayouts || {} }, snapshot.mapLanguage || currentMapLanguage);
       syncProjectLocationModeUi();
       setRows(snapshot.rows || [], [], { preserveManualPositions: true, render: false, resetProperties: false });
@@ -1048,40 +1087,132 @@
     setStatusMessage(t("status.undoEdit", { label: translateUndoLabel(previous.label, "status.lastLayoutChange") }), "ok");
   }
 
+  function captureScheduledRenderFocus() {
+    const active = document.activeElement;
+    if (!active || !els.propertiesSelectionControls?.contains(active)) return null;
+    const stableAttributes = [
+      "data-marker-size-draft",
+      "data-leader-line-width-draft",
+      "data-property-field",
+      "data-layout-proxy",
+      "data-map-proxy"
+    ];
+    for (const attribute of stableAttributes) {
+      const value = active.getAttribute(attribute);
+      if (value === null) continue;
+      const escaped = window.CSS && typeof CSS.escape === "function" ? CSS.escape(value) : value.replace(/["\\]/g, "\\$&");
+      return `[${attribute}="${escaped}"]`;
+    }
+    return active.id ? `#${window.CSS && typeof CSS.escape === "function" ? CSS.escape(active.id) : active.id}` : null;
+  }
+
+  function restoreScheduledRenderFocus(selector) {
+    if (!selector) return;
+    const target = els.propertiesSelectionControls?.querySelector(selector);
+    if (target && document.activeElement !== target) target.focus({ preventScroll: true });
+  }
+
   function scheduleRender(options = {}) {
+    renderSchedulingTelemetry.requests += 1;
+    if (renderOutputMode === "web" && !shouldRenderPreviewNow()) {
+      renderSchedulingTelemetry.deferredOffscreen += 1;
+      if (pendingPreviewRefresh) renderSchedulingTelemetry.coalesced += 1;
+      pendingPreviewRefresh = true;
+      pendingPreviewRefreshOptions = mergeRenderOptions(pendingPreviewRefreshOptions, options);
+      return;
+    }
     markQualityRefreshAwaitingRender();
     pendingRenderOptions = mergeRenderOptions(pendingRenderOptions, options);
     setPreviewBusy(true);
-    if (pendingRenderFrame !== null) return;
+    if (hasPendingRenderSchedule()) {
+      renderSchedulingTelemetry.coalesced += 1;
+      return;
+    }
     scheduledRenderRequestedAt = performanceNow();
 
     const runScheduledRender = () => {
-      if (pendingRenderFrame === null) return;
-      if (activeQualityGeometryDrags > 0) {
-        if (pendingRenderFallbackTimer !== null) window.clearTimeout(pendingRenderFallbackTimer);
-        pendingRenderFallbackTimer = window.setTimeout(runScheduledRender, 32);
+      if (!hasPendingRenderSchedule()) return;
+      if (renderOutputMode === "web" && !shouldRenderPreviewNow()) {
+        deferPendingScheduledRender();
         return;
       }
-      if (pendingRenderFallbackTimer !== null) {
-        window.clearTimeout(pendingRenderFallbackTimer);
-        pendingRenderFallbackTimer = null;
+      if (activeQualityGeometryDrags > 0) {
+        clearPendingRenderScheduleHandles();
+        pendingRenderDelayTimer = window.setTimeout(runScheduledRender, 32);
+        return;
       }
+      clearPendingRenderScheduleHandles();
       const renderOptions = pendingRenderOptions || {};
       const queuedAt = scheduledRenderRequestedAt;
-      pendingRenderFrame = null;
+      const focusSelector = captureScheduledRenderFocus();
       pendingRenderOptions = null;
       scheduledRenderRequestedAt = null;
       try {
         render({ ...renderOptions, __telemetrySource: "scheduled", __telemetryQueuedAt: queuedAt });
+        renderSchedulingTelemetry.completed += 1;
       } finally {
+        restoreScheduledRenderFocus(focusSelector);
         setPreviewBusy(false);
       }
     };
 
-    pendingRenderFrame = window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(runScheduledRender);
-    });
-    pendingRenderFallbackTimer = window.setTimeout(runScheduledRender, 160);
+    const queueWhenBrowserIsIdle = () => {
+      pendingRenderFrame = null;
+      renderSchedulingTelemetry.idleQueued += 1;
+      if (typeof window.requestIdleCallback === "function") {
+        pendingRenderIdleCallback = window.requestIdleCallback(runScheduledRender, { timeout: 120 });
+        return;
+      }
+      pendingRenderDelayTimer = window.setTimeout(runScheduledRender, 0);
+    };
+
+    const queueAfterPaint = () => {
+      pendingRenderFrame = window.requestAnimationFrame(() => {
+        pendingRenderFrame = window.requestAnimationFrame(queueWhenBrowserIsIdle);
+      });
+      pendingRenderFallbackTimer = window.setTimeout(runScheduledRender, 180);
+    };
+    if (pendingRenderOptions.navigationFriendly) {
+      pendingRenderDelayTimer = window.setTimeout(() => {
+        pendingRenderDelayTimer = null;
+        queueAfterPaint();
+      }, 320);
+    } else {
+      queueAfterPaint();
+    }
+  }
+
+  function hasPendingRenderSchedule() {
+    return pendingRenderFrame !== null
+      || pendingRenderFallbackTimer !== null
+      || pendingRenderDelayTimer !== null
+      || pendingRenderIdleCallback !== null;
+  }
+
+  function clearPendingRenderScheduleHandles() {
+    if (pendingRenderFrame !== null) window.cancelAnimationFrame(pendingRenderFrame);
+    if (pendingRenderFallbackTimer !== null) window.clearTimeout(pendingRenderFallbackTimer);
+    if (pendingRenderDelayTimer !== null) window.clearTimeout(pendingRenderDelayTimer);
+    if (pendingRenderIdleCallback !== null && typeof window.cancelIdleCallback === "function") {
+      window.cancelIdleCallback(pendingRenderIdleCallback);
+    }
+    pendingRenderFrame = null;
+    pendingRenderFallbackTimer = null;
+    pendingRenderDelayTimer = null;
+    pendingRenderIdleCallback = null;
+  }
+
+  function deferPendingScheduledRender() {
+    if (!pendingRenderOptions || !hasPendingRenderSchedule()) return false;
+    const renderOptions = pendingRenderOptions;
+    clearPendingRenderScheduleHandles();
+    pendingRenderOptions = null;
+    scheduledRenderRequestedAt = null;
+    pendingPreviewRefresh = true;
+    pendingPreviewRefreshOptions = mergeRenderOptions(pendingPreviewRefreshOptions, renderOptions);
+    renderSchedulingTelemetry.deferredForNavigation += 1;
+    setPreviewBusy(false);
+    return true;
   }
 
   function invalidatePatchedLayoutQuality() {
@@ -1104,7 +1235,7 @@
       || !lastLayout
       || renderOutputMode !== "web"
       || qualityRefreshAwaitingRender
-      || pendingRenderFrame !== null
+      || hasPendingRenderSchedule()
     ) return false;
 
     pendingRichLabelPreviewRowIds.add(normalizedRowId);
@@ -1118,7 +1249,7 @@
       let needsFullRender = false;
       try {
         rowIds.forEach(id => {
-          if (refreshRenderedRichLabel(id)) patched = true;
+          if (refreshRenderedLabel(id)) patched = true;
           else needsFullRender = true;
         });
         if (patched) invalidatePatchedLayoutQuality();
@@ -1837,6 +1968,62 @@
     return regionStatusOptions.find(option => option.value === status) || regionStatusOptions[0];
   }
 
+  function normalizeRegionStatusVisibility(value) {
+    const source = value && typeof value === "object" ? value : {};
+    return regionStatusOptions.reduce((visibility, option) => {
+      if (option.value && source[option.value] === false) visibility[option.value] = false;
+      return visibility;
+    }, {});
+  }
+
+  function isRegionStatusVisible(value) {
+    const status = normalizeRegionStatus(value);
+    return !status || regionStatusVisibility[status] !== false;
+  }
+
+  function renderRegionStatusVisibilityControls() {
+    if (!els.regionStatusVisibilityOptions || !els.regionStatusVisibilityAllInput) return;
+    const options = regionStatusOptions.filter(option => option.value);
+    const visibleCount = options.filter(option => isRegionStatusVisible(option.value)).length;
+    els.regionStatusVisibilityAllInput.checked = visibleCount === options.length;
+    els.regionStatusVisibilityAllInput.indeterminate = visibleCount > 0 && visibleCount < options.length;
+    els.regionStatusVisibilityOptions.innerHTML = options.map(option => {
+      const label = t(option.labelKey);
+      return `
+        <label class="region-status-visibility-option">
+          <input type="checkbox" data-region-status-visibility="${escapeHtml(option.value)}"${isRegionStatusVisible(option.value) ? " checked" : ""} aria-label="${escapeHtml(t("region.status.showAria", { status: label }))}">
+          <span class="region-status-visibility-swatch" data-region-status-colour="${escapeHtml(option.colour)}" aria-hidden="true"></span>
+          <span>${escapeHtml(label)}</span>
+        </label>
+      `;
+    }).join("");
+    els.regionStatusVisibilityOptions.querySelectorAll(".region-status-visibility-swatch").forEach(swatch => {
+      swatch.style.setProperty("--region-status-colour", swatch.dataset.regionStatusColour || "transparent");
+    });
+  }
+
+  function setAllRegionStatusVisibility(visible) {
+    regionStatusVisibility = regionStatusOptions.reduce((visibility, option) => {
+      if (option.value && !visible) visibility[option.value] = false;
+      return visibility;
+    }, {});
+    renderRegionStatusVisibilityControls();
+    refreshRegionValueTableRows();
+    if (activePropertiesSelection && activePropertiesSelection.kind === "region") renderPropertiesForActiveState();
+    scheduleRender();
+  }
+
+  function setRegionStatusVisibility(statusValue, visible) {
+    const status = normalizeRegionStatus(statusValue);
+    if (!status) return;
+    if (visible) delete regionStatusVisibility[status];
+    else regionStatusVisibility[status] = false;
+    renderRegionStatusVisibilityControls();
+    refreshRegionValueTableRows();
+    if (activePropertiesSelection && activePropertiesSelection.kind === "region") renderPropertiesForActiveState();
+    scheduleRender();
+  }
+
   function getLocalizedPairText(pair, language = currentMapLanguage) {
     const value = pair && pair.value && typeof pair.value === "object" ? pair.value : pair;
     const en = String(value && value.en || "").trim();
@@ -2040,10 +2227,11 @@
   }
 
   function requestPreviewRefresh(options = {}) {
-    pendingPreviewRefresh = true;
-    pendingPreviewRefreshOptions = mergeRenderOptions(pendingPreviewRefreshOptions, options);
-    if (!shouldRenderPreviewNow()) return;
-    const renderOptions = pendingPreviewRefreshOptions || {};
+    if (!shouldRenderPreviewNow()) {
+      scheduleRender(options);
+      return;
+    }
+    const renderOptions = mergeRenderOptions(pendingPreviewRefreshOptions, options);
     pendingPreviewRefresh = false;
     pendingPreviewRefreshOptions = null;
     refreshRegionColoursFromRows();
@@ -2844,6 +3032,7 @@
     renderMapStyleOptions();
     renderStartupSetupSelectOptions();
     renderRegionPresetOptions();
+    renderRegionStatusVisibilityControls();
     updateCanvasToolbar();
     syncUiLanguageControls(nextLanguage);
     if (options.persist !== false) saveUiLanguagePreference(nextLanguage);
@@ -3079,7 +3268,7 @@
     updateWorkspaceSummary();
     updateExportLanguageNotice();
     if (activeDataTable === "translate") renderTranslationProgressOnly();
-    requestPreviewRefresh(languageFitRenderOptions());
+    requestPreviewRefresh(translationPreviewRenderOptions());
   }
 
   function renderTranslationProgressOnly() {
@@ -3586,6 +3775,13 @@
   function normalizeLabelMaxCharsOverride(value) {
     if (value === undefined || value === null || String(value).trim() === "") return "";
     return normalizeLabelMaxChars(value);
+  }
+
+  function getLabelMaxCharsForResize(startChars, deltaX, side, characterWidth) {
+    const start = normalizeLabelMaxChars(startChars);
+    const widthPerCharacter = Math.max(1, Number(characterWidth) || 1);
+    const direction = side === "left" ? -1 : 1;
+    return normalizeLabelMaxChars(start + direction * Number(deltaX || 0) / widthPerCharacter);
   }
 
   function normalizeMapScale(value) {
@@ -4156,7 +4352,7 @@
     const colours = getCurrentRegionColourSet();
     const id = getRegionId(feature, index);
     const status = getRegionStatusOption(regionStatuses[id]);
-    if (status.colour) return status.colour;
+    if (status.colour && isRegionStatusVisible(status.value)) return status.colour;
     return regionFills[id] || colours[index % colours.length];
   }
 
@@ -4401,6 +4597,7 @@
   }
 
   function renderRegionControls() {
+    renderRegionStatusVisibilityControls();
     if (!canadaGeo || !Array.isArray(canadaGeo.features)) {
       updateRegionSummaryText();
       renderRegionValueTable();
@@ -4550,7 +4747,7 @@
       updateTypeOptions();
     }
 
-    if (shouldRender) render();
+    if (shouldRender) requestPreviewRefresh();
   }
 
   function applySelectedMapStyle() {
@@ -4571,7 +4768,7 @@
     await loadGeo();
     syncAllProjectRegionInputs();
     syncProjectLocationModeUi();
-    render();
+    requestPreviewRefresh();
     refreshMapPropertiesIfActive();
   }
 
@@ -4617,6 +4814,14 @@
 
   function languageFitRenderOptions() {
     return { autoPlace: true, autoPlaceResize: true };
+  }
+
+  function translationPreviewRenderOptions() {
+    return {
+      autoPlace: true,
+      autoPlaceResize: false,
+      navigationFriendly: true
+    };
   }
 
   function switchActiveLanguageLayout(language, fallbackScale = null) {
@@ -4731,6 +4936,64 @@
 
   function visibleLabelLines(lines) {
     return lines.filter(line => line.role !== "separator");
+  }
+
+  function getRenderedLabelTextAnchor(row) {
+    return row && (row.labelSide === "top" || row.labelSide === "bottom")
+      ? "middle"
+      : row && row.labelSide === "left"
+        ? "end"
+        : "start";
+  }
+
+  function getRenderedLabelTextX(row) {
+    if (!row || (row.labelSide !== "top" && row.labelSide !== "bottom")) {
+      return Number(row && row.labelX) || 0;
+    }
+    return labelVisualBox(row).centerX;
+  }
+
+  function getLabelWrapSignature(row, settings, maxChars) {
+    return getLabelLines({ ...row, labelMaxChars: maxChars }, settings)
+      .map(line => `${line && line.role || "title"}:${lineText(line)}`)
+      .join("\n");
+  }
+
+  function isLabelWidthResizable(row, settings) {
+    return getLabelWrapSignature(row, settings, 12) !== getLabelWrapSignature(row, settings, 42);
+  }
+
+  function getLabelLineFontWeight(line) {
+    return line && ["paragraph", "bullet", "caption"].includes(line.role) ? 400 : 700;
+  }
+
+  function getLabelTextMeasureContext() {
+    if (labelTextMeasureContext) return labelTextMeasureContext;
+    if (!document || typeof document.createElement !== "function") return null;
+    const canvas = document.createElement("canvas");
+    labelTextMeasureContext = canvas && typeof canvas.getContext === "function" ? canvas.getContext("2d") : null;
+    return labelTextMeasureContext;
+  }
+
+  function measureLabelTextWidth(text, fontSize, fontFamily = defaultFontFamily, fontWeight = 700) {
+    const value = String(text || "");
+    if (!value) return 0;
+    const size = Math.max(1, Number(fontSize) || 1);
+    const weight = Number(fontWeight) === 400 ? 400 : 700;
+    const family = String(fontFamily || defaultFontFamily);
+    const cacheKey = `${weight}|${size}|${family}|${value}`;
+    if (labelTextMeasureCache.has(cacheKey)) return labelTextMeasureCache.get(cacheKey);
+
+    let width = value.length * size * 0.58;
+    const context = getLabelTextMeasureContext();
+    if (context) {
+      context.font = `${weight} ${size}px ${family}`;
+      const measured = context.measureText(value).width;
+      if (Number.isFinite(measured) && measured >= 0) width = measured;
+    }
+    if (labelTextMeasureCache.size >= 5000) labelTextMeasureCache.clear();
+    labelTextMeasureCache.set(cacheKey, width);
+    return width;
   }
 
   function getLabelLineFontSize(line, settings) {
@@ -4985,14 +5248,23 @@
     });
     const textLines = visibleLabelLines(lines);
     const footnote = getRenderableFootnote(d.footnote);
-    const minimumTextWidth = Math.max(40, Math.round(80 * (Number(settings.labelDensityScale) || 1)));
-    const baseTextWidth = Math.max(minimumTextWidth, ...textLines.map(line => lineText(line).length * (Number(line.fontSize) || fontSize) * 0.58));
+    const fontFamily = settings && settings.fontFamily || defaultFontFamily;
+    const lineWidths = textLines.map(line => measureLabelTextWidth(
+      lineText(line),
+      Number(line.fontSize) || fontSize,
+      fontFamily,
+      getLabelLineFontWeight(line)
+    ));
+    const baseTextWidth = Math.max(...lineWidths, 0);
     const lastTextLine = textLines[textLines.length - 1] || asLabelLine("");
     const lastLineFontSize = Number(lastTextLine.fontSize) || fontSize;
+    const lastLineWidth = lineWidths[lineWidths.length - 1] || 0;
     const footnoteFontSize = normalizeMapTypographySize(lastLineFontSize * 0.68);
-    const footnoteWidth = footnote ? footnote.length * footnoteFontSize * 0.58 + 4 : 0;
+    const footnoteWidth = footnote
+      ? measureLabelTextWidth(footnote, footnoteFontSize, fontFamily, 700) + 2
+      : 0;
     const imageWidth = Math.max(...lines.filter(line => line.role === "image").map(line => Number(line.imageWidth) || 0), 0);
-    const textWidth = Math.max(baseTextWidth, imageWidth, lineText(lastTextLine).length * lastLineFontSize * 0.58 + footnoteWidth);
+    const textWidth = Math.max(baseTextWidth, imageWidth, lastLineWidth + footnoteWidth);
     const visualHeight = Math.max(fontSize, visualBottom + fontSize);
     const textHeight = visualHeight - fontSize + lineHeight;
     return {
@@ -5868,7 +6140,11 @@
       .sort()
       .map(name => `${name}:${normalizeRegionStatus(regionStatuses[name])}`)
       .join("|");
-    return `${visibility}::${statuses}`;
+    const statusVisibility = regionStatusOptions
+      .filter(option => option.value)
+      .map(option => `${option.value}:${isRegionStatusVisible(option.value) ? 1 : 0}`)
+      .join("|");
+    return `${visibility}::${statuses}::${statusVisibility}`;
   }
 
   function getLayoutCacheKey(rows, settings, resizeMap) {
@@ -7040,9 +7316,17 @@
       "#mapSvg .map-label-background",
       "#mapSvg .leader-line",
       "#mapSvg .leader-casing",
-      "#mapSvg .rich-label-image"
+      "#mapSvg .rich-label-image",
+      "#mapSvg .annotation-chart",
+      "#mapSvg .label-width-control"
     ].join(", ")).forEach(node => {
-      node.classList.toggle("is-properties-selected", Boolean(layoutId) && node.dataset.layoutId === layoutId);
+      const isSelected = Boolean(layoutId) && node.dataset.layoutId === layoutId;
+      node.classList.toggle("is-properties-selected", isSelected);
+      if (node.classList.contains("label-width-control")) {
+        const handle = node.querySelector(".label-width-handle");
+        const isDisabled = node.classList.contains("is-disabled");
+        if (handle) handle.setAttribute("tabindex", isSelected && !isDisabled ? "0" : "-1");
+      }
     });
   }
 
@@ -7596,7 +7880,7 @@
     const form = event.target.closest(".properties-form[data-row-id]");
     const rowId = form && form.dataset.rowId;
     const currentRow = rowId && readRowElement(getRowElementById(rowId));
-    if (!currentRow || currentRow.labelStyle !== "rich") return;
+    if (!currentRow || (field.startsWith("content") && currentRow.labelStyle !== "rich")) return;
 
     let fieldToUpdate = field;
     let value = event.target.value;
@@ -7842,8 +8126,19 @@
       updateWorkspaceSummary();
       updateExportLanguageNotice();
     }
-    const canPatchRichLabel = row.labelStyle === "rich" && ["name", "nameFr", "content", "labelBorder", "labelMaxChars", "labelStyle"].includes(fieldToUpdate);
-    if (!canPatchRichLabel || !requestRichLabelPreviewRefresh(rowId)) requestPreviewRefresh();
+    const canPatchLabel = [
+      "name",
+      "nameFr",
+      "footnote",
+      "content",
+      "labelBorder",
+      "labelMaxChars",
+      "labelStyle",
+      "elbowLeader",
+      "leaderLineWidth",
+      "leaderLineColour"
+    ].includes(fieldToUpdate);
+    if (!canPatchLabel || !requestRichLabelPreviewRefresh(rowId)) requestPreviewRefresh();
     const advancedOpen = Boolean(event.target.closest("details")?.open);
     if (!richLabelLiveTextFields.has(field)) {
       setRowPropertiesContext(activePropertiesSelection && activePropertiesSelection.kind || "label", row, {
@@ -7932,7 +8227,7 @@
       pushAppUndoHistory("point leader line thickness");
       const updatedRow = updateProjectRowField(rowId, "leaderLineWidth", draft.normalizedValue);
       if (!updatedRow) return;
-      requestPreviewRefresh();
+      if (!requestRichLabelPreviewRefresh(rowId)) requestPreviewRefresh();
       setRowPropertiesContext(selectionKind, updatedRow, {
         labelKey,
         manual: Boolean(manualLabelPositions[labelKey]),
@@ -7949,7 +8244,7 @@
       if (!row || !row.leaderLineColour) return;
       pushAppUndoHistory("project row edit");
       const updatedRow = updateProjectRowField(rowId, "leaderLineColour", "");
-      requestPreviewRefresh();
+      if (!requestRichLabelPreviewRefresh(rowId)) requestPreviewRefresh();
       setRowPropertiesContext(activePropertiesSelection && activePropertiesSelection.kind || "label", updatedRow, {
         labelKey: rowForm.dataset.labelKey,
         manual: Boolean(manualLabelPositions[rowForm.dataset.labelKey]),
@@ -8049,6 +8344,23 @@
       });
       return;
     }
+    if (action === "reset-label-max-chars" && rowForm) {
+      const rowId = rowForm.dataset.rowId;
+      const currentRow = readRowElement(getRowElementById(rowId));
+      if (!currentRow || normalizeLabelMaxCharsOverride(currentRow.labelMaxChars) === "") return;
+      pushAppUndoHistory("label width reset");
+      const row = updateProjectRowField(rowId, "labelMaxChars", "", { refreshTableUx: false });
+      const patched = refreshRenderedLabel(rowId);
+      if (patched) invalidatePatchedLayoutQuality();
+      else requestPreviewRefresh();
+      setRowPropertiesContext(activePropertiesSelection && activePropertiesSelection.kind || "label", row, {
+        labelKey: rowForm.dataset.labelKey,
+        manual: Boolean(manualLabelPositions[rowForm.dataset.labelKey]),
+        advancedOpen: true
+      });
+      setStatusMessage(t("status.labelWidthReset", { count: normalizeLabelMaxChars(els.labelCharsInput.value) }), "ok");
+      return;
+    }
     if (action === "reset-label") {
       const labelKey = button.dataset.labelKey;
       if (labelKey && manualLabelPositions[labelKey]) pushManualLayoutHistory("selected label reset");
@@ -8085,6 +8397,7 @@
     }
 
     if (action === "open-map") {
+      event.stopPropagation();
       locateNextQualityIssue();
       return;
     }
@@ -8622,6 +8935,7 @@
       body: document.body
     });
     activeDataTable = activeName;
+    if (!shouldRenderPreviewNow()) deferPendingScheduledRender();
     let qualitySurfacesRefreshed = false;
     if (activeName === "quality") {
       if (qualityRefreshDirty && !qualityRefreshAwaitingRender) {
@@ -8921,9 +9235,9 @@
       .attr("data-label-style", d => d.labelStyle === "rich" ? "rich" : "compact")
       .attr("data-label-side", d => d.labelSide)
       .attr("data-label-name", d => d.name)
-      .attr("x", d => d.labelX)
+      .attr("x", d => getRenderedLabelTextX(d))
       .attr("y", d => d.labelY)
-      .attr("text-anchor", d => d.anchor)
+      .attr("text-anchor", d => getRenderedLabelTextAnchor(d))
       .on("click", (event, d) => {
         event.stopPropagation();
         setRowPropertiesContext("label", d, { labelKey: d.labelKey, manual: Boolean(manualLabelPositions[d.labelKey]) });
@@ -8938,6 +9252,7 @@
     if (settings.showCallouts && calloutRows.length) drawCallouts(svg, calloutRows, settings, mapBounds);
     if (settings.showLegend && rows.length) drawLegend(svg, settings, mapBounds);
     if (mapScaleControlsVisible) drawMapScaleControls(svg, settings, mapBounds);
+    if (renderOutputMode === "web") drawLabelWidthControls(svg, placed, settings);
     completeQualityRefreshFromRender();
     updateStatus(rows, mappedRows, calloutRows, report, true);
     restoreActiveQualityLocateTarget();
@@ -8949,6 +9264,10 @@
 
   function renderLabelTextLines(text, row, settings) {
     text.selectAll("*").remove();
+    const textX = getRenderedLabelTextX(row);
+    text
+      .attr("x", textX)
+      .attr("text-anchor", getRenderedLabelTextAnchor(row));
     row.lines.forEach((line, index) => {
       const role = line && line.role || "title";
       const previousOffset = index > 0 ? Number(row.lines[index - 1].baselineOffset) : 0;
@@ -8959,7 +9278,7 @@
       const lineFontSize = Number(line && line.fontSize) || getLabelLineFontSize(line, settings);
       text.append("tspan")
         .attr("class", `${role === "separator" ? "label-line label-separator" : `label-line label-${role}`} ${mapTypographySizeClass(lineFontSize)}`)
-        .attr("x", row.labelX)
+        .attr("x", textX)
         .attr("dy", lineAdvance)
         .text(role === "separator" ? "" : lineText(line));
       if (index === row.lines.length - 1 && row.footnote) {
@@ -8968,7 +9287,7 @@
     });
   }
 
-  function refreshRenderedRichLabel(rowId) {
+  function refreshRenderedLabel(rowId) {
     if (!lastLayout || !Array.isArray(lastLayout.placed) || !lastLayout.settings || !lastLayout.mapBounds) return false;
     const row = readRowElement(getRowElementById(rowId));
     if (!row) return false;
@@ -9022,21 +9341,226 @@
       .attr("data-label-style", next.labelStyle === "rich" ? "rich" : "compact")
       .attr("data-label-side", next.labelSide)
       .attr("data-label-name", next.name)
-      .attr("x", next.labelX)
+      .attr("x", getRenderedLabelTextX(next))
       .attr("y", next.labelY)
-      .attr("text-anchor", next.anchor);
+      .attr("text-anchor", getRenderedLabelTextAnchor(next));
     if (label.empty()) return false;
     renderLabelTextLines(label, next, lastLayout.settings);
 
-    svg.selectAll(`path${selector}`)
+    svg.select(`path.leader-line${selector}`)
       .datum(next)
       .classed("is-off-canvas", isPointOffCanvas(next, lastLayout.settings))
       .attr("data-label-side", next.labelSide)
       .attr("data-label-name", next.name)
+      .attr("stroke-width", getLeaderLineWidth(next, lastLayout.settings))
+      .attr("stroke", getLeaderLineColour(next, lastLayout.settings))
+      .attr("d", linePath(next, lastLayout.settings));
+    const casingExtra = Number(lastLayout.settings.labelDensityScale) < 1 ? 1.5 : 3.5;
+    svg.select(`path.leader-casing${selector}`)
+      .datum(next)
+      .classed("is-off-canvas", isPointOffCanvas(next, lastLayout.settings))
+      .attr("data-label-side", next.labelSide)
+      .attr("data-label-name", next.name)
+      .attr("stroke-width", getLeaderLineWidth(next, lastLayout.settings) + casingExtra)
       .attr("d", linePath(next, lastLayout.settings));
     redrawRichLabelImages(next);
+    const widthControl = svg.select(`g.label-width-control${selector}`).datum(next);
+    if (!widthControl.empty()) positionLabelWidthControl(widthControl, next, lastLayout.settings);
     syncPropertiesLabelHighlight();
     return true;
+  }
+
+  function getEffectiveLabelMaxChars(row, settings = lastLayout && lastLayout.settings || getSettings()) {
+    return normalizeLabelMaxCharsOverride(row && row.labelMaxChars) || normalizeLabelMaxChars(settings && settings.labelMaxChars);
+  }
+
+  function getLabelResizeCharacterWidth(row, settings) {
+    const titleLine = Array.isArray(row && row.lines)
+      ? row.lines.find(line => line && line.role === "title") || row.lines[0]
+      : null;
+    const fontSize = Number(titleLine && titleLine.fontSize) || getLabelLineFontSize(titleLine || asLabelLine(""), settings);
+    return Math.max(1, fontSize * 0.58);
+  }
+
+  function syncLabelMaxCharsPropertyControl(rowId, value, hasOverride = true) {
+    if (!els.propertiesSelectionControls) return;
+    const form = els.propertiesSelectionControls.querySelector(".properties-form[data-row-id]");
+    if (!form || String(form.dataset.rowId) !== String(rowId)) return;
+    const input = form.querySelector("[data-property-field='labelMaxChars']");
+    const reset = form.querySelector("[data-property-action='reset-label-max-chars']");
+    if (input) input.value = String(value);
+    if (reset) reset.disabled = !hasOverride;
+  }
+
+  function updateLabelMaxCharsOverride(rowId, value) {
+    const normalized = normalizeLabelMaxChars(value);
+    const row = updateProjectRowField(rowId, "labelMaxChars", normalized, { refreshTableUx: false });
+    if (!row) return { row: null, patched: false };
+    const patched = refreshRenderedLabel(rowId);
+    syncLabelMaxCharsPropertyControl(rowId, normalized, true);
+    return { row, patched };
+  }
+
+  function getLabelWidthHandlePosition(edge, resizeEdge, handleWidth = 9, gap = 2) {
+    const width = Math.max(1, Number(handleWidth) || 9);
+    const spacing = Math.max(0, Number(gap) || 0);
+    const x = resizeEdge === "left"
+      ? Number(edge) - spacing - width
+      : Number(edge) + spacing;
+    return { x, centerX: x + width / 2 };
+  }
+
+  function positionLabelWidthControl(group, row, settings) {
+    const box = labelBackgroundRect(row);
+    const resizeEdge = row.labelSide === "left" ? "left" : "right";
+    const edge = resizeEdge === "left" ? box.x0 : box.x1;
+    const centerY = box.centerY;
+    const handleHeight = Math.max(14, Math.min(22, box.y1 - box.y0 - 2));
+    const handleWidth = 9;
+    const handlePosition = getLabelWidthHandlePosition(edge, resizeEdge, handleWidth);
+    const characters = getEffectiveLabelMaxChars(row, settings);
+    const resizable = isLabelWidthResizable(row, settings);
+    const accessibleLabel = t(resizable ? "aria.resizeLabelWidth" : "aria.resizeLabelWidthUnavailable", {
+      label: row.name || t("status.unnamedPoint")
+    });
+    group
+      .attr("data-layout-id", row.layoutId)
+      .attr("data-row-id", row.rowId)
+      .attr("data-resize-edge", resizeEdge)
+      .classed("is-disabled", !resizable)
+      .attr("aria-disabled", String(!resizable));
+    group.select(".label-width-edge")
+      .attr("x1", edge)
+      .attr("x2", edge)
+      .attr("y1", box.y0)
+      .attr("y2", box.y1);
+    group.select(".label-width-handle")
+      .attr("x", handlePosition.x)
+      .attr("y", centerY - handleHeight / 2)
+      .attr("width", handleWidth)
+      .attr("height", handleHeight)
+      .attr("aria-valuenow", characters)
+      .attr("aria-valuetext", t("properties.field.charactersPerLine") + `: ${characters}`)
+      .attr("aria-label", accessibleLabel)
+      .attr("aria-disabled", String(!resizable));
+    group.select(".label-width-grip")
+      .attr("d", `M${handlePosition.centerX - 1.5},${centerY - 4}V${centerY + 4} M${handlePosition.centerX + 1.5},${centerY - 4}V${centerY + 4}`);
+    group.select("title").text(accessibleLabel);
+  }
+
+  function commitKeyboardLabelWidth(row, delta) {
+    if (!isLabelWidthResizable(row, lastLayout && lastLayout.settings || getSettings())) return;
+    const currentRow = readRowElement(getRowElementById(row.rowId));
+    if (!currentRow) return;
+    const current = getEffectiveLabelMaxChars(currentRow);
+    const next = normalizeLabelMaxChars(current + delta);
+    if (next === current) return;
+    pushAppUndoHistory("label width resize");
+    const result = updateLabelMaxCharsOverride(row.rowId, next);
+    if (result.patched) invalidatePatchedLayoutQuality();
+    else requestPreviewRefresh();
+    setStatusMessage(t("status.labelWidthChanged", { label: currentRow.name || t("status.unnamedPoint"), count: next }), "ok");
+  }
+
+  function attachLabelWidthResizing(handles, settings) {
+    handles
+      .on("click", event => {
+        event.stopPropagation();
+      })
+      .on("keydown", function (event, row) {
+        if (!["ArrowLeft", "ArrowRight", "ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+        if (!isLabelWidthResizable(row, settings)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const currentRow = readRowElement(getRowElementById(row.rowId));
+        if (!currentRow) return;
+        const current = getEffectiveLabelMaxChars(currentRow, settings);
+        const next = event.key === "Home"
+          ? 12
+          : event.key === "End"
+            ? 42
+            : normalizeLabelMaxChars(current + (["ArrowRight", "ArrowUp"].includes(event.key) ? 1 : -1));
+        commitKeyboardLabelWidth(row, next - current);
+      })
+      .call(d3.drag()
+        .on("start", function (event, row) {
+          if (event.sourceEvent) event.sourceEvent.stopPropagation();
+          if (!isLabelWidthResizable(row, settings)) return;
+          const currentRow = readRowElement(getRowElementById(row.rowId));
+          if (!currentRow) return;
+          const pointer = d3.pointer(event, els.svg.node());
+          this.__labelWidthResize = {
+            rowId: row.rowId,
+            label: currentRow.name || row.name || t("status.unnamedPoint"),
+            startX: pointer[0],
+            startChars: getEffectiveLabelMaxChars(currentRow, settings),
+            lastChars: getEffectiveLabelMaxChars(currentRow, settings),
+            side: row.labelSide,
+            characterWidth: getLabelResizeCharacterWidth(row, settings),
+            changed: false,
+            historyPushed: false,
+            needsRender: false
+          };
+          beginLayoutQualityDrag();
+          d3.select(this).classed("is-dragging", true);
+        })
+        .on("drag", function (event) {
+          const state = this.__labelWidthResize;
+          if (!state) return;
+          const pointer = d3.pointer(event, els.svg.node());
+          const next = getLabelMaxCharsForResize(
+            state.startChars,
+            pointer[0] - state.startX,
+            state.side,
+            state.characterWidth
+          );
+          if (next === state.lastChars) return;
+          if (!state.historyPushed) {
+            pushAppUndoHistory("label width resize");
+            state.historyPushed = true;
+          }
+          if (!state.changed) markLayoutQualityDirty();
+          const result = updateLabelMaxCharsOverride(state.rowId, next);
+          state.changed = Boolean(result.row) || state.changed;
+          state.needsRender = !result.patched || state.needsRender;
+          state.lastChars = next;
+        })
+        .on("end", function () {
+          const state = this.__labelWidthResize;
+          delete this.__labelWidthResize;
+          d3.select(this).classed("is-dragging", false);
+          if (state && state.changed) {
+            if (state.needsRender) requestPreviewRefresh();
+            setStatusMessage(t("status.labelWidthChanged", { label: state.label, count: state.lastChars }), "ok");
+          }
+          endLayoutQualityDrag();
+        }));
+  }
+
+  function drawLabelWidthControls(svg, placed, settings) {
+    const layer = svg.append("g")
+      .attr("class", "label-width-control-layer")
+      .attr("aria-label", t("properties.field.charactersPerLine"));
+    const controls = layer.selectAll("g.label-width-control")
+      .data(placed, row => row.layoutId)
+      .join(enter => {
+        const group = enter.append("g").attr("class", "label-width-control");
+        group.append("line").attr("class", "label-width-edge");
+        group.append("rect")
+          .attr("class", "label-width-handle")
+          .attr("rx", 3)
+          .attr("role", "slider")
+          .attr("aria-valuemin", 12)
+          .attr("aria-valuemax", 42)
+          .attr("tabindex", -1);
+        group.append("path").attr("class", "label-width-grip");
+        group.append("title");
+        return group;
+      })
+      .each(function (row) {
+        positionLabelWidthControl(d3.select(this), row, settings);
+      });
+    attachLabelWidthResizing(controls.select(".label-width-handle"), settings);
   }
 
   function drawRichLabelImages(svg, placed, settings) {
@@ -9309,16 +9833,19 @@
         d.labelY = constrained.labelY;
         manualLabelPositions[d.labelKey] = { x: d.labelX, y: d.labelY, side: d.labelSide };
 
+        const textX = getRenderedLabelTextX(d);
         const label = d3.select(this)
           .attr("data-label-side", d.labelSide)
-          .attr("x", d.labelX)
+          .attr("x", textX)
           .attr("y", d.labelY)
-          .attr("text-anchor", d.anchor);
-        label.selectAll("tspan.label-line").attr("x", d.labelX);
+          .attr("text-anchor", getRenderedLabelTextAnchor(d));
+        label.selectAll("tspan.label-line").attr("x", textX);
 
         d3.select(`rect.map-label-background[data-layout-id="${d.layoutId}"]`)
           .attr("data-label-side", d.labelSide)
           .call(node => positionLabelBackground(node, d));
+        const widthControl = d3.select(`g.label-width-control[data-layout-id="${d.layoutId}"]`).datum(d);
+        if (!widthControl.empty()) positionLabelWidthControl(widthControl, d, settings);
         d3.selectAll(`g.rich-label-image[data-layout-id="${d.layoutId}"]`)
           .each(function (imageDatum) {
             positionRichLabelImage(d3.select(this), d, imageDatum && imageDatum.line);
@@ -10567,7 +11094,7 @@
   function getUsedRegionStatusOptions() {
     const used = new Set(Object.values(regionStatuses).map(normalizeRegionStatus).filter(Boolean));
     return regionStatusOptions
-      .filter(option => option.value && used.has(option.value))
+      .filter(option => option.value && used.has(option.value) && isRegionStatusVisible(option.value))
       .map(option => ({ ...option, label: t(option.labelKey) }));
   }
 
@@ -11127,6 +11654,7 @@
       regionColourOverrides,
       regionValues,
       regionStatuses,
+      regionStatusVisibility,
       languageLayouts: serializeLanguageLayouts(),
       manualLabelPositions,
       manualBoxPositions,
@@ -11174,6 +11702,7 @@
         regionColourOverrides = project.regionColourOverrides || {};
         regionValues = project.regionValues || {};
         regionStatuses = project.regionStatuses || {};
+        regionStatusVisibility = normalizeRegionStatusVisibility(project.regionStatusVisibility);
         restoreLanguageLayouts(project, projectLanguage);
         activeProjectLocationMode = normalizeProjectLocationMode(project.projectLocationMode || deriveProjectLocationModeFromRows(project.rows));
         syncProjectLocationModeUi();
@@ -11181,7 +11710,7 @@
         await loadGeo();
         syncAllProjectRegionInputs();
         renderRegionControls();
-        render();
+        requestPreviewRefresh();
         setStatusMessage(t("status.projectLoaded", { count: project.rows.length }), "ok");
       } catch (error) {
         setStatusMessage(t("status.projectLoadGenericFailed", { message: translateErrorMessage(error) }), "danger");
@@ -11899,7 +12428,7 @@
     renderPropertiesForActiveState(activePropertiesSelection || { kind: "translation" });
     updateWorkspaceSummary();
     updateExportLanguageNotice();
-    requestPreviewRefresh(languageFitRenderOptions());
+    requestPreviewRefresh(translationPreviewRenderOptions());
     return { updated: updates.length, skipped };
   }
 
@@ -12505,6 +13034,16 @@
     on(els.categoryList, "dragover", handleCategoryDragOver);
     on(els.categoryList, "drop", handleCategoryDrop);
     on(els.categoryList, "dragend", handleCategoryDragEnd);
+    on(els.regionStatusVisibilityAllInput, "change", event => {
+      pushAppUndoHistory("region status visibility");
+      setAllRegionStatusVisibility(event.target.checked);
+    });
+    on(els.regionStatusVisibilityOptions, "change", event => {
+      const status = event.target.dataset.regionStatusVisibility;
+      if (!status) return;
+      pushAppUndoHistory("region status visibility");
+      setRegionStatusVisibility(status, event.target.checked);
+    });
     on(els.regionTableBody, "change", event => {
       if (event.target.classList.contains("region-table-included-input")) {
         pushAppUndoHistory("region edit");
@@ -12764,6 +13303,8 @@
       scoreCandidate,
       createLayoutQualityAnalyzer,
       recomputeLayoutQualityReport,
+      getQualityLocateTargets,
+      getActiveQualityLocateTarget: () => activeQualityLocateTarget,
       countSideOrderInversions,
       createOrderPreservingVerticalSlots,
       createOrderPreservingHorizontalSlots,
@@ -12774,6 +13315,13 @@
       getLabelLines,
       getLabelTypographyRenderSizes,
       getLabelLineFontSize,
+      getLabelLineFontWeight,
+      getLabelMaxCharsForResize,
+      getLabelWidthHandlePosition,
+      getRenderedLabelTextAnchor,
+      getRenderedLabelTextX,
+      isLabelWidthResizable,
+      measureLabelTextWidth,
       getCalloutContentLayout,
       normalizeRichLabelImageDisplaySize,
       getRichLabelImageDimensions,

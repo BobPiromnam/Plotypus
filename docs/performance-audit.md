@@ -1,10 +1,14 @@
 # Plotypus performance audit
 
-Date: 2026-07-22
+Updated: 2026-08-12
 
 ## Implemented
 
 - Rich-label text, title, border, image-size, and content changes use a targeted SVG patch. The map loader is painted before the patch, focus remains in Properties, and the map boundary, markers, legend, and unrelated labels are not rebuilt.
+- Translation edits use a single-scale layout refresh instead of re-running the full multi-scale fit search. The refresh is queued with a navigation grace period, canceled when the user leaves Map or Map quality, and resumed on return so workspace tabs remain responsive.
+- Full web-map renders enter one idle-priority scheduler. The scheduler coalesces repeated requests, waits for two paints before requesting idle time, cancels queued work when the user leaves Map or Map quality, and retains one pending refresh for the next visit.
+- Map-style changes, boundary changes, and project loading no longer call the renderer synchronously from their interaction handlers. Edits made outside Map update their workspace immediately and defer the map until Map or Map quality is opened.
+- Compact and rich label title, footnote, wrapping, content, border, and leader-style edits patch the selected SVG label and leader in place rather than rebuilding the map.
 - Collision and leader-quality checks after a targeted patch reuse the existing time-sliced idle analyzer. Repeated edits coalesce instead of starting parallel analyses.
 - File-based CSV parsing uses Papa Parse's worker mode for files of 256 KB or larger when Workers and an HTTP(S) origin are available. Small files avoid Worker startup overhead, and local `file:` use retains the synchronous compatibility path.
 - Boundary bundles are loaded and normalized on demand, then cached for the session. The default Canada workspace no longer downloads or parses the 689 KB world bundle until World is selected, and repeated boundary switching does not repeat normalization.
@@ -24,6 +28,19 @@ Date: 2026-07-22
 | PNG export | Image loading and `canvas.toBlob` are asynchronous, but SVG raster drawing happens on the main thread | Consider OffscreenCanvas in a Worker only if large PNG exports exceed the configured export budget; confirm font and SVG-image consistency first. |
 | Undo snapshots | Rich image data URLs can be repeated across up to 25 snapshots | Introduce an asset registry keyed by content hash and store references in rows/history. This is a larger persistence migration but offers the biggest memory reduction for image-heavy projects. |
 | Boundary data | Bundles and normalized geometry are loaded and cached on demand | Keep the two-boundary session cache; revisit eviction only if many more large boundary sets are added. |
+
+## Interaction render inventory
+
+| Interaction family | Map work | Scheduling |
+| --- | --- | --- |
+| Workspace navigation, selection, filtering, dialogs, Properties resizing, and canvas zoom | None | Immediate UI-only update |
+| Project, region, translation, category, map-style, boundary, and project-load edits outside Map | Full render when next needed | Retained offscreen and coalesced until Map or Map quality opens |
+| Map settings, category geometry, region geometry, reset actions, and undo while Map is visible | Full render | Two paints, then idle-priority execution with a timeout fallback |
+| Label text, width, rich content, border, and leader style while Map is visible | Selected-label SVG patch plus quality analysis | Animation frame for the patch; time-sliced idle quality analysis |
+| Label, marker, legend, and callout dragging | Live element patch during drag; reconciliation only where geometry requires it | Drag updates are immediate; reconciliation is queued after drag end |
+| Map quality after a geometry patch | No map render | Coalesced, time-sliced idle analysis |
+| SVG print export | Print render and web-render restoration | Intentionally synchronous because the downloaded artifact must reflect one consistent print layout |
+| Application startup | Initial full render | Intentionally direct before the workspace is handed to the user |
 
 ## Suggested order for future work
 

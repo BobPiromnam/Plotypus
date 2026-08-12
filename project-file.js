@@ -145,6 +145,7 @@
       "regionColourOverrides",
       "regionValues",
       "regionStatuses",
+      "regionStatusVisibility",
       "manualLabelPositions",
       "manualBoxPositions"
     ].forEach(field => {

@@ -664,7 +664,7 @@
       /\bMap size\b/i,
       /\bCanvas size\b/i,
       /\bPage preset\b/i,
-      /\bDefault characters per line\b/i,
+      /\bDefault maximum characters per line\b/i,
       /\bMap display\b/i,
       /\bLegend\b/i,
       /\bCompact boxes\b/i,
@@ -1062,6 +1062,16 @@
           return;
         }
 
+        const getDocumentPreviewTopOffset = () => {
+          const mapHost = doc.querySelector("#mapHost");
+          const previewStack = doc.querySelector(".document-preview-stack");
+          if (!mapHost || !previewStack) return NaN;
+          return previewStack.getBoundingClientRect().top - mapHost.getBoundingClientRect().top;
+        };
+        const emptyPreviewTopOffset = getDocumentPreviewTopOffset();
+        const sharedPreviewTopPadding = parseFloat(frame.contentWindow.getComputedStyle(doc.querySelector("#mapHost")).paddingTop || "0");
+        assert(checks, "Empty document preview uses the shared map-preview top spacing", Number.isFinite(emptyPreviewTopOffset) && Math.abs(emptyPreviewTopOffset - sharedPreviewTopPadding) <= 1, `offset=${emptyPreviewTopOffset}, padding=${sharedPreviewTopPadding}`);
+
         if (!loadSample) {
           doc.querySelector("#startupStartNewBtn")?.click();
           await waitFor(() => startupDialog.dataset.startupScreen === "setup", 2000);
@@ -1081,6 +1091,8 @@
             return snapshot?.samples.length > samplesBeforeLoad && snapshot;
           }, 12000);
           assert(checks, "Built-in sample omits the reference-only map title", !doc.querySelector("#mapSvg .map-title") && !/125 billion|125 milliards/i.test(doc.querySelector("#mapSvg")?.textContent || ""));
+          const populatedPreviewTopOffset = getDocumentPreviewTopOffset();
+          assert(checks, "Empty and populated document previews use identical top spacing", Math.abs(populatedPreviewTopOffset - emptyPreviewTopOffset) <= 1, `empty=${emptyPreviewTopOffset}, populated=${populatedPreviewTopOffset}`);
           if (measurePerformance) {
             const samplesBeforeAutoPlace = sampleLoadSnapshot.samples.length;
             doc.querySelector("#canvasAutoPlaceBtn").click();
@@ -1701,6 +1713,16 @@
           };
           assert(checks, `${requestedWorkspace} page intro switches to French`, activeWorkspaceIntro?.querySelector("h2")?.textContent.trim() === expectedFrenchIntroTitles[requestedWorkspace] && Boolean(activeWorkspaceIntro?.querySelector("p")?.textContent.trim()), activeWorkspaceIntro?.textContent.trim() || "");
           if (requestedWorkspace === "preview") {
+            const documentHeaderBleedGap = () => {
+              const headerRect = doc.querySelector(".document-page-header")?.getBoundingClientRect();
+              const bleedRect = doc.querySelector("#documentBleedGuide")?.getBoundingClientRect();
+              return headerRect && bleedRect ? bleedRect.top - headerRect.bottom : NaN;
+            };
+            const documentHeaderBleedGapBeforeZoom = documentHeaderBleedGap();
+            doc.querySelector("#canvasZoomInBtn")?.click();
+            const documentHeaderBleedGapAfterZoom = documentHeaderBleedGap();
+            assert(checks, "Document figure header stays anchored above the bleed guide while zooming", Number.isFinite(documentHeaderBleedGapBeforeZoom) && documentHeaderBleedGapBeforeZoom >= 5 && Math.abs(documentHeaderBleedGapAfterZoom - documentHeaderBleedGapBeforeZoom) <= 0.5, `${documentHeaderBleedGapBeforeZoom} -> ${documentHeaderBleedGapAfterZoom}`);
+            doc.querySelector("#canvasZoomOutBtn")?.click();
             const expectedPropertiesCopy = ["Boîtes", "Détails de la carte"];
             await waitFor(() => {
               const text = propertiesPanel?.textContent || "";
@@ -1891,14 +1913,23 @@
               await waitFor(() => !propertiesPanel.inert, 2000);
             }
             richMapLabel?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
-            const liveRichTitleInput = await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-field='nameFr']"), 2000);
+            const liveTitleField = doc.querySelector("#mapLanguageInput")?.value === "fr" ? "nameFr" : "name";
+            const liveRichTitleInput = await waitFor(() => doc.querySelector(`#propertiesSelectionControls [data-property-field='${liveTitleField}']`), 2000);
             const originalRichTitle = liveRichTitleInput.value;
             const renderSamplesBeforeLiveEdit = frame.contentWindow.PLOTYPUS_RENDER_PERFORMANCE?.snapshot().samples.length || 0;
             liveRichTitleInput.focus();
             liveRichTitleInput.value = `${originalRichTitle} live`;
             liveRichTitleInput.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
             assert(checks, "Rich-label live editing starts the map loading animation", doc.querySelector("#mapHost")?.classList.contains("is-rendering"));
-            await waitFor(() => Array.from(doc.querySelectorAll("#mapSvg .label-title")).some(node => / live$/.test(node.textContent || "")), 2000);
+            try {
+              await waitFor(() => Array.from(doc.querySelectorAll("#mapSvg .map-label")).some(node => node.__data__?.name === liveRichTitleInput.value), 2000);
+            } catch (_error) {
+              const selectedRowId = liveRichTitleInput.closest(".properties-form[data-row-id]")?.dataset.rowId || "missing";
+              const selectedRow = doc.querySelector(`#projectTable tbody tr[data-row-id='${selectedRowId}']`);
+              const renderedTitles = Array.from(doc.querySelectorAll("#mapSvg .label-title")).map(node => node.textContent || "").join(" | ");
+              const renderedNames = Array.from(doc.querySelectorAll("#mapSvg .map-label")).map(node => node.__data__?.name || "").join(" | ");
+              throw new Error(`Rich-label live edit did not patch the rendered title: field=${liveTitleField}; input=${liveRichTitleInput.value}; rowEn=${selectedRow?.dataset.nameEn || ""}; rowFr=${selectedRow?.dataset.nameFr || ""}; names=${renderedNames}; titles=${renderedTitles}; busy=${doc.querySelector("#mapHost")?.classList.contains("is-rendering")}`);
+            }
             assert(checks, "Rich-label live editing keeps keyboard focus in the editor", doc.activeElement === liveRichTitleInput);
             const renderSamplesAfterLiveEdit = frame.contentWindow.PLOTYPUS_RENDER_PERFORMANCE?.snapshot().samples.length || 0;
             assert(checks, "Rich-label live editing patches its SVG without a full map render", renderSamplesAfterLiveEdit === renderSamplesBeforeLiveEdit, `${renderSamplesBeforeLiveEdit} / ${renderSamplesAfterLiveEdit}`);
@@ -1954,11 +1985,16 @@
             assert(checks, "Application language setting switches Translation status copy to French", translationStatusHeaderText === "État" && ["Complet", "EN manquant", "FR manquant"].includes(translationStatusText), `${translationStatusHeaderText} / ${translationStatusText}`);
             const firstFrenchTranslation = doc.querySelector(".translation-row .translation-fr-input");
             if (firstFrenchTranslation) {
+              const mapLanguageBeforeNotice = doc.querySelector("#mapLanguageInput")?.value || "en";
+              doc.querySelector("[data-map-language='fr']")?.click();
+              await waitFor(() => doc.querySelector("#mapLanguageInput")?.value === "fr", 2000);
               firstFrenchTranslation.value = "";
               firstFrenchTranslation.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
               await waitFor(() => !doc.querySelector("#exportLanguageNotice")?.hidden, 4000);
               const exportNoticeText = doc.querySelector("#exportLanguageNotice")?.textContent || "";
               assert(checks, "Export missing-translation notice switches to French", /1 chaîne n'a pas de français/.test(exportNoticeText) && /anglais/.test(exportNoticeText), exportNoticeText);
+              doc.querySelector(`[data-map-language='${mapLanguageBeforeNotice}']`)?.click();
+              await waitFor(() => doc.querySelector("#mapLanguageInput")?.value === mapLanguageBeforeNotice, 2000);
             }
           }
           if (requestedWorkspace === "quality") {
@@ -2472,6 +2508,7 @@
               globalMarkerDraft.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
               await waitFor(() => globalMarkerEditor.dataset.draftState === "pending" && !globalMarkerEditor.querySelector("[data-property-action='apply-marker-size']")?.disabled, 2000);
               const globalMarkerApplyRendersBefore = markerSizeRenderCount();
+              const globalMarkerSchedulerBefore = frame.contentWindow.PLOTYPUS_RENDER_SCHEDULER?.snapshot();
               globalMarkerEditor.querySelector("[data-property-action='apply-marker-size']")?.click();
               await waitFor(() => markerSizeInput.value === String(appliedGlobalMarkerSize) && markerSizeRenderCount() >= globalMarkerApplyRendersBefore + 1 && doc.activeElement === doc.querySelector("#propertiesSelectionControls [data-marker-size-draft='global']"), 12000);
               globalMarkerEditor = doc.querySelector("#propertiesSelectionControls [data-marker-size-editor='global']");
@@ -2480,6 +2517,8 @@
               const appliedGlobalCategorySizes = categoryListMarkerSizes();
               const globalChangedMarkers = Array.from(appliedGlobalGeometry).filter(([layoutId, signature]) => initialGlobalMarkerGeometry.has(layoutId) && signature !== initialGlobalMarkerGeometry.get(layoutId));
               assert(checks, "Document marker-size Apply redraws once and updates inherited categories", markerSizeRenderCount() === globalMarkerApplyRendersBefore + 1 && globalChangedMarkers.length > 0 && appliedGlobalCategorySizes.size > 0 && Array.from(appliedGlobalCategorySizes.values()).every(value => value === appliedGlobalMarkerSize) && Number(globalMarkerEditor?.dataset.committedValue) === appliedGlobalMarkerSize && globalMarkerDraft?.value === String(appliedGlobalMarkerSize) && globalMarkerEditor?.dataset.draftState === "applied" && globalMarkerEditor?.querySelector("[data-property-action='apply-marker-size']")?.disabled && doc.activeElement === globalMarkerDraft, `renders=${globalMarkerApplyRendersBefore}->${markerSizeRenderCount()}; changed=${globalChangedMarkers.length}; categories=${Array.from(appliedGlobalCategorySizes.values()).join(",")}`);
+              const globalMarkerSchedulerAfter = frame.contentWindow.PLOTYPUS_RENDER_SCHEDULER?.snapshot();
+              assert(checks, "A visible full-map update completes through the deferred scheduler", Boolean(globalMarkerSchedulerBefore && globalMarkerSchedulerAfter) && globalMarkerSchedulerAfter.requests === globalMarkerSchedulerBefore.requests + 1 && globalMarkerSchedulerAfter.completed === globalMarkerSchedulerBefore.completed + 1 && globalMarkerSchedulerAfter.pending === false, JSON.stringify({ before: globalMarkerSchedulerBefore, after: globalMarkerSchedulerAfter }));
               const globalMarkerUndoRendersBefore = markerSizeRenderCount();
               doc.querySelector("#ribbonUndoBtn")?.click();
               await waitFor(() => markerSizeInput.value === String(originalGlobalMarkerSize) && markerSizeRenderCount() >= globalMarkerUndoRendersBefore + 1, 12000);
@@ -2736,6 +2775,21 @@
                 const constrainedBackground = doc.querySelector(`#mapSvg .map-label-background[data-layout-id="${label.dataset.layoutId}"]`);
                 const constrainedBackgroundRect = constrainedBackground?.getBoundingClientRect();
                 assert(checks, "Dragging a label past the canvas edge clamps the complete label inside the canvas", constrainedBackgroundRect && constrainedBackgroundRect.left >= mapSvgRect.left - 1 && constrainedBackgroundRect.top >= mapSvgRect.top - 1 && constrainedBackgroundRect.right <= mapSvgRect.right + 1 && constrainedBackgroundRect.bottom <= mapSvgRect.bottom + 1, `label=${Math.round(constrainedLabelRect.left)},${Math.round(constrainedLabelRect.top)}-${Math.round(constrainedLabelRect.right)},${Math.round(constrainedLabelRect.bottom)} background=${Math.round(constrainedBackgroundRect?.left || 0)},${Math.round(constrainedBackgroundRect?.top || 0)}-${Math.round(constrainedBackgroundRect?.right || 0)},${Math.round(constrainedBackgroundRect?.bottom || 0)} canvas=${Math.round(mapSvgRect.left)},${Math.round(mapSvgRect.top)}-${Math.round(mapSvgRect.right)},${Math.round(mapSvgRect.bottom)}`);
+                const draggedWidthControl = doc.querySelector(`#mapSvg .label-width-control[data-layout-id="${label.dataset.layoutId}"]`);
+                const draggedWidthHandle = draggedWidthControl?.querySelector(".label-width-handle");
+                const backgroundX = Number(constrainedBackground?.getAttribute("x") || 0);
+                const backgroundWidth = Number(constrainedBackground?.getAttribute("width") || 0);
+                const handleX = Number(draggedWidthHandle?.getAttribute("x") || 0);
+                const handleWidth = Number(draggedWidthHandle?.getAttribute("width") || 0);
+                const handleCenterX = handleX + handleWidth / 2;
+                const resizeEdge = draggedWidthControl?.dataset.resizeEdge;
+                const expectedHandleX = resizeEdge === "left"
+                  ? backgroundX - 2 - handleWidth / 2
+                  : backgroundX + backgroundWidth + 2 + handleWidth / 2;
+                const handleClearsBox = resizeEdge === "left"
+                  ? handleX + handleWidth <= backgroundX - 2
+                  : handleX >= backgroundX + backgroundWidth + 2;
+                assert(checks, "The label width control follows the label on the outside of its active edge", Boolean(draggedWidthControl && draggedWidthHandle) && handleClearsBox && Math.abs(handleCenterX - expectedHandleX) <= 0.01, `handle=${handleCenterX}, expected=${expectedHandleX}, edge=${resizeEdge || "missing"}`);
                 const hasOffCanvasLabelCard = Array.from(doc.querySelectorAll("#qualityMetricsPanel .quality-card"))
                   .some(card => /Labels off canvas/i.test(card.textContent || ""));
                 assert(checks, "Labels no longer expose off-canvas warning state or a label quality card", !label.classList.contains("is-off-canvas") && !label.hasAttribute("data-off-canvas") && !hasOffCanvasLabelCard, label.getAttribute("class") || "");
@@ -2901,10 +2955,10 @@
                 const pointApplySamplesBefore = pointRenderSampleCount();
                 pointWidthDraft.focus();
                 pointWidthDraft.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
-                await waitFor(() => pointRow()?.querySelector(".leader-line-width-input")?.value === testPointWidth && pointRenderSampleCount() >= pointApplySamplesBefore + 1 && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), 12000);
+                await waitFor(() => pointRow()?.querySelector(".leader-line-width-input")?.value === testPointWidth && Number(pointLeader()?.getAttribute("stroke-width") || 0) !== originalPointWidth && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), 12000);
                 let activePointWidthEditor = doc.querySelector("#propertiesSelectionControls [data-leader-line-width-editor='point']");
                 let activePointWidthDraft = activePointWidthEditor?.querySelector("[data-leader-line-width-draft='point']");
-                assert(checks, "Enter applies point thickness in exactly one map update and restores a one-decimal draft", pointRenderSampleCount() === pointApplySamplesBefore + 1 && Number(pointLeader()?.getAttribute("stroke-width") || 0) !== originalPointWidth && Number(activePointWidthEditor?.dataset.committedValue) === Number(testPointWidth) && activePointWidthDraft?.value === testPointWidthDisplay && activePointWidthEditor?.dataset.draftState === "applied" && activePointWidthEditor?.querySelector("[data-property-action='apply-leader-line-width']")?.disabled && doc.activeElement === activePointWidthDraft, `renders=${pointApplySamplesBefore}->${pointRenderSampleCount()}; width=${pointLeader()?.getAttribute("stroke-width") || "missing"}; input=${activePointWidthDraft?.value || "missing"}; focus=${doc.activeElement?.outerHTML || "none"}`);
+                assert(checks, "Enter patches point thickness without a full map render and restores a one-decimal draft", pointRenderSampleCount() === pointApplySamplesBefore && Number(pointLeader()?.getAttribute("stroke-width") || 0) !== originalPointWidth && Number(activePointWidthEditor?.dataset.committedValue) === Number(testPointWidth) && activePointWidthDraft?.value === testPointWidthDisplay && activePointWidthEditor?.dataset.draftState === "applied" && activePointWidthEditor?.querySelector("[data-property-action='apply-leader-line-width']")?.disabled && doc.activeElement === activePointWidthDraft, `renders=${pointApplySamplesBefore}->${pointRenderSampleCount()}; width=${pointLeader()?.getAttribute("stroke-width") || "missing"}; input=${activePointWidthDraft?.value || "missing"}; focus=${doc.activeElement?.outerHTML || "none"}`);
                 const pointUndoSamplesBefore = pointRenderSampleCount();
                 doc.querySelector("#ribbonUndoBtn")?.click();
                 await waitFor(() => pointRow()?.querySelector(".leader-line-width-input")?.value === "" && pointRenderSampleCount() >= pointUndoSamplesBefore + 1 && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), 12000);
@@ -2979,9 +3033,9 @@
                 assert(checks, "Clearing a point thickness previews inherited width without applying it", pointRow()?.querySelector(".leader-line-width-input")?.value === testPointWidth && Number(pointLeader()?.getAttribute("stroke-width") || 0) !== originalPointWidth && Number(activePointWidthEditor.querySelector("[data-leader-line-width-preview]")?.getAttribute("stroke-width") || 0) === Number(activePointWidthEditor.dataset.inheritedValue) && /inherited/i.test(activePointWidthEditor.querySelector("[data-leader-line-width-readout]")?.textContent || "") && /inherited thickness.*Apply/i.test(activePointWidthEditor.querySelector("[data-leader-line-width-draft-status]")?.textContent || "") && (doc.querySelector("#mapSvg")?.innerHTML || "") === pointResetMapBefore && pointRenderSampleCount() === pointResetSamplesBefore && pointResetQualityAfterDraft?.revision === pointResetQualityBefore?.revision, `row=${pointRow()?.querySelector(".leader-line-width-input")?.value || "blank"}; preview=${activePointWidthEditor.querySelector("[data-leader-line-width-preview]")?.getAttribute("stroke-width") || "missing"}; renders=${pointResetSamplesBefore}->${pointRenderSampleCount()}`);
                 const pointResetApplySamplesBefore = pointRenderSampleCount();
                 activePointWidthEditor.querySelector("[data-property-action='apply-leader-line-width']")?.click();
-                await waitFor(() => pointRow()?.querySelector(".leader-line-width-input")?.value === "" && pointRenderSampleCount() >= pointResetApplySamplesBefore + 1 && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), 12000);
+                await waitFor(() => pointRow()?.querySelector(".leader-line-width-input")?.value === "" && Number(pointLeader()?.getAttribute("stroke-width") || 0) === originalPointWidth && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), 12000);
                 activePointWidthEditor = doc.querySelector("#propertiesSelectionControls [data-leader-line-width-editor='point']");
-                assert(checks, "Applying a blank point thickness restores inheritance in exactly one map update", pointRenderSampleCount() === pointResetApplySamplesBefore + 1 && Number(pointLeader()?.getAttribute("stroke-width") || 0) === originalPointWidth && activePointWidthEditor?.dataset.committedValue === "" && activePointWidthEditor?.dataset.draftState === "applied" && activePointWidthEditor?.querySelector("[data-property-action='apply-leader-line-width']")?.disabled && doc.activeElement === activePointWidthEditor?.querySelector("[data-leader-line-width-draft='point']"), `renders=${pointResetApplySamplesBefore}->${pointRenderSampleCount()}; row=${pointRow()?.querySelector(".leader-line-width-input")?.value || "blank"}; width=${pointLeader()?.getAttribute("stroke-width") || "missing"}/${originalPointWidth}`);
+                assert(checks, "Applying a blank point thickness patches inherited styling without a full map render", pointRenderSampleCount() === pointResetApplySamplesBefore && Number(pointLeader()?.getAttribute("stroke-width") || 0) === originalPointWidth && activePointWidthEditor?.dataset.committedValue === "" && activePointWidthEditor?.dataset.draftState === "applied" && activePointWidthEditor?.querySelector("[data-property-action='apply-leader-line-width']")?.disabled && doc.activeElement === activePointWidthEditor?.querySelector("[data-leader-line-width-draft='point']"), `renders=${pointResetApplySamplesBefore}->${pointRenderSampleCount()}; row=${pointRow()?.querySelector(".leader-line-width-input")?.value || "blank"}; width=${pointLeader()?.getAttribute("stroke-width") || "missing"}/${originalPointWidth}`);
                 doc.querySelector("#propertiesSelectionControls [data-property-action='reset-leader-colour']")?.click();
                 await waitFor(() => {
                   const leader = pointLeader();
@@ -3029,6 +3083,91 @@
             const svgSnapshot = Array.from(doc.querySelector("#mapSvg")?.children || []).slice(0, 8).map(node => `${node.tagName}.${node.getAttribute("class") || ""}`).join("|");
             assert(checks, "Selecting a label shows only label Properties", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='label']")) && labelSectionsHidden && legendPropertiesSection.hidden, `target=${Boolean(label)} kind=${labelKind} sectionsHidden=${labelSectionsHidden} legendHidden=${legendPropertiesSection.hidden} svg=${svgSnapshot}`);
             assert(checks, "Selecting label Properties highlights that label on the map", Boolean(label?.classList.contains("is-properties-selected")) && Boolean(selectedLabelBackground?.classList.contains("is-properties-selected")) && selectedLabelParts.every(node => node.dataset.layoutId === selectedLayoutId), `layout=${selectedLayoutId} highlighted=${selectedLabelParts.length}`);
+            const fittedLabel = Array.from(doc.querySelectorAll("#mapSvg .map-label"))
+              .find(node => /North Coast Transmission/i.test(node.textContent || ""));
+            const fittedBackground = fittedLabel
+              ? doc.querySelector(`#mapSvg .map-label-background[data-layout-id="${fittedLabel.dataset.layoutId}"]`)
+              : null;
+            const fittedLineWidths = fittedLabel
+              ? Array.from(fittedLabel.querySelectorAll("tspan.label-line")).map(line => line.getComputedTextLength())
+              : [];
+            const fittedTextWidth = Math.max(...fittedLineWidths, 0);
+            const fittedBackgroundWidth = Number(fittedBackground?.getAttribute("width") || 0);
+            assert(checks, "Label boxes use rendered font widths with only the intended horizontal padding", Boolean(fittedLabel && fittedBackground && fittedTextWidth > 0) && Math.abs(fittedBackgroundWidth - fittedTextWidth - 16) <= 1.5, `background=${fittedBackgroundWidth}, text=${fittedTextWidth}, padding=${fittedBackgroundWidth - fittedTextWidth}`);
+            const resizableLabel = Array.from(doc.querySelectorAll("#mapSvg .map-label"))
+              .find(node => String(node.__data__?.name || "").length > 24) || label;
+            resizableLabel?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
+            const resizableLayoutId = resizableLabel?.dataset.layoutId || "";
+            const resizeControl = doc.querySelector(`#mapSvg .label-width-control[data-layout-id="${resizableLayoutId}"]`);
+            const resizeHandle = resizeControl?.querySelector(".label-width-handle");
+            const resizeRowId = resizableLabel?.__data__?.rowId;
+            const resizeRow = Array.from(doc.querySelectorAll("#projectTable tbody tr[data-row-id]"))
+              .find(row => row.dataset.rowId === String(resizeRowId));
+            const defaultCharactersPerLine = Number(doc.querySelector("#labelCharsInput")?.value || 24);
+            const initialResizeBackgroundWidth = doc.querySelector(`#mapSvg .map-label-background[data-layout-id="${resizableLayoutId}"]`)?.getBBox().width || 0;
+            assert(checks, "Selecting a label exposes one minimal keyboard-focusable width handle", Boolean(resizeControl?.classList.contains("is-properties-selected") && resizeHandle?.getAttribute("tabindex") === "0" && resizeHandle?.getAttribute("role") === "slider"));
+            if (resizeHandle && resizeRow) {
+              const handleRect = resizeHandle.getBoundingClientRect();
+              const shrinkDirection = resizeControl.dataset.resizeEdge === "left" ? 1 : -1;
+              const startX = handleRect.left + handleRect.width / 2;
+              const startY = handleRect.top + handleRect.height / 2;
+              resizeHandle.dispatchEvent(new frame.contentWindow.MouseEvent("mousedown", {
+                bubbles: true,
+                cancelable: true,
+                view: frame.contentWindow,
+                clientX: startX,
+                clientY: startY,
+                buttons: 1
+              }));
+              frame.contentWindow.dispatchEvent(new frame.contentWindow.MouseEvent("mousemove", {
+                bubbles: true,
+                cancelable: true,
+                view: frame.contentWindow,
+                clientX: startX + shrinkDirection * 90,
+                clientY: startY,
+                buttons: 1
+              }));
+              frame.contentWindow.dispatchEvent(new frame.contentWindow.MouseEvent("mouseup", {
+                bubbles: true,
+                cancelable: true,
+                view: frame.contentWindow,
+                clientX: startX + shrinkDirection * 90,
+                clientY: startY,
+                buttons: 0
+              }));
+              await waitFor(() => Number(resizeRow.dataset.labelMaxChars || 0) >= 12 && Number(resizeRow.dataset.labelMaxChars || 0) < defaultCharactersPerLine, 4000);
+              const resizedCharactersPerLine = Number(resizeRow.dataset.labelMaxChars);
+              const resizedPropertiesInput = doc.querySelector("#propertiesSelectionControls [data-property-field='labelMaxChars']");
+              const resizedBackgroundWidth = doc.querySelector(`#mapSvg .map-label-background[data-layout-id="${resizableLayoutId}"]`)?.getBBox().width || 0;
+              assert(checks, "Dragging the label width handle updates that row's Characters per line", resizedPropertiesInput?.value === String(resizedCharactersPerLine) && resizedBackgroundWidth !== initialResizeBackgroundWidth, `row=${resizedCharactersPerLine}, field=${resizedPropertiesInput?.value || "missing"}, width=${initialResizeBackgroundWidth}->${resizedBackgroundWidth}`);
+
+              const resetLabelWidthButton = doc.querySelector("#propertiesSelectionControls [data-property-action='reset-label-max-chars']");
+              assert(
+                checks,
+                "Characters per line has a minimal reset icon",
+                Boolean(
+                  resetLabelWidthButton?.children.length === 1
+                  && resetLabelWidthButton.firstElementChild?.matches("svg")
+                  && resetLabelWidthButton.getAttribute("aria-label")
+                  && !resetLabelWidthButton.disabled
+                )
+              );
+              await new Promise(resolve => setTimeout(resolve, 50));
+              resetLabelWidthButton?.dispatchEvent(new frame.contentWindow.MouseEvent("click", {
+                bubbles: true,
+                cancelable: true,
+                view: frame.contentWindow
+              }));
+              await waitFor(() => resizeRow.dataset.labelMaxChars === "" && doc.querySelector("#propertiesSelectionControls [data-property-field='labelMaxChars']")?.value === String(defaultCharactersPerLine), 4000).catch(() => {});
+              const resetPropertiesInput = doc.querySelector("#propertiesSelectionControls [data-property-field='labelMaxChars']");
+              const resetPropertiesButton = doc.querySelector("#propertiesSelectionControls [data-property-action='reset-label-max-chars']");
+              assert(
+                checks,
+                "The reset icon restores the document Characters per line default",
+                resizeRow.dataset.labelMaxChars === "" && resetPropertiesInput?.value === String(defaultCharactersPerLine) && resetPropertiesButton?.disabled === true,
+                `row=${resizeRow.dataset.labelMaxChars || "(default)"}, field=${resetPropertiesInput?.value || "missing"}, default=${defaultCharactersPerLine}, disabled=${String(resetPropertiesButton?.disabled)}`
+              );
+            }
             const legend = doc.querySelector("#mapSvg .legend-layer");
             legend?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
             const legendKind = doc.querySelector("#propertiesSelectionControls .properties-form")?.dataset.propertyKind || "";
@@ -3524,6 +3663,20 @@
             doc.querySelector("#regionTableTab")?.click();
             await waitFor(() => doc.body.dataset.workspaceView === "regions");
             assert(checks, "Returning to Map baselayer restores map controls", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='map']")));
+            const mapStyleInput = doc.querySelector("#mapStylePresetInput");
+            const originalMapStyle = mapStyleInput?.value || "";
+            const alternateMapStyle = Array.from(mapStyleInput?.options || []).find(option => option.value !== originalMapStyle)?.value || "";
+            if (mapStyleInput && alternateMapStyle) {
+              const mapBeforeOffscreenStyleChange = doc.querySelector("#mapSvg")?.innerHTML || "";
+              const rendersBeforeOffscreenStyleChange = performanceApi?.snapshot().samples.length || 0;
+              const schedulerBeforeOffscreenStyleChange = frame.contentWindow.PLOTYPUS_RENDER_SCHEDULER?.snapshot();
+              mapStyleInput.value = alternateMapStyle;
+              mapStyleInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+              mapStyleInput.value = originalMapStyle;
+              mapStyleInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+              const schedulerAfterOffscreenStyleChange = frame.contentWindow.PLOTYPUS_RENDER_SCHEDULER?.snapshot();
+              assert(checks, "Map-style interactions outside Map defer and coalesce full rendering", (performanceApi?.snapshot().samples.length || 0) === rendersBeforeOffscreenStyleChange && (doc.querySelector("#mapSvg")?.innerHTML || "") === mapBeforeOffscreenStyleChange && schedulerAfterOffscreenStyleChange?.deferredOffscreen >= (schedulerBeforeOffscreenStyleChange?.deferredOffscreen || 0) + 2 && schedulerAfterOffscreenStyleChange?.pendingForMap === true, JSON.stringify({ before: schedulerBeforeOffscreenStyleChange, after: schedulerAfterOffscreenStyleChange }));
+            }
             const regionPresetInput = doc.querySelector("#regionPresetInput");
             regionPresetInput.value = "territories";
             regionPresetInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
@@ -3546,6 +3699,34 @@
               assert(checks, "Legend includes status swatches for active region statuses", Boolean(doc.querySelector("#mapSvg .legend-status-swatch")));
               doc.querySelector("#regionTableTab")?.click();
               await waitFor(() => doc.body.dataset.workspaceView === "regions", 4000);
+              const statusVisibilityToggle = doc.querySelector('[data-region-status-visibility="agreement-in-force"]');
+              const allStatusVisibilityToggle = doc.querySelector("#regionStatusVisibilityAllInput");
+              if (statusVisibilityToggle && allStatusVisibilityToggle) {
+                statusVisibilityToggle.checked = false;
+                statusVisibilityToggle.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+                assert(checks, "Individual baselayer statuses can be hidden without clearing assignments", firstRegionStatus.value === "agreement-in-force");
+                assert(checks, "Partially hidden statuses mark the Show all control as mixed", allStatusVisibilityToggle.indeterminate === true);
+                doc.querySelector("#previewTableTab")?.click();
+                await waitFor(() => doc.body.dataset.workspaceView === "preview", 4000);
+                await waitFor(() => doc.querySelector(mapRegionSelector)?.getAttribute("fill") !== "#3f6b5e" && !doc.querySelector("#mapSvg .legend-status-swatch"), 4000);
+                assert(checks, "Opening Map applies the queued hidden-status fill and legend changes", doc.querySelector(mapRegionSelector)?.getAttribute("fill") !== "#3f6b5e" && !doc.querySelector("#mapSvg .legend-status-swatch"));
+                doc.querySelector("#regionTableTab")?.click();
+                await waitFor(() => doc.body.dataset.workspaceView === "regions", 4000);
+
+                allStatusVisibilityToggle.checked = false;
+                allStatusVisibilityToggle.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+                await waitFor(() => Array.from(doc.querySelectorAll("[data-region-status-visibility]")).every(input => !input.checked), 2000);
+                assert(checks, "Show all statuses can hide every baselayer status", Array.from(doc.querySelectorAll("[data-region-status-visibility]")).every(input => !input.checked));
+
+                allStatusVisibilityToggle.checked = true;
+                allStatusVisibilityToggle.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+                doc.querySelector("#previewTableTab")?.click();
+                await waitFor(() => doc.body.dataset.workspaceView === "preview", 4000);
+                await waitFor(() => doc.querySelector(mapRegionSelector)?.getAttribute("fill") === "#3f6b5e" && doc.querySelector("#mapSvg .legend-status-swatch"), 4000);
+                assert(checks, "Showing all statuses restores the map fill and legend status", doc.querySelector(mapRegionSelector)?.getAttribute("fill") === "#3f6b5e" && Boolean(doc.querySelector("#mapSvg .legend-status-swatch")));
+                doc.querySelector("#regionTableTab")?.click();
+                await waitFor(() => doc.body.dataset.workspaceView === "regions", 4000);
+              }
             }
             const firstRegionRowForToggle = firstRegionId ? doc.querySelector(`#regionTable tbody tr[data-region-id="${frame.contentWindow.CSS.escape(firstRegionId)}"]`) : firstRegionRow;
             const firstRegionToggle = firstRegionRowForToggle?.querySelector(".region-table-included-input");
@@ -3594,9 +3775,18 @@
             assert(checks, "Region rows can be selected from the keyboard", secondRegionRow?.classList.contains("is-active-region") && secondRegionRow?.getAttribute("aria-current") === "true");
             const boundaryInput = doc.querySelector("#boundaryInput");
             if (boundaryInput) {
+              const mapBeforeOffscreenBoundaryChange = doc.querySelector("#mapSvg")?.innerHTML || "";
+              const rendersBeforeOffscreenBoundaryChange = performanceApi?.snapshot().samples.length || 0;
+              const schedulerBeforeOffscreenBoundaryChange = frame.contentWindow.PLOTYPUS_RENDER_SCHEDULER?.snapshot();
               boundaryInput.value = "world";
               boundaryInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
-              await waitFor(() => doc.querySelector("#boundaryInput")?.value === "world" && doc.querySelector("#regionPresetInput")?.options.length > 2, 8000);
+              await waitFor(() => {
+                const scheduler = frame.contentWindow.PLOTYPUS_RENDER_SCHEDULER?.snapshot();
+                return doc.querySelector("#boundaryInput")?.value === "world"
+                  && scheduler?.deferredOffscreen > (schedulerBeforeOffscreenBoundaryChange?.deferredOffscreen || 0);
+              }, 8000);
+              const schedulerAfterOffscreenBoundaryChange = frame.contentWindow.PLOTYPUS_RENDER_SCHEDULER?.snapshot();
+              assert(checks, "Boundary loading outside Map updates controls without rendering the hidden map", (performanceApi?.snapshot().samples.length || 0) === rendersBeforeOffscreenBoundaryChange && (doc.querySelector("#mapSvg")?.innerHTML || "") === mapBeforeOffscreenBoundaryChange && schedulerAfterOffscreenBoundaryChange?.deferredOffscreen > (schedulerBeforeOffscreenBoundaryChange?.deferredOffscreen || 0) && schedulerAfterOffscreenBoundaryChange?.pendingForMap === true, JSON.stringify({ before: schedulerBeforeOffscreenBoundaryChange, after: schedulerAfterOffscreenBoundaryChange }));
               uiFrenchButton?.click();
               await waitFor(() => doc.documentElement.lang === "fr" && /Fond de carte/.test(doc.querySelector("#regionTableTab")?.textContent || ""), 2000);
               const worldPresetOptions = Array.from(doc.querySelector("#regionPresetInput")?.options || []).map(option => option.textContent.trim()).join(" | ");
@@ -3660,6 +3850,21 @@
             doc.querySelector("#translateTableTab")?.click();
             await waitFor(() => doc.body.dataset.workspaceView === "translate");
             assert(checks, "Project points and Translate row text share the same font size", projectRowFontSize === translateRowFontSize, `projects=${projectRowFontSize}, translate=${translateRowFontSize}`);
+            const translationRenderSamplesBeforeNavigation = performanceApi.snapshot().samples.length;
+            doc.querySelector("#previewTableTab")?.click();
+            assert(checks, "Opening Map after a translation edit queues a visible background refresh", doc.body.dataset.workspaceView === "preview" && doc.querySelector("#mapHost")?.classList.contains("is-rendering"));
+            const translationNavigationStartedAt = performance.now();
+            doc.querySelector("#projectTableTab")?.click();
+            await waitFor(() => doc.body.dataset.workspaceView === "projects", 2000);
+            const translationNavigationElapsed = performance.now() - translationNavigationStartedAt;
+            await new Promise(resolve => setTimeout(resolve, 450));
+            assert(checks, "Workspace navigation remains responsive while a translated map refresh is queued", translationNavigationElapsed < 200 && performanceApi.snapshot().samples.length === translationRenderSamplesBeforeNavigation && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), `${Math.round(translationNavigationElapsed)} ms; renders=${translationRenderSamplesBeforeNavigation}->${performanceApi.snapshot().samples.length}`);
+            doc.querySelector("#previewTableTab")?.click();
+            await waitFor(() => performanceApi.snapshot().samples.length > translationRenderSamplesBeforeNavigation && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), 12000).catch(() => {});
+            const translationRenderCompleted = performanceApi.snapshot().samples.length > translationRenderSamplesBeforeNavigation && !doc.querySelector("#mapHost")?.classList.contains("is-rendering");
+            assert(checks, "Returning to Map completes the deferred translation refresh", translationRenderCompleted && Array.from(doc.querySelectorAll("#mapSvg .map-label")).some(node => node.__data__?.name === editedEnglishTranslation), `renders=${translationRenderSamplesBeforeNavigation}->${performanceApi.snapshot().samples.length}; busy=${doc.querySelector("#mapHost")?.classList.contains("is-rendering")}`);
+            doc.querySelector("#translateTableTab")?.click();
+            await waitFor(() => doc.body.dataset.workspaceView === "translate", 2000);
             const importEntryId = firstTranslationRow?.dataset.entryId || "";
             const importedFrench = "Nom francais importe";
             const translationImportInput = doc.querySelector("#translationImportInput");
@@ -3758,11 +3963,14 @@
                 const x = datum.labelSide === "left" ? datum.labelX - datum.textWidth : datum.labelX;
                 const y = datum.labelY - fontSize;
                 const height = datum.textHeight - datum.lineHeight + fontSize;
+                const collisionPaddingScale = Number(datum.collisionPaddingScale) || 1;
+                const collisionPaddingX = Math.max(4, 8 * collisionPaddingScale);
+                const collisionPaddingY = Math.max(2.5, 5 * collisionPaddingScale);
                 return {
-                  x0: x - 10,
-                  y0: y - 10,
-                  x1: x + datum.textWidth + 10,
-                  y1: y + height + 10,
+                  x0: x - collisionPaddingX,
+                  y0: y - collisionPaddingY,
+                  x1: x + datum.textWidth + collisionPaddingX,
+                  y1: y + height + collisionPaddingY,
                   centerX: x + datum.textWidth / 2,
                   centerY: y + height / 2
                 };
@@ -3855,12 +4063,18 @@
                   analysis: qualityAnalysisAtOpen
                 })
               );
-              await waitFor(() => (
-                doc.body.dataset.workspaceView === "quality"
-                && getOverlapCardValue() === movedOverlapValue
-                && Number(doc.querySelector("#canvasQualityPill .canvas-quality-metric strong")?.textContent || NaN) === movedOverlapValue
-                && frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot().pending === false
-              ), 4000);
+              try {
+                await waitFor(() => (
+                  doc.body.dataset.workspaceView === "quality"
+                  && getOverlapCardValue() === movedOverlapValue
+                  && Number(doc.querySelector("#canvasQualityPill .canvas-quality-metric strong")?.textContent || NaN) === movedOverlapValue
+                  && frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot().pending === false
+                ), 4000);
+              } catch (_error) {
+                const qualityAnalysisTimedOut = frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot();
+                const qualityPillOverlap = Number(doc.querySelector("#canvasQualityPill .canvas-quality-metric strong")?.textContent || NaN);
+                throw new Error(`Map quality refresh did not settle: workspace=${doc.body.dataset.workspaceView}; expected=${movedOverlapValue}; card=${getOverlapCardValue()}; pill=${qualityPillOverlap}; analysis=${JSON.stringify(qualityAnalysisTimedOut)}`);
+              }
               const qualityAnalysisAfter = frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot();
               const overlapChecklist = Array.from(doc.querySelectorAll("#statusBox .checklist-item"))
                 .find(node => /Label overlaps|Chevauchements d'étiquettes/i.test(node.querySelector("strong")?.textContent || ""));
@@ -3880,6 +4094,7 @@
               await waitFor(() => doc.body.dataset.workspaceView === "preview", 2000);
 
               const currentSourcePoint = toScreenPoint(overlapCountFromLabels(movableLabels).rects[isolatedIndex]);
+              const previewTargetPoint = { x: targetPoint.x + 6, y: targetPoint.y + 6 };
               const previewAnalysisBefore = frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot();
               sourceLabel.dispatchEvent(new frame.contentWindow.MouseEvent("mousedown", {
                 bubbles: true,
@@ -3894,16 +4109,16 @@
                 bubbles: true,
                 cancelable: true,
                 buttons: 1,
-                clientX: sourcePoint.x,
-                clientY: sourcePoint.y,
+                clientX: previewTargetPoint.x,
+                clientY: previewTargetPoint.y,
                 view: frame.contentWindow
               }));
               frame.contentWindow.dispatchEvent(new frame.contentWindow.MouseEvent("mouseup", {
                 bubbles: true,
                 cancelable: true,
                 button: 0,
-                clientX: sourcePoint.x,
-                clientY: sourcePoint.y,
+                clientX: previewTargetPoint.x,
+                clientY: previewTargetPoint.y,
                 view: frame.contentWindow
               }));
               const previewCompletedOverlapValue = overlapCountFromLabels(movableLabels).overlaps;
@@ -3917,7 +4132,10 @@
               await waitFor(() => doc.body.dataset.workspaceView === "quality" && doc.querySelector("#qualityTablePane")?.getAttribute("aria-busy") === "false", 2000);
               const previewCompletedChecklist = Array.from(doc.querySelectorAll("#statusBox .checklist-item"))
                 .find(node => /Label overlaps|Chevauchements d'étiquettes/i.test(node.querySelector("strong")?.textContent || ""));
-              assert(checks, "Map quality publishes a background result completed before the tab opens", getOverlapCardValue() === previewCompletedOverlapValue && previewCompletedChecklist?.textContent.includes(String(previewCompletedOverlapValue)), `${getOverlapCardValue()} / ${previewCompletedChecklist?.textContent || ""}`);
+              const previewCompletedChecklistMatches = previewCompletedOverlapValue > 0
+                ? previewCompletedChecklist?.textContent.includes(String(previewCompletedOverlapValue))
+                : /No label overlaps|Aucun chevauchement d'étiquettes/i.test(previewCompletedChecklist?.textContent || "");
+              assert(checks, "Map quality publishes a background result completed before the tab opens", getOverlapCardValue() === previewCompletedOverlapValue && previewCompletedChecklistMatches, `expected=${previewCompletedOverlapValue}; card=${getOverlapCardValue()}; checklist=${previewCompletedChecklist?.textContent || ""}`);
               doc.querySelector("#previewTableTab")?.click();
               await waitFor(() => doc.body.dataset.workspaceView === "preview", 2000);
             }
@@ -3931,7 +4149,15 @@
             const getLocatedLabelId = () => doc.querySelector("#mapSvg .map-label.is-quality-located")?.dataset.layoutId || "";
             const getLocatedStatus = () => doc.querySelector("#statusBox")?.textContent || "";
             clickVisibleLocateNext();
-            await waitFor(() => doc.body.dataset.workspaceView === "preview" && getLocatedLabelId() && /Located quality item 1 of \d+/.test(getLocatedStatus()), 4000);
+            try {
+              await waitFor(() => doc.body.dataset.workspaceView === "preview" && getLocatedLabelId() && /Located quality item 1 of \d+/.test(getLocatedStatus()), 4000);
+            } catch (_error) {
+              const locatedNodes = Array.from(doc.querySelectorAll("#mapSvg .is-quality-located")).map(node => `${node.tagName}.${node.getAttribute("class") || ""}:${node.dataset.layoutId || node.dataset.rowId || ""}`).join(" | ");
+              const qualityTargets = frame.contentWindow.PLOTYPUS_TEST_API?.getQualityLocateTargets?.() || [];
+              const activeQualityTarget = frame.contentWindow.PLOTYPUS_TEST_API?.getActiveQualityLocateTarget?.() || null;
+              const liveLabels = Array.from(doc.querySelectorAll("#mapSvg .map-label")).map(node => `${node.dataset.layoutId || "no-layout"}:${node.dataset.labelName || "no-name"}`).join(" | ");
+              throw new Error(`Quality Locate did not select a review label: workspace=${doc.body.dataset.workspaceView}; status=${getLocatedStatus()}; label=${getLocatedLabelId() || "missing"}; located=${locatedNodes || "none"}; active=${JSON.stringify(activeQualityTarget)}; targets=${JSON.stringify(qualityTargets)}; labels=${liveLabels}`);
+            }
             const firstLocatedLabelId = getLocatedLabelId();
             const locateTotalMatch = getLocatedStatus().match(/Located quality item 1 of (\d+)/);
             const locateTotal = locateTotalMatch ? Number(locateTotalMatch[1]) : 0;
@@ -4010,7 +4236,8 @@
           message: error.message,
           checks,
           frameErrors,
-          performance: frame.contentWindow?.PLOTYPUS_RENDER_PERFORMANCE?.snapshot() || null
+          performance: frame.contentWindow?.PLOTYPUS_RENDER_PERFORMANCE?.snapshot() || null,
+          renderScheduler: frame.contentWindow?.PLOTYPUS_RENDER_SCHEDULER?.snapshot() || null
         }, null, 2);
       }
     });

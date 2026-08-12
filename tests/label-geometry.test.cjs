@@ -187,6 +187,66 @@ test("compact label titles use the same 10 px screen size as rich-label titles",
   assert.equal(title.lineHeight, 12);
 });
 
+test("maximum characters per line wraps long labels without forcing short labels to the maximum width", () => {
+  const api = loadApi();
+  const settings = makeSettings({
+    outputMode: "web",
+    mapLanguage: "en",
+    labelMaxChars: 12
+  });
+  const shortBox = api.makeLabelBox(makeLabel({
+    name: "sdf",
+    labelStyle: "compact"
+  }), "bottom", settings, makeMapBounds());
+  const shortTitle = shortBox.lines.find(line => line.role === "title");
+  const expectedShortWidth = api.measureLabelTextWidth(shortTitle.text, shortTitle.fontSize, settings.fontFamily, 700);
+  const shortLabel = makeLabel({
+    labelSide: "bottom",
+    labelX: 100,
+    labelY: 100,
+    ...shortBox
+  });
+
+  assert.ok(Math.abs(shortBox.textWidth - expectedShortWidth) < 0.001);
+  assert.ok(shortBox.textWidth < 80);
+  assert.ok(Math.abs(api.lineEnd(shortLabel).x - (shortLabel.labelX + shortBox.textWidth / 2)) < 0.001);
+  assert.equal(api.getRenderedLabelTextAnchor(shortLabel), "middle");
+  assert.ok(Math.abs(api.getRenderedLabelTextX(shortLabel) - (shortLabel.labelX + shortBox.textWidth / 2)) < 0.001);
+  assert.equal(api.isLabelWidthResizable(shortLabel, settings), false);
+
+  const wrappedBox = api.makeLabelBox(makeLabel({
+    name: "Alpha beta gamma delta",
+    labelStyle: "compact"
+  }), "right", settings, makeMapBounds());
+  assert.ok(wrappedBox.lines.length > 1);
+  assert.ok(wrappedBox.lines.every(line => line.text.length <= settings.labelMaxChars));
+  assert.equal(api.getRenderedLabelTextAnchor(makeLabel({ labelSide: "right" })), "start");
+  assert.equal(api.getRenderedLabelTextX(makeLabel({ labelSide: "right", labelX: 130 })), 130);
+  assert.equal(api.getRenderedLabelTextAnchor(makeLabel({ labelSide: "left" })), "end");
+  assert.equal(api.getLabelLineFontWeight({ role: "title" }), 700);
+  assert.equal(api.getLabelLineFontWeight({ role: "paragraph" }), 400);
+  assert.equal(api.isLabelWidthResizable(makeLabel({
+    name: "Alpha beta gamma delta",
+    labelStyle: "compact"
+  }), settings), true);
+});
+
+test("horizontal label resizing maps both label edges to characters per line", () => {
+  const api = loadApi();
+  assert.equal(api.getLabelMaxCharsForResize(24, 58, "right", 5.8), 34);
+  assert.equal(api.getLabelMaxCharsForResize(24, -58, "left", 5.8), 34);
+  assert.equal(api.getLabelMaxCharsForResize(24, -999, "right", 5.8), 12);
+  assert.equal(api.getLabelMaxCharsForResize(24, 999, "right", 5.8), 42);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(api.getLabelWidthHandlePosition(100, "right", 9, 2))),
+    { x: 102, centerX: 106.5 }
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(api.getLabelWidthHandlePosition(100, "left", 9, 2))),
+    { x: 89, centerX: 93.5 }
+  );
+});
+
 test("no-coordinate callouts preserve the headed compact-box rhythm on screen", () => {
   const api = loadApi();
   const sizes = api.getLabelTypographyRenderSizes(12, "web");
@@ -508,6 +568,10 @@ test("project snapshots round-trip portable assets, leader settings, metadata, a
       { rowId: "row-elbow", name: "Elbow", type: "infrastructure", hideLine: true, elbowLeader: true, leaderLineWidth: 4.5, leaderLineColour: "#7b2d8e", labelStyle: "rich", labelBorder: true, content: [richImageBlock] },
       { rowId: "row-default", name: "Default routing", type: "infrastructure", hideLine: false, elbowLeader: false, leaderLineWidth: "", leaderLineColour: "" }
     ],
+    regionStatusVisibility: {
+      "agreement-in-force": false,
+      "negotiations-ongoing": true
+    },
     languageLayouts,
     manualLabelPositions: { "row:legacy": { x: 1, y: 2, side: "top" } },
     manualBoxPositions: { legend: { x: 3, y: 4 } },
@@ -550,6 +614,10 @@ test("project snapshots round-trip portable assets, leader settings, metadata, a
   assert.equal(restored.rows[1].hideLine, false);
   assert.equal(restored.rows[1].leaderLineWidth, "");
   assert.equal(restored.rows[1].leaderLineColour, "");
+  assert.deepEqual(restored.regionStatusVisibility, {
+    "agreement-in-force": false,
+    "negotiations-ongoing": true
+  });
   assert.deepEqual(restored.languageLayouts, languageLayouts);
   assert.deepEqual(restored.manualLabelPositions, { "row:legacy": { x: 1, y: 2, side: "top" } });
   assert.deepEqual(restored.manualBoxPositions, { legend: { x: 3, y: 4 } });
