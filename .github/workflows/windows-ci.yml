@@ -49,7 +49,7 @@ jobs:
 
       - name: Run unit tests
         shell: pwsh
-        run: node --test tests/geometry.test.cjs tests/label-layout.test.cjs tests/label-geometry.test.cjs tests/config-parity.test.cjs
+        run: node --test tests/geometry.test.cjs tests/label-layout.test.cjs tests/label-geometry.test.cjs tests/config-parity.test.cjs tests/region-matching.test.cjs tests/typography.test.cjs tests/render-scheduling.test.cjs
 
   browser-smoke:
     name: Shell and map smoke

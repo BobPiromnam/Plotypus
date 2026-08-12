@@ -7,15 +7,13 @@
 <p align="center"><strong>Turn spreadsheet data into publication-ready static maps—without GIS software or a build step.</strong></p>
 
 <p align="center">
-  <a href="#quick-start">Quick start</a> ·
+  <a href="#setup">Setup</a> ·
   <a href="#what-plotypus-does">Features</a> ·
   <a href="#prepare-your-data">Data format</a> ·
-  <a href="#configure-a-deployment">Configuration</a> ·
-  <a href="#develop-and-test">Development</a>
+  <a href="#configure-a-deployment">Server and configuration</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/BobPiromnam/Plotypus/actions/workflows/windows-ci.yml"><img src="https://github.com/BobPiromnam/Plotypus/actions/workflows/windows-ci.yml/badge.svg" alt="Windows CI status"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-3f6f61" alt="MIT license"></a>
 </p>
 
@@ -67,9 +65,13 @@ Runtime libraries, fonts, and Canada/world boundary data are bundled with the re
   </tr>
 </table>
 
-## Quick start
+## Setup
 
-Plotypus has no installation or build step.
+### Use Plotypus offline
+
+**Plotypus works fully offline with no installation, build step, account, or server.** It is a static application made from HTML, CSS, JavaScript, and bundled assets. Apart from a modern desktop browser, you do not need Node.js, Python, a package manager, a database, GIS software, or an internet connection.
+
+All runtime libraries, fonts, map boundaries, and other required assets are included. After downloading the folder, it can be copied to an offline computer or removable drive and used there.
 
 1. [Download the repository as a ZIP](https://github.com/BobPiromnam/Plotypus/archive/refs/heads/main.zip) and extract it, or clone it:
 
@@ -82,19 +84,25 @@ Plotypus has no installation or build step.
 4. Select **Fit: map + labels**, refine the layout, and open **Map quality** to review it.
 5. Select **Export** and download an SVG or PNG.
 
-Opening `index.html` directly is the simplest way to use the app. To load overrides from `plotypus.config.json`, run the included local server instead:
+Project data stays in the browser unless you explicitly save, export, copy, or share a file.
+
+### Optional: run from a server
+
+A server is not required for normal offline use. Run Plotypus from a local or hosted static server when you want to load deployment overrides from `plotypus.config.json`, make it available to other people on a network, or publish it as a website.
+
+On Windows, if Python is installed, the included launcher starts a local server and opens Plotypus:
 
 ```powershell
 .\start-plotypus.ps1
 ```
 
-Or use Python on any platform:
+Or start Python's static server directly on any platform:
 
 ```text
 python -m http.server 8000
 ```
 
-Then open <http://localhost:8000/>.
+Then open <http://localhost:8000/>. For hosting, publish the repository folder through any static web server. There is no compiled output or separate build directory.
 
 ## Make a map
 
@@ -157,51 +165,11 @@ Publishers can customize Plotypus without changing the application code.
 
 Configuration covers page and image sizes, fonts, map themes, category styles, approved colours, performance budgets, defaults, and sample data. Browsers commonly block sibling JSON reads from `file://`, so serve the folder locally when testing `plotypus.config.json`.
 
-Read the [configuration guide](docs/configuration.md) for examples and the complete publishing workflow. Validate changes with:
-
-```text
-node tests/validate-config.cjs
-```
-
-## Develop and test
-
-Plotypus is intentionally a static HTML/CSS/JavaScript application. Its classic-script loading order preserves direct-file use, and runtime dependencies are pinned under `assets/vendor/`.
-
-### Project layout
-
-| Path | Responsibility |
-| --- | --- |
-| [`index.html`](index.html) | App shell and script loading order |
-| [`app.js`](app.js) | Rendering, interaction, import/export, and application orchestration |
-| [`label-layout.js`](label-layout.js), [`geometry.js`](geometry.js) | Label placement policies and testable geometry |
-| [`project-io.js`](project-io.js), [`project-file.js`](project-file.js) | Project serialization, validation, and version normalization |
-| [`region-matching.js`](region-matching.js) | Region-name and location matching |
-| [`i18n.js`](i18n.js) | English and French interface strings |
-| [`config.js`](config.js), [`plotypus.config.json`](plotypus.config.json) | Defaults and deployment configuration |
-| [`themes/`](themes) | Map-specific stylesheets |
-| [`tests/`](tests) | Unit, smoke, interaction, and visual-regression coverage |
-
-Run the fast checks with Node.js:
-
-```text
-node --check app.js
-node tests/validate-config.cjs
-node --test tests/geometry.test.cjs tests/label-layout.test.cjs tests/label-geometry.test.cjs tests/config-parity.test.cjs tests/region-matching.test.cjs tests/typography.test.cjs
-```
-
-On Windows, run the browser suites with PowerShell and Edge or Chrome installed:
-
-```powershell
-.\tests\run-smoke.ps1
-.\tests\run-shell-smoke.ps1
-.\tests\run-visual-regression.ps1
-```
-
-Visual-regression captures and diff reports are written to the ignored `tests/visual-output/` directory. Approved baselines live in `tests/visual-baselines/`; update them only after reviewing an intentional UI change.
+Read the [configuration guide](docs/configuration.md) for examples and the complete publishing workflow.
 
 ## Contributing and support
 
-Bug reports and focused improvements are welcome through [GitHub Issues](https://github.com/BobPiromnam/Plotypus/issues). Before opening a pull request, run the Node checks above; changes to the interface or map output should also pass the browser and visual-regression suites.
+Bug reports and focused improvements are welcome through [GitHub Issues](https://github.com/BobPiromnam/Plotypus/issues).
 
 ## License
 
