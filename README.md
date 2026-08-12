@@ -1,448 +1,208 @@
-# Plotypus
+<p align="center">
+  <img src="assets/plotypus-mark.svg" width="88" alt="Plotypus logo">
+</p>
 
-**Plotypus** is a static web app for making publication-style maps from project data. It supports map regions, project markers, labels, leader lines, legends, no-coordinate callouts, and SVG/PNG export.
+<h1 align="center">Plotypus</h1>
 
-Plotypus is designed to be simple for non-technical users: download the folder and open `index.html`.
+<p align="center"><strong>Turn spreadsheet data into publication-ready static maps—without GIS software or a build step.</strong></p>
 
-## Contents
+<p align="center">
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#what-plotypus-does">Features</a> ·
+  <a href="#prepare-your-data">Data format</a> ·
+  <a href="#configure-a-deployment">Configuration</a> ·
+  <a href="#develop-and-test">Development</a>
+</p>
 
-- [For Users](#for-users)
-- [For Developers And Publishers](#for-developers-and-publishers)
-- [Project Files](#project-files)
-- [CSV Format](#csv-format)
-- [Configuration](#configuration)
-- [Configuration By Example](#configuration-by-example)
-- [Local Testing](#local-testing)
-- [Privacy](#privacy)
-- [License](#license)
+<p align="center">
+  <a href="https://github.com/BobPiromnam/Plotypus/actions/workflows/windows-ci.yml"><img src="https://github.com/BobPiromnam/Plotypus/actions/workflows/windows-ci.yml/badge.svg" alt="Windows CI status"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-3f6f61" alt="MIT license"></a>
+</p>
 
-## For Users
+![Plotypus workspace showing a publication map of Canada with project labels, leader lines, callouts, and map properties](docs/screenshots/preview.png)
 
-### Start Plotypus
+Plotypus is a local-first browser app for policy, research, and communications teams creating fixed-layout maps for reports, briefings, websites, and print. Import CSV or Excel data, arrange markers and labels, review the result, and export SVG or PNG. The app runs entirely on your computer: no account, hosted service, or GIS toolchain is required.
 
-1. Download or copy the Plotypus folder.
-2. Open `index.html` in Microsoft Edge, Chrome, or another modern browser.
-3. Use the tabs to enter data, style the map, preview it, and export the final image.
+Plotypus focuses on the last mile of map publishing—legible labels, controlled page dimensions, bilingual content, and repeatable output—rather than interactive map exploration.
 
-No install step is required.
+## What Plotypus does
 
-### Basic Workflow
+- **Starts with a spreadsheet.** Import CSV, TSV, or XLSX data, paste rows from a spreadsheet, or enter points directly.
+- **Supports two location workflows.** Place projects with longitude and latitude, or attach them to named regions. Rows without coordinates can become map callouts.
+- **Builds publication layouts.** Control page and canvas size, map scale, regional fills, marker categories, label wrapping, leader lines and colours, legends, and callouts.
+- **Automates without taking over.** Run label auto-placement when you choose, then drag labels, markers, the map, legend, and callouts into their final positions. Manual placements remain intact until you run auto-place again.
+- **Publishes in English and French.** Maintain bilingual project names, categories, map titles, and accessible text descriptions in one project.
+- **Checks the map before export.** Review missing data and translations, label overlaps, leader-line crossings, off-canvas points, edge clearance, and other publishing issues.
+- **Keeps projects portable.** Save the complete working state as JSON; uploaded marker icons and rich-label images are embedded in the project file.
+- **Exports useful deliverables.** Download editable SVG for print, PNG for the web, or CSV for continued data work.
 
-1. Add or import project rows in **Project points**.
-2. Choose included regions and colours in **Map baselayer**.
-3. In **Map**, define marker categories from the **Legend** list in Document Properties. The panel starts on the right and can still be moved from Configuration.
-4. Adjust page, image, map, label, and furniture settings in **Map**.
-5. Click **Run auto-place** when you want Plotypus to calculate label positions.
-6. Drag labels, the legend, callouts, or the map for final adjustment.
-7. Export the map as SVG or PNG.
+Runtime libraries, fonts, and Canada/world boundary data are bundled with the repository, so normal use works offline.
 
-### Notes
+## See the workflow
 
-- **Run auto-place** is intentional. Moving the map, legend, labels, or callouts should not silently reposition all labels.
-- Blank longitude or latitude values become no-coordinate callouts.
-- Manual label positions are preserved until you run auto-place again.
-- Final maps should always be reviewed before publication.
+<table>
+  <tr>
+    <td width="50%">
+      <a href="docs/screenshots/projects.png"><img src="docs/screenshots/projects.png" alt="Plotypus Project points workspace with spreadsheet rows and coordinate controls"></a><br>
+      <strong>Bring in source data</strong><br>
+      <sub>Edit spreadsheet rows and locations directly.</sub>
+    </td>
+    <td width="50%">
+      <a href="docs/screenshots/regions.png"><img src="docs/screenshots/regions.png" alt="Plotypus Map baselayer workspace with Canadian regions, status visibility, and colour controls"></a><br>
+      <strong>Control the baselayer</strong><br>
+      <sub>Choose regions, statuses, and colour order.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <a href="docs/screenshots/translate.png"><img src="docs/screenshots/translate.png" alt="Plotypus Translate workspace showing English and French project titles side by side"></a><br>
+      <strong>Manage bilingual content</strong><br>
+      <sub>Review English and French strings side by side.</sub>
+    </td>
+    <td width="50%">
+      <a href="docs/screenshots/quality.png"><img src="docs/screenshots/quality.png" alt="Plotypus Map quality workspace with export-readiness checks"></a><br>
+      <strong>Review export readiness</strong><br>
+      <sub>Locate layout and publishing issues before export.</sub>
+    </td>
+  </tr>
+</table>
 
-## For Developers And Publishers
+## Quick start
 
-Plotypus is a static HTML/CSS/JavaScript app. It currently has no build step and should remain easy to run from `file://` unless the project formally moves to a hosted-only workflow.
+Plotypus has no installation or build step.
 
-Runtime libraries are pinned and bundled in `assets/vendor/`, so normal map rendering and CSV import do not require an internet connection.
+1. [Download the repository as a ZIP](https://github.com/BobPiromnam/Plotypus/archive/refs/heads/main.zip) and extract it, or clone it:
 
-### Key Files
+   ```text
+   git clone https://github.com/BobPiromnam/Plotypus.git
+   ```
 
-| File | Purpose |
-| --- | --- |
-| `index.html` | App entry point and script loading order |
-| `app.js` | Main app logic, rendering, interaction, imports, exports, and label placement |
-| `project-file.js` | Project-file schema validation and legacy-version normalization |
-| `style.css` | App UI styling |
-| `config.js` | Bundled defaults and config loading |
-| `plotypus.config.json` | Optional department-level configuration |
-| `icons.js` | Shared icon definitions |
-| `sample-projects.csv` | Sample project data |
-| `assets/` | Boundary data, logo assets, fonts, and pinned runtime libraries |
-| `themes/` | Map theme CSS |
-| `geometry.js` | Pure rectangle and segment geometry used by label layout and interaction tools |
-| `label-layout.js` | Dependency-injected label placement policies and optimization utilities |
-| `tests/` | Unit and smoke tests |
+2. Open `index.html` in Microsoft Edge, Chrome, or another modern desktop browser.
+3. Select **Sample** to load the example project.
+4. Select **Fit: map + labels**, refine the layout, and open **Map quality** to review it.
+5. Select **Export** and download an SVG or PNG.
 
-### What To Customize
-
-Use `plotypus.config.json` when you want another department or publisher to customize defaults without editing the main app code.
-
-Common configuration areas:
-
-| Config area | What it controls |
-| --- | --- |
-| `defaults` | The starting book size, image size, print label size, map scale, marker size, line width, and label max characters |
-| `bookSizes` | The Book size dropdown and each related Image size option |
-| `fonts` | The Map font dropdown |
-| `categories` | The default legend marker names, marker shapes, marker colours, marker sizes, and line widths |
-| `categoryColourPresets` | The approved colour choices shown in category colour dropdowns |
-| `mapStyles` | The map style dropdown, map theme CSS files, region colour ramps, and default marker styles |
-| `sampleRows` | The sample table loaded by the sample-data buttons |
-
-See [docs/configuration.md](docs/configuration.md) for the full configuration guide.
-
-### Running With JSON Configuration
-
-Opening `index.html` directly is enough for normal use. Some browsers block local JSON reads from `file://`, so use a local static server when testing `plotypus.config.json`:
+Opening `index.html` directly is the simplest way to use the app. To load overrides from `plotypus.config.json`, run the included local server instead:
 
 ```powershell
 .\start-plotypus.ps1
 ```
 
-Or start a server manually:
+Or use Python on any platform:
 
-```powershell
+```text
 python -m http.server 8000
 ```
 
-Then open:
+Then open <http://localhost:8000/>.
 
-```text
-http://localhost:8000/
-```
+## Make a map
 
-## Project Files
+The five workspaces follow the publishing workflow:
 
-Use **Save project** when you want to preserve the full working state of a map. The downloaded JSON file is self-contained and can be shared directly; uploaded category icons and rich-label images are embedded in it rather than linked to files on the original computer. Rich-label image sizes and original proportions are saved with each image. Project files include rows, regions, colours, category styles, resolved label positions for each rendered language, legend and callout positions, and layout settings.
+1. **Project points** — add, paste, or import your source data. Choose coordinate or region-based locations.
+2. **Map baselayer** — choose Canada or the world, include the regions you need, and set fills, values, and statuses.
+3. **Map** — define legend items from Document Properties, choose the page and canvas size, run auto-placement, and make final adjustments directly on the canvas.
+4. **Translate** — add or import French content and review missing translations.
+5. **Map quality** — resolve automated checks, locate layout problems, and complete the final human review.
 
-Project files identify their Plotypus format version and the app version that saved them. Open a shared project with a Plotypus build that supports that project version; older builds reject newer files instead of opening them and potentially discarding fields when the project is saved again.
+For a new dataset, define the legend items in **Map** before importing rows so incoming `type` values can be matched correctly.
 
-Use CSV when you only need to exchange the project-point table with Excel or another data source.
+## Prepare your data
 
-The Properties panel's left/right position, width, and collapsed state are interface preferences saved in the current browser. They are intentionally separate from project files, so opening a shared map does not change another user's preferred workspace layout.
+Plotypus recognizes common English and French column headings and lets you confirm their mapping during import.
 
-## CSV Format
+| Column | When needed | Purpose |
+| --- | --- | --- |
+| `name` | Required | English project or label text |
+| `type` | Required | Legend category ID or label; stable IDs are preferred for integrations |
+| `lon`, `lat` | Coordinate mode | Decimal-degree longitude and latitude |
+| `region` | Region mode | Province, territory, country, or other region name |
+| `name_fr` | Optional | French project or label text |
+| `type_fr` | Optional | French category text |
+| `footnote` | Optional | Superscript footnote marker |
+| `hideLine` | Optional | Hides the label's leader line when truthy |
 
-Recommended columns:
+Minimal coordinate example:
 
 ```csv
-name,footnote,type,lon,lat,hideLine
+name,name_fr,type,type_fr,lon,lat
+Grays Bay Road and Port,Route et port de Grays Bay,Referred Project,Projets soumis,-108.4,68.5
+Critical Minerals Strategy,Stratégie sur les minéraux critiques,Transformative Strategy,Stratégies de transformation,,
 ```
 
-Required columns:
+When both coordinates are blank, the row is displayed as a no-coordinate callout. Accepted `hideLine` values include `yes`, `true`, `hide`, `hidden`, `no line`, and `no leader line`.
 
-```csv
-name,type,lon,lat
-```
+See [`sample-projects.csv`](sample-projects.csv) for a complete example.
 
-| Column | Description |
-| --- | --- |
-| `name` | Label text |
-| `footnote` | Optional superscript text |
-| `type` | Marker category |
-| `lon` | Longitude in decimal degrees |
-| `lat` | Latitude in decimal degrees |
-| `hideLine` | Hides the leader line for truthy values |
+## Save, share, and export
 
-Accepted `hideLine` values include `yes`, `true`, `hide`, `hidden`, `no line`, and `no leader line`.
+Use **Save** to preserve the complete map as a self-contained Plotypus JSON project. Project files include source rows, styles, region settings, English and French layouts, resolved label positions, map furniture positions, and embedded image assets. Use **Open** to continue editing or share the JSON file with another Plotypus user.
 
-## Configuration
+Use CSV when you only need to exchange the project-point table. Use SVG for editable, print-oriented artwork and PNG for raster output.
 
-Plotypus has two configuration layers:
+Plotypus does not upload project data. Data leaves the page only when you save, export, copy, or otherwise share a file.
+
+> [!IMPORTANT]
+> Automated checks support editorial review; they do not replace it. Always inspect the final exported map before publication.
+
+## Configure a deployment
+
+Publishers can customize Plotypus without changing the application code.
 
 | Layer | File | Purpose |
 | --- | --- | --- |
-| Bundled defaults | `config.js` | Keeps the app usable from `file://` |
-| Department config | `plotypus.config.json` | Lets maintainers customize hosted or local-server deployments |
+| Bundled defaults | [`config.js`](config.js) | Keeps the app usable when opened directly from `file://` |
+| Deployment overrides | [`plotypus.config.json`](plotypus.config.json) | Customizes a hosted or local-server deployment |
 
-When adding new configurable options, keep the bundled defaults and JSON config in sync.
+Configuration covers page and image sizes, fonts, map themes, category styles, approved colours, performance budgets, defaults, and sample data. Browsers commonly block sibling JSON reads from `file://`, so serve the folder locally when testing `plotypus.config.json`.
 
-Validate config changes before sharing them:
+Read the [configuration guide](docs/configuration.md) for examples and the complete publishing workflow. Validate changes with:
 
-```powershell
-node tests\validate-config.cjs
+```text
+node tests/validate-config.cjs
 ```
 
-## Configuration By Example
+## Develop and test
 
-This section shows the JSON syntax used in `plotypus.config.json`.
+Plotypus is intentionally a static HTML/CSS/JavaScript application. Its classic-script loading order preserves direct-file use, and runtime dependencies are pinned under `assets/vendor/`.
 
-### JSON Keys
+### Project layout
 
-When the docs say "key", they mean the name on the left side of a JSON object entry.
+| Path | Responsibility |
+| --- | --- |
+| [`index.html`](index.html) | App shell and script loading order |
+| [`app.js`](app.js) | Rendering, interaction, import/export, and application orchestration |
+| [`label-layout.js`](label-layout.js), [`geometry.js`](geometry.js) | Label placement policies and testable geometry |
+| [`project-io.js`](project-io.js), [`project-file.js`](project-file.js) | Project serialization, validation, and version normalization |
+| [`region-matching.js`](region-matching.js) | Region-name and location matching |
+| [`i18n.js`](i18n.js) | English and French interface strings |
+| [`config.js`](config.js), [`plotypus.config.json`](plotypus.config.json) | Defaults and deployment configuration |
+| [`themes/`](themes) | Map-specific stylesheets |
+| [`tests/`](tests) | Unit, smoke, interaction, and visual-regression coverage |
 
-In this example, `department-green` is the key:
+Run the fast checks with Node.js:
 
-```json
-{
-  "mapStyles": {
-    "department-green": {
-      "label": "Department green"
-    }
-  }
-}
-```
-
-The key is not shown directly to users. It is the internal ID Plotypus uses to connect related settings. The user-facing name is usually the `label`.
-
-### Map Style Example
-
-Use `mapStyles` to add a map style. Set `defaultMapStylePreset` to the same key if that style should load by default.
-
-```json
-{
-  "defaultMapStylePreset": "department-green",
-  "mapStyles": {
-    "department-green": {
-      "label": "Department green",
-      "stylesheet": "themes/department-green.css",
-      "regionColours": ["#dcebe4", "#94c2aa", "#217346"],
-      "categoryStyles": [
-        { "colour": "#444444", "stroke": "#ffffff", "markerSize": 10, "lineWidth": 2 },
-        { "colour": "#ffffff", "stroke": "#555555", "markerSize": 10, "lineWidth": 2 }
-      ]
-    }
-  }
-}
-```
-
-For that example to pass validation, the file `themes/department-green.css` must exist.
-
-### Book And Image Size Example
-
-Use `bookSizes` to define the Book size dropdown. Each entry inside `sizes` becomes an Image size option for that book size.
-
-```json
-{
-  "defaults": {
-    "bookSize": "department-report",
-    "imageSize": "half",
-    "printLabelSize": 12,
-    "mapScale": 100,
-    "defaultMarkerSize": 4,
-    "defaultLineWidth": 2,
-    "defaultLeaderColour": "#333333",
-    "labelMaxChars": 24
-  },
-  "bookSizes": {
-    "department-report": {
-      "label": "Department report",
-      "documentPage": { "widthIn": 8.5, "heightIn": 11, "marginIn": 1 },
-      "sizes": [
-        { "value": "full", "label": "Full page", "width": 792, "height": 570 },
-        { "value": "half", "label": "1/2 page", "width": 792, "height": 285 }
-      ]
-    }
-  }
-}
-```
-
-In this example:
-
-- `defaults.bookSize` must match the `department-report` key.
-- `defaults.imageSize` must match one of the `sizes[].value` entries.
-- `documentPage` sets the width, height and conventional margin used by the non-exported document-page preview.
-- `width` and `height` are output canvas dimensions in pixels.
-
-### Category Example
-
-Use `categories` to define the default marker types in the legend and in the Project points `Type` dropdown.
-
-```json
-{
-  "categories": [
-    {
-      "id": "capital-project",
-      "label": "Capital Project",
-      "defaultLabel": "Capital Project",
-      "shape": "circle",
-      "colour": "#444444",
-      "stroke": "#ffffff",
-      "markerSize": 10,
-      "lineWidth": 2,
-      "markerSizeCustom": false,
-      "lineWidthCustom": false,
-      "collapsed": false,
-      "removable": false
-    },
-    {
-      "id": "strategy",
-      "label": "Strategy",
-      "defaultLabel": "Strategy",
-      "shape": "square",
-      "colour": "#ffffff",
-      "stroke": "#555555",
-      "markerSize": 10,
-      "lineWidth": 2,
-      "markerSizeCustom": false,
-      "lineWidthCustom": false,
-      "collapsed": false,
-      "removable": true
-    }
-  ]
-}
-```
-
-Category rules:
-
-- `id` must be unique and should use simple lowercase text such as `capital-project`.
-- `label` is what users see in the app.
-- `sampleRows[].type` may match a category `id`, `label`, `labelFr`, or `defaultLabel`; stable IDs are preferred for new integrations.
-- Supported marker shapes include `circle`, `square`, `diamond`, `triangle-up`, `triangle-down`, `star`, `plus`, and `cross`.
-
-### Colour Preset Example
-
-Use `categoryColourPresets` to control which marker colours are available in dropdowns.
-
-```json
-{
-  "categoryColourPresets": [
-    { "value": "", "label": "Custom" },
-    { "value": "#26374a", "label": "GoC blue" },
-    { "value": "#217346", "label": "Green" },
-    { "value": "#444444", "label": "Charcoal" },
-    { "value": "#ffffff", "label": "White" }
-  ]
-}
-```
-
-Use hex colours such as `#444444`. Keep the empty value if you want users to be able to choose their own custom colour.
-
-### Font Example
-
-Use `fonts` to add Map font choices. If the font is bundled with Plotypus, point `stylesheet` to the local CSS file that defines `@font-face`.
-
-```json
-{
-  "defaultFontFamily": "Department Sans, Arial, sans-serif",
-  "fonts": [
-    {
-      "label": "Department Sans",
-      "value": "Department Sans, Arial, sans-serif",
-      "stylesheet": "assets/fonts/department-sans/department-sans.css"
-    },
-    {
-      "label": "Arial",
-      "value": "Arial, sans-serif"
-    }
-  ]
-}
-```
-
-For this example to pass validation, the file `assets/fonts/department-sans/department-sans.css` must exist.
-
-### Sample Row Example
-
-Use `sampleRows` to change the starter data.
-
-```json
-{
-  "sampleRows": [
-    {
-      "name": "Example Mine",
-      "type": "Capital Project",
-      "lon": -103.9,
-      "lat": 54.5
-    },
-    {
-      "name": "National Strategy",
-      "type": "Strategy",
-      "lon": "",
-      "lat": ""
-    }
-  ]
-}
-```
-
-Rows with blank `lon` and `lat` become no-coordinate callouts. If one coordinate is blank, the other coordinate must also be blank.
-
-### Validate Changes
-
-After editing `plotypus.config.json`, run:
-
-```powershell
-node tests\validate-config.cjs
-```
-
-Validate another config file:
-
-```powershell
-node tests\validate-config.cjs configs\department-example.json
-```
-
-The validator catches common publishing mistakes before someone opens the app, including missing CSS files, duplicate category IDs, invalid colours, bad image sizes, and sample rows whose `type` does not match a configured category label.
-
-## Local Testing
-
-Pull requests and pushes to `main` run the Windows CI workflow in `.github/workflows/windows-ci.yml`. It checks JavaScript and configuration, runs unit tests, exercises the shell and generated map in Chrome, and compares the approved workspace screenshots. Failed browser jobs upload screenshots, DOM captures, browser errors, and visual diffs as workflow artifacts for 14 days.
-
-Quick checks:
-
-```powershell
+```text
 node --check app.js
-node --check config.js
-node --check geometry.js
-node --check icons.js
-node --check label-layout.js
-node --check project-file.js
-node --check tests\validate-config.cjs
-node tests\validate-config.cjs
-node --test tests\geometry.test.cjs tests\label-layout.test.cjs tests\label-geometry.test.cjs tests\config-parity.test.cjs
+node tests/validate-config.cjs
+node --test tests/geometry.test.cjs tests/label-layout.test.cjs tests/label-geometry.test.cjs tests/config-parity.test.cjs tests/region-matching.test.cjs tests/typography.test.cjs
 ```
 
-Smoke test:
+On Windows, run the browser suites with PowerShell and Edge or Chrome installed:
 
 ```powershell
 .\tests\run-smoke.ps1
 .\tests\run-shell-smoke.ps1
-```
-
-Smoke-test output is written under `tests/smoke-output/` and is ignored by Git.
-The smoke run loads the bundled sample, runs auto-placement, verifies map-quality thresholds, and captures a screenshot unless `-SkipScreenshot` is supplied.
-The shell smoke test starts a temporary localhost server, exercises workspace navigation and the Export menu with mouse and keyboard events, and captures the final UI state. Test the supported shell widths with:
-
-```powershell
-.\tests\run-shell-smoke.ps1 -Width 1440 -Height 1000
-.\tests\run-shell-smoke.ps1 -Width 1280 -Height 900
-.\tests\run-shell-smoke.ps1 -Width 1024 -Height 800
-```
-
-Target a workspace or dialog while refining the shell:
-
-```powershell
-.\tests\run-shell-smoke.ps1 -Workspace quality -LoadSample
-.\tests\run-shell-smoke.ps1 -Dialog map-details
-.\tests\run-shell-smoke.ps1 -Dialog csv-map
-.\tests\run-shell-smoke.ps1 -Dialog point-catalog -CatalogOrigin projects
-.\tests\run-shell-smoke.ps1 -Dialog point-catalog -CatalogOrigin regions
-```
-
-The optional performance diagnostic exercises scheduled auto-placement and verifies timing classification. Chromium virtual time is suitable for wiring checks, not wall-clock benchmarking:
-
-```powershell
-.\tests\run-shell-smoke.ps1 -Workspace quality -LoadSample -MeasurePerformance -VirtualTimeBudgetMs 90000 -SkipScreenshot
-```
-
-Visual regression uses approved PNG baselines for every desktop workspace plus Map and Project points at the 1280px and 1024px responsive breakpoints:
-
-```powershell
-# Capture current views and compare them with approved baselines.
 .\tests\run-visual-regression.ps1
-
-# Narrow a review to one workspace or an exact case while refining UI.
-.\tests\run-visual-regression.ps1 -Workspace regions
-.\tests\run-visual-regression.ps1 -Case regions-1440x1000
-
-# Produce a report and diff images without failing the command during design audits.
-.\tests\run-visual-regression.ps1 -Workspace regions -ReportOnly
-
-# Exercise every workspace at all three supported widths.
-.\tests\run-visual-regression.ps1 -FullMatrix
-
-# After reviewing every image in tests\visual-output, approve intentional changes.
-.\tests\run-visual-regression.ps1 -UpdateBaselines
 ```
 
-Approved images live in `tests/visual-baselines/`. Current captures, red diff overlays, and `visual-regression-report.json` are written to the ignored `tests/visual-output/` directory. Do not update baselines merely to make a failure disappear; first confirm that the shell change is intentional and that generated map output still passes `run-smoke.ps1`.
+Visual-regression captures and diff reports are written to the ignored `tests/visual-output/` directory. Approved baselines live in `tests/visual-baselines/`; update them only after reviewing an intentional UI change.
 
-## Privacy
+## Contributing and support
 
-Plotypus runs locally in the browser. Project data is not uploaded by the app. Data leaves the page only when the user saves, exports, copies, or otherwise shares files.
+Bug reports and focused improvements are welcome through [GitHub Issues](https://github.com/BobPiromnam/Plotypus/issues). Before opening a pull request, run the Node checks above; changes to the interface or map output should also pass the browser and visual-regression suites.
 
 ## License
 
-See [LICENSE](LICENSE).
+Plotypus is available under the [MIT License](LICENSE).
