@@ -6899,8 +6899,15 @@
     return true;
   }
 
-  function isBaselayerSelectionInteractionTarget(target) {
+  function eventOriginatedInPropertiesPanel(event) {
+    if (!els.propertiesPanel) return false;
+    if (typeof event?.composedPath === "function" && event.composedPath().includes(els.propertiesPanel)) return true;
+    return Boolean(event?.target instanceof Element && event.target.closest("#propertiesPanel"));
+  }
+
+  function isBaselayerSelectionInteractionTarget(target, event = null) {
     if (!(target instanceof Element)) return false;
+    if (eventOriginatedInPropertiesPanel(event)) return true;
     return Boolean(target.closest([
       "#propertiesPanel",
       "#mapSvg .province",
@@ -6908,8 +6915,9 @@
     ].join(", ")));
   }
 
-  function isPointSelectionInteractionTarget(target) {
+  function isPointSelectionInteractionTarget(target, event = null) {
     if (!(target instanceof Element)) return false;
+    if (eventOriginatedInPropertiesPanel(event)) return true;
     return Boolean(target.closest([
       "#propertiesPanel",
       "#mapSvg .marker",
@@ -12424,13 +12432,13 @@
       if (getProjectToolbarMenus().some(item => !item.menu.hidden) && !event.target.closest(".project-menu-wrap")) {
         closeProjectToolbarMenus();
       }
-      if (mapScaleControlsVisible && els.mapHost && !els.mapHost.contains(event.target) && !event.target.closest("#propertiesPanel")) {
+      if (mapScaleControlsVisible && els.mapHost && !els.mapHost.contains(event.target) && !eventOriginatedInPropertiesPanel(event)) {
         hideMapScaleControls();
       }
-      if (isPointPropertiesSelection() && !isPointSelectionInteractionTarget(event.target)) {
+      if (isPointPropertiesSelection() && !isPointSelectionInteractionTarget(event.target, event)) {
         clearPointPropertiesSelection();
       }
-      if (isBaselayerPropertiesSelection() && !isBaselayerSelectionInteractionTarget(event.target)) {
+      if (isBaselayerPropertiesSelection() && !isBaselayerSelectionInteractionTarget(event.target, event)) {
         clearBaselayerPropertiesSelection();
       }
     });

@@ -488,8 +488,10 @@
       const checkTranslation = language => {
         const label = language === "fr" ? "French" : "English";
         const metrics = translationGridLayout(doc);
+        const languageHeadingNodes = Array.from(doc.querySelectorAll(".translation-column-labels > span")).slice(1, 3);
         assert(checks, `${label} Translate columns align and fit with consistent inline padding`, metrics.headersFit && metrics.rowPaddingIsConsistent, metrics.detail);
         assert(checks, `${label} Translate status stays inside its utility column`, metrics.utilityColumnsFit, metrics.detail);
+        assert(checks, `${label} Translate language edit icons follow their labels`, languageHeadingNodes.length === 2 && languageHeadingNodes.every(node => node.lastElementChild?.matches(".translation-column-edit-hint[data-icon='pencil']")), languageHeadingNodes.map(node => node.innerHTML).join(" | "));
         assert(checks, `${appWidth <= 1080 ? "1024px" : "Desktop"} ${language === "fr" ? "French " : ""}Translate grid ${language === "fr" ? "stays contained without page overflow" : "keeps its language-safe width without page overflow"}`, metrics.minimumWidthIsEnforced && metrics.horizontalOverflowIsContained, metrics.detail);
       };
       await useUiLanguage("en");
@@ -830,6 +832,17 @@
           .map(token => parseFloat(rootStyle.getPropertyValue(token)) || 0);
         assert(checks, "Application typography uses an explicit 18px minimum body size", parseFloat(bodyStyle.fontSize) >= 18 && typographyScale[0] === 18, `body=${bodyStyle.fontSize}, token=${typographyScale[0]}`);
         assert(checks, "Application heading tokens form a non-decreasing 18-40px hierarchy", typographyScale[0] === 18 && typographyScale.at(-1) === 40 && typographyScale.every((value, index) => index === 0 || value >= typographyScale[index - 1]), typographyScale.join(" / "));
+        const iconScale = ["--icon-hint-size", "--icon-compact-size", "--icon-action-size"]
+          .map(token => parseFloat(rootStyle.getPropertyValue(token)) || 0);
+        const commandActionIcons = ["#ribbonUndoBtn", "#mapDetailsBtn", "#applicationSettingsBtn"]
+          .map(selector => doc.querySelector(`${selector} > .button-icon`))
+          .filter(Boolean);
+        const commandActionIconWidths = commandActionIcons.map(icon => parseFloat(frame.contentWindow.getComputedStyle(icon).width) || 0);
+        const inlineHintIcons = [doc.querySelector(".col-edit-hint"), doc.querySelector(".translation-column-edit-hint")].filter(Boolean);
+        const inlineHintIconWidths = inlineHintIcons.map(icon => parseFloat(frame.contentWindow.getComputedStyle(icon).width) || 0);
+        assert(checks, "Application icon tokens scale with the 18px typography baseline", iconScale.join(",") === "14,18,22" && iconScale[2] > typographyScale[0], `hint/compact/action=${iconScale.join("/")}; body=${typographyScale[0]}`);
+        assert(checks, "Command actions use the larger shared icon size", commandActionIcons.length === 3 && commandActionIconWidths.every(width => width === iconScale[2]), commandActionIconWidths.join(", "));
+        assert(checks, "Inline edit and status hints use the larger shared hint size", inlineHintIcons.length === 2 && inlineHintIconWidths.every(width => width === iconScale[0]), inlineHintIconWidths.join(", "));
         const brandSurfaces = {
           app: rootStyle.getPropertyValue("--app-background").trim(),
           controls: rootStyle.getPropertyValue("--control-background").trim(),
@@ -948,6 +961,26 @@
           doc.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
           await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='document']") && !doc.querySelector("#mapSvg .map-scale-controls"), 2000);
           assert(checks, "Escape deselects the selected baselayer", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='document']") && !doc.querySelector("#mapSvg .map-scale-controls")));
+          const compositionMarker = await waitFor(() => doc.querySelector("#mapSvg .marker-layer .marker"), 4000);
+          const compositionRowId = compositionMarker.dataset.rowId;
+          const compositionRow = doc.querySelector(`#projectTable tbody tr[data-row-id='${compositionRowId}']`);
+          compositionMarker.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
+          await waitFor(() => doc.querySelector(`#propertiesSelectionControls .properties-form[data-property-kind='marker'][data-row-id='${compositionRowId}']`), 2000);
+          const selectedPointCompactInput = doc.querySelector("#propertiesSelectionControls input[data-property-field='labelStyle'][value='compact']");
+          assert(checks, "Selected sample map point starts with Compact Properties", Boolean(selectedPointCompactInput?.checked));
+          doc.querySelector("#propertiesSelectionControls input[data-property-field='labelStyle'][value='rich']")?.click();
+          const pointContentBeforeAdd = JSON.parse(compositionRow?.dataset.content || "[]").length;
+          const addPointElementButton = await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-action='add-content-text']"), 2000);
+          addPointElementButton.click();
+          await waitFor(() => {
+            const form = doc.querySelector("#propertiesSelectionControls .properties-form[data-row-id]");
+            const content = JSON.parse(compositionRow?.dataset.content || "[]");
+            return form?.dataset.propertyKind === "marker"
+              && form.dataset.rowId === compositionRowId
+              && content.length === pointContentBeforeAdd + 1;
+          }, 2000);
+          const pointFormAfterAdd = doc.querySelector("#propertiesSelectionControls .properties-form[data-row-id]");
+          assert(checks, "Adding a Rich element to a selected map point keeps that point in Properties", pointFormAfterAdd?.dataset.propertyKind === "marker" && pointFormAfterAdd.dataset.rowId === compositionRowId, `${pointFormAfterAdd?.dataset.propertyKind || "reset"}/${pointFormAfterAdd?.dataset.rowId || "none"}`);
           const failed = checks.filter(check => !check.pass);
           result.textContent = JSON.stringify({
             status: failed.length ? "failed" : "ok",
@@ -2278,6 +2311,11 @@
             assert(checks, "Global leader-line controls fit the Properties panel", Boolean(globalLeaderControls) && globalLeaderProxies.every(input => Boolean(input?.closest("label")?.textContent.trim())) && globalLeaderControls.scrollWidth <= globalLeaderControls.clientWidth + 1 && doc.querySelector("#propertiesSelectionControls")?.scrollWidth <= doc.querySelector("#propertiesSelectionControls")?.clientWidth + 1, `group=${globalLeaderControls?.scrollWidth || 0}/${globalLeaderControls?.clientWidth || 0}; panel=${doc.querySelector("#propertiesSelectionControls")?.scrollWidth || 0}/${doc.querySelector("#propertiesSelectionControls")?.clientWidth || 0}`);
             const globalLeaderToggleLayout = leaderToggleLayout(globalLeaderControls);
             assert(checks, "Global leader-line toggles use unclipped compact switches without redundant edit icons", globalLeaderToggleLayout.pass && !globalLeaderControls?.querySelector(".leader-line-toggle-list .field-origin-icon") && !globalLeaderControls?.querySelector(".field-origin-icon"), globalLeaderToggleLayout.detail);
+            const globalLeaderToggleLabel = globalLeaderControls?.querySelector(".leader-line-toggle-list .toolbar-check > span");
+            const globalLeaderStyleLabels = Array.from(globalLeaderControls?.querySelectorAll(".leader-line-style-grid .properties-field-label") || []);
+            const globalLeaderToggleWeight = globalLeaderToggleLabel ? frame.contentWindow.getComputedStyle(globalLeaderToggleLabel).fontWeight : "";
+            const globalLeaderStyleWeights = globalLeaderStyleLabels.map(label => frame.contentWindow.getComputedStyle(label).fontWeight);
+            assert(checks, "Global leader-line labels use one regular font weight", globalLeaderStyleLabels.length === 2 && Number(globalLeaderToggleWeight) === 400 && globalLeaderStyleWeights.every(weight => Number(weight) === Number(globalLeaderToggleWeight)), `toggle=${globalLeaderToggleWeight || "missing"}; style=${globalLeaderStyleWeights.join(", ") || "missing"}`);
             assert(checks, "Global leader-line Properties use English labels after restoring the UI language", /Leader lines/.test(globalLeaderControls?.textContent || "") && /Hide all leader lines/.test(globalLeaderControls?.textContent || "") && /Thickness/.test(globalLeaderControls?.textContent || "") && /Colour/.test(globalLeaderControls?.textContent || ""), globalLeaderControls?.textContent.trim() || "missing");
             if (loadSample && globalLeaderControls) {
               await waitFor(() => !doc.querySelector("#mapHost")?.classList.contains("is-rendering") && frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot().pending === false, 12000);
@@ -3590,7 +3628,9 @@
             assert(checks, "Translation import action is in the Add section", Boolean(translateAddSection?.querySelector("#importTranslationsBtn")) && /Add|Ajouter/.test(translateAddSection?.textContent || ""), translateAddSection?.textContent || "");
             assert(checks, "Translate Properties show the summary without a repeated selected-string editor", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='translation']")) && !doc.querySelector("#propertiesSelectionControls [data-property-kind='translation-entry'], #propertiesSelectionControls [data-translation-property]"));
             assert(checks, "Translate column labels show editable and automatic hints", doc.querySelectorAll(".translation-column-labels [data-icon='pencil']").length === 2 && Boolean(doc.querySelector(".translation-column-labels .col-auto-chip [data-icon='wand']")));
-            const translationLanguageHeadings = Array.from(doc.querySelectorAll(".translation-column-labels > span")).slice(1, 3).map(node => node.textContent.trim());
+            const translationLanguageHeadingNodes = Array.from(doc.querySelectorAll(".translation-column-labels > span")).slice(1, 3);
+            assert(checks, "Translate language edit icons follow their column labels", translationLanguageHeadingNodes.length === 2 && translationLanguageHeadingNodes.every(node => node.lastElementChild?.matches(".translation-column-edit-hint[data-icon='pencil']")), translationLanguageHeadingNodes.map(node => node.innerHTML).join(" | "));
+            const translationLanguageHeadings = translationLanguageHeadingNodes.map(node => node.textContent.trim());
             assert(checks, "Translation language headings omit editable source and translation qualifiers", /^(English|Anglais)$/.test(translationLanguageHeadings[0] || "") && translationLanguageHeadings[1] === "Français", translationLanguageHeadings.join(" | "));
             const firstTranslationRow = doc.querySelector(".translation-row[data-entry-id^='project:']");
             const englishTranslationInput = firstTranslationRow?.querySelector(".translation-en-input");
