@@ -2172,11 +2172,11 @@
           ${getTypeOptions(row.type)}
         </select>
       </td>
-      <td class="annotation-preview-cell label-preview-cell" data-cell-field="labelStyle" aria-readonly="true"><span class="label-preview-text"></span></td>
+      <td class="annotation-preview-cell label-preview-cell" data-cell-field="labelStyle"><span class="label-preview-text"></span></td>
       <td class="bulk-edit-cell region-cell anchor-preview-cell vcell" data-cell-field="region"><select class="region-input" aria-label="${escapeHtml(t("properties.field.region"))}"></select></td>
       <td class="bulk-edit-cell coordinate-cell lon-cell vcell" data-cell-field="lon"><input class="lon-input" type="text" inputmode="decimal" value="${escapeHtml(formatProjectCoordinate(row.lon))}" aria-label="${escapeHtml(t("table.longitude"))}"><button class="clear-coordinate-cell" type="button" data-clear-coordinate="lon" aria-label="${escapeHtml(t("table.clearLongitude"))}" title="${escapeHtml(t("table.clearLongitude"))}" hidden>&times;</button></td>
       <td class="bulk-edit-cell coordinate-cell lat-cell vcell" data-cell-field="lat"><input class="lat-input" type="text" inputmode="decimal" value="${escapeHtml(formatProjectCoordinate(row.lat))}" aria-label="${escapeHtml(t("table.latitude"))}"><button class="clear-coordinate-cell" type="button" data-clear-coordinate="lat" aria-label="${escapeHtml(t("table.clearLatitude"))}" title="${escapeHtml(t("table.clearLatitude"))}" hidden>&times;</button></td>
-      <td class="status-cell" data-cell-field="status" aria-readonly="true"><span class="row-status-badge"></span></td>
+      <td class="status-cell" data-cell-field="status"><span class="row-status-badge"></span></td>
       <td class="line-cell" data-cell-field="hideLine"><input type="checkbox" class="hide-line-input" aria-label="${escapeHtml(t("properties.field.hideLeaderLine"))}"${row.hideLine ? " checked" : ""}></td>
       <td hidden>
         <input type="checkbox" class="elbow-leader-input" aria-label="${escapeHtml(t("properties.field.useElbowLeader"))}"${row.elbowLeader ? " checked" : ""}>
@@ -3044,6 +3044,7 @@
     if (i18n && typeof i18n.applyStaticTranslations === "function") {
       i18n.applyStaticTranslations(nextLanguage, document);
     }
+    renderRibbonIcons();
     feedbackComposer?.update();
     renderBookSizeOptions();
     renderImageSizeOptions();
@@ -9554,6 +9555,7 @@
   function drawLabelWidthControls(svg, placed, settings) {
     const layer = svg.append("g")
       .attr("class", "label-width-control-layer")
+      .attr("role", "group")
       .attr("aria-label", t("properties.field.charactersPerLine"));
     const controls = layer.selectAll("g.label-width-control")
       .data(placed, row => row.layoutId)

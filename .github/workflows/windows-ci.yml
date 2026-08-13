@@ -42,6 +42,10 @@ jobs:
           node --check project-file.js
           node --check properties.js
           node --check tests/headless-smoke-runner.cjs
+          node --check tests/run-unit-tests.cjs
+          node --check tests/validate-performance-report.cjs
+          node --check tests/validate-runtime-assets.cjs
+          node --check tests/validate-workflows.cjs
           node --check tests/validate-config.cjs
           node --check workspace.js
 
@@ -49,9 +53,17 @@ jobs:
         shell: pwsh
         run: node tests/validate-config.cjs plotypus.config.json
 
+      - name: Validate offline runtime assets
+        shell: pwsh
+        run: node tests/validate-runtime-assets.cjs
+
+      - name: Validate GitHub workflow syntax
+        shell: pwsh
+        run: node tests/validate-workflows.cjs
+
       - name: Run unit tests
         shell: pwsh
-        run: node --test tests/config-parity.test.cjs tests/feedback.test.cjs tests/geometry.test.cjs tests/label-geometry.test.cjs tests/label-layout.test.cjs tests/properties-panel.test.cjs tests/region-matching.test.cjs tests/render-scheduling.test.cjs tests/typography.test.cjs
+        run: node tests/run-unit-tests.cjs
 
   browser-smoke:
     name: Shell and map smoke
@@ -78,7 +90,17 @@ jobs:
 
       - name: Run focused sample smoke test
         shell: pwsh
-        run: ./tests/run-shell-smoke.ps1 -Workspace preview -LoadSample -VisualCapture -SkipScreenshot
+        run: ./tests/run-shell-smoke.ps1 -Workspace preview -LoadSample -VisualCapture -StrictDiagnostics -SkipScreenshot
+
+      - name: Enforce Windows performance regression ceilings
+        shell: pwsh
+        run: |
+          ./tests/run-shell-smoke.ps1 -Workspace preview -LoadSample -VisualCapture -MeasurePerformance -StrictDiagnostics -SkipScreenshot -ReportPath tests/smoke-output/performance-report.json
+          node tests/validate-performance-report.cjs tests/smoke-output/performance-report.json tests/windows-ci-performance-budgets.json
+
+      - name: Round-trip a populated saved project
+        shell: pwsh
+        run: ./tests/run-shell-smoke.ps1 -Workspace preview -LoadSample -VisualCapture -ProjectRoundTrip -StrictDiagnostics -SkipScreenshot
 
       - name: Run bilingual table layout smoke tests
         shell: pwsh
@@ -108,8 +130,86 @@ jobs:
             tests/smoke-output/**/server.out
             tests/smoke-output/**/server.err
 
+  accessibility:
+    name: Accessibility
+    runs-on: windows-latest
+    timeout-minutes: 20
+    needs: unit
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install accessibility tooling
+        shell: pwsh
+        run: npm ci --ignore-scripts
+
+      - name: Audit rendered workspaces and dialogs
+        shell: pwsh
+        run: ./tests/run-accessibility-smoke.ps1
+
+      - name: Upload accessibility reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-accessibility-${{ github.run_attempt }}
+          if-no-files-found: ignore
+          retention-days: 14
+          path: tests/smoke-output/accessibility/*.json
+
+  responsive:
+    name: Responsive (${{ matrix.width }}px, ${{ matrix.side }})
+    runs-on: windows-latest
+    timeout-minutes: 10
+    needs: unit
+    strategy:
+      fail-fast: false
+      matrix:
+        width: [1440, 1280, 1024]
+        side: [left, right]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run bilingual table and Properties checks
+        shell: pwsh
+        run: ./tests/run-responsive-matrix.ps1 -Widths ${{ matrix.width }} -PropertiesSides ${{ matrix.side }}
+
+      - name: Upload responsive failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-responsive-${{ matrix.width }}-${{ matrix.side }}-${{ github.run_attempt }}
+          if-no-files-found: ignore
+          retention-days: 14
+          path: |
+            tests/smoke-output/**/shell-dom.html
+            tests/smoke-output/**/shell-dom.err
+            tests/smoke-output/**/server.out
+            tests/smoke-output/**/server.err
+
   visual-regression:
-    name: Visual review
+    name: Visual regression
     runs-on: windows-latest
     timeout-minutes: 30
     needs: unit
@@ -127,9 +227,9 @@ jobs:
         with:
           node-version: 22
 
-      - name: Capture workspace comparisons
+      - name: Enforce workspace visual baselines
         shell: pwsh
-        run: ./tests/run-visual-regression.ps1 -ReportOnly
+        run: ./tests/run-visual-regression.ps1
 
       - name: Upload visual review artifacts
         if: always()

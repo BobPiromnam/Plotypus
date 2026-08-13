@@ -13,9 +13,17 @@ param(
   [switch]$LoadSample,
   [switch]$TableLayoutOnly,
   [switch]$MeasurePerformance,
+  [switch]$StrictDiagnostics,
+  [switch]$AccessibilityAudit,
+  [switch]$EnforceAccessibility,
+  [switch]$ProjectRoundTrip,
   [switch]$SkipScreenshot,
   [switch]$VisualCapture,
-  [string]$ScreenshotCopyPath = ""
+  [ValidateSet("", "left", "right")]
+  [string]$PropertiesSide = "",
+  [string]$ScreenshotCopyPath = "",
+  [string]$ReportPath = "",
+  [string]$AccessibilityReportPath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -30,6 +38,10 @@ if ($TableLayoutOnly -and -not $LoadSample) {
 
 if ($TableLayoutOnly -and $Workspace -notin @("projects", "regions", "translate")) {
   throw "-TableLayoutOnly requires -Workspace projects, regions, or translate."
+}
+
+if ($ProjectRoundTrip -and (-not $LoadSample -or $Workspace -ne "preview")) {
+  throw "-ProjectRoundTrip requires -LoadSample and -Workspace preview."
 }
 
 if ($BrowserTimeoutMs -lt 0) {
@@ -61,6 +73,7 @@ $resolvedBrowserTimeoutMs = if ($BrowserTimeoutMs -gt 0) {
 $repoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $outputRoot = Join-Path $repoRoot "tests\smoke-output"
 $headlessRunner = Join-Path $repoRoot "tests\headless-smoke-runner.cjs"
+$axeScript = Join-Path $repoRoot "node_modules\axe-core\axe.min.js"
 $runLabel = if ($TableLayoutOnly) { "table-layout-$Workspace" } elseif ($Dialog) { "dialog-$Dialog" } elseif ($Workspace) { "workspace-$Workspace" } else { "shell" }
 $runId = "$runLabel-$($Width)x$($Height)-$(Get-Date -Format 'yyyyMMdd-HHmmss-fff')"
 $runDir = Join-Path $outputRoot $runId
@@ -68,6 +81,7 @@ $profileDir = Join-Path $runDir "browser-profile"
 $domPath = Join-Path $runDir "shell-dom.html"
 $errPath = Join-Path $runDir "shell-dom.err"
 $screenshotPath = Join-Path $runDir "shell-$($Width)x$($Height).png"
+$defaultAccessibilityReportPath = Join-Path $runDir "accessibility.json"
 
 New-Item -ItemType Directory -Force -Path $runDir | Out-Null
 
@@ -94,6 +108,8 @@ try {
   if ($LoadSample) { $query += "sample=1" }
   if ($TableLayoutOnly) { $query += "tableLayout=1" }
   if ($MeasurePerformance) { $query += "performance=1" }
+  if ($PropertiesSide) { $query += "propertiesSide=$PropertiesSide" }
+  if ($ProjectRoundTrip) { $query += "projectRoundTrip=1" }
   if ($VisualCapture) { $query += "visual=1" }
   $queryString = if ($query.Count) { "?" + ($query -join "&") } else { "" }
   $smokeUrl = "http://127.0.0.1:$port/tests/shell-interactions.html$queryString"
@@ -130,6 +146,17 @@ try {
     "--timeout", $resolvedBrowserTimeoutMs
   )
   if (-not $SkipScreenshot) { $runnerArgs += @("--screenshot", $screenshotPath) }
+  if ($StrictDiagnostics) { $runnerArgs += @("--strict-diagnostics", "true") }
+  if ($AccessibilityAudit -or $EnforceAccessibility) {
+    if (-not (Test-Path -LiteralPath $axeScript)) { throw "axe-core is required for accessibility audits. Run npm install first." }
+    $resolvedAccessibilityReportPath = if ($AccessibilityReportPath) {
+      if ([System.IO.Path]::IsPathRooted($AccessibilityReportPath)) { $AccessibilityReportPath } else { Join-Path $repoRoot $AccessibilityReportPath }
+    } else {
+      $defaultAccessibilityReportPath
+    }
+    $runnerArgs += @("--axe-script", $axeScript, "--axe-report", $resolvedAccessibilityReportPath)
+    if ($EnforceAccessibility) { $runnerArgs += @("--axe-fail-impacts", "serious,critical") }
+  }
   $runnerOutput = & $node.Source @runnerArgs
   $runnerExitCode = $LASTEXITCODE
   $dumpStopwatch.Stop()
@@ -162,12 +189,20 @@ try {
     frameErrors = $result.frameErrors
     performance = $result.performance
     runner = if ($runnerOutput) { $runnerOutput | ConvertFrom-Json } else { $null }
+    accessibilityReport = if ($AccessibilityAudit -or $EnforceAccessibility) { $resolvedAccessibilityReportPath } else { $null }
     browserElapsedMs = $dumpStopwatch.ElapsedMilliseconds
     browserTimeoutMs = $resolvedBrowserTimeoutMs
     screenshot = if ($SkipScreenshot) { $null } elseif ($ScreenshotCopyPath) { $copyPath } else { $screenshotPath }
     dom = $domPath
   }
-  $summary | ConvertTo-Json -Depth 6
+  $summaryJson = $summary | ConvertTo-Json -Depth 8
+  if ($ReportPath) {
+    $resolvedReportPath = if ([System.IO.Path]::IsPathRooted($ReportPath)) { $ReportPath } else { Join-Path $repoRoot $ReportPath }
+    $reportDirectory = Split-Path -Parent $resolvedReportPath
+    if ($reportDirectory) { New-Item -ItemType Directory -Force -Path $reportDirectory | Out-Null }
+    Set-Content -LiteralPath $resolvedReportPath -Value $summaryJson -Encoding utf8
+  }
+  $summaryJson
   if ($result.status -ne "ok") { throw "Shell interaction smoke status was '$($result.status)'. See $domPath" }
 } finally {
   if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force }

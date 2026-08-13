@@ -20,7 +20,7 @@
     const iconSvg = options && typeof options.iconSvg === "function"
       ? options.iconSvg(iconName, "field-origin-svg")
       : "";
-    return `<span class="field-origin-icon field-origin-icon-${escapeHtml(origin)}" title="${label}" aria-label="${label}">${iconSvg}</span>`;
+    return `<span class="field-origin-icon field-origin-icon-${escapeHtml(origin)}" role="img" title="${label}" aria-label="${label}">${iconSvg}</span>`;
   }
 
   function propertyFieldLabel(options, label, origin = "edit") {
@@ -200,6 +200,7 @@
         <section class="document-property-section">
           <h3>${escapeHtml(t("properties.section.mapStyle"))}</h3>
           <label class="properties-field-group">
+            ${propertyFieldLabel(options, t("properties.field.mapStyle"))}
             <select data-map-proxy="mapStylePresetInput">
               ${selectOptions.mapStyle || ""}
             </select>

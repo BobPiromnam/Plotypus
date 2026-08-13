@@ -1,0 +1,7 @@
+{
+  "description": "Windows CI regression ceilings. Product targets remain defined in plotypus.config.json and are reported as warnings until the rendering work meets them reliably.",
+  "runnerElapsedMs": 30000,
+  "renderMs": 4000,
+  "autoPlaceMs": 20000,
+  "exportMs": 4000
+}

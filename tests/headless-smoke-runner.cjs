@@ -47,6 +47,7 @@ class DevToolsConnection {
   constructor(webSocketUrl) {
     this.nextId = 1;
     this.pending = new Map();
+    this.listeners = new Map();
     this.socket = new WebSocket(webSocketUrl);
     this.ready = new Promise((resolve, reject) => {
       this.socket.addEventListener("open", resolve, { once: true });
@@ -54,7 +55,11 @@ class DevToolsConnection {
     });
     this.socket.addEventListener("message", event => {
       const message = JSON.parse(String(event.data));
-      if (!message.id || !this.pending.has(message.id)) return;
+      if (!message.id) {
+        for (const listener of this.listeners.get(message.method) || []) listener(message.params || {});
+        return;
+      }
+      if (!this.pending.has(message.id)) return;
       const { resolve, reject } = this.pending.get(message.id);
       this.pending.delete(message.id);
       if (message.error) reject(new Error(`${message.error.message} (${message.error.code})`));
@@ -73,6 +78,11 @@ class DevToolsConnection {
     const response = new Promise((resolve, reject) => this.pending.set(id, { resolve, reject }));
     this.socket.send(JSON.stringify({ id, method, params }));
     return response;
+  }
+
+  on(method, listener) {
+    if (!this.listeners.has(method)) this.listeners.set(method, []);
+    this.listeners.get(method).push(listener);
   }
 
   close() {
@@ -100,9 +110,13 @@ async function main() {
   const domPath = path.resolve(required(values, "dom"));
   const errorPath = path.resolve(required(values, "error-output"));
   const screenshotPath = values.screenshot ? path.resolve(values.screenshot) : "";
+  const axeScriptPath = values["axe-script"] ? path.resolve(values["axe-script"]) : "";
+  const axeReportPath = values["axe-report"] ? path.resolve(values["axe-report"]) : "";
+  const axeFailImpacts = new Set(String(values["axe-fail-impacts"] || "").split(",").map(value => value.trim()).filter(Boolean));
   const width = Number(values.width || 1440);
   const height = Number(values.height || 1000);
   const timeoutMs = Number(values.timeout || 30000);
+  const strictDiagnostics = values["strict-diagnostics"] === "true";
   if (!Number.isInteger(width) || width <= 0) throw new Error("--width must be a positive integer.");
   if (!Number.isInteger(height) || height <= 0) throw new Error("--height must be a positive integer.");
   if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) throw new Error("--timeout must be a positive integer.");
@@ -111,6 +125,7 @@ async function main() {
   fs.mkdirSync(path.dirname(domPath), { recursive: true });
   fs.mkdirSync(path.dirname(errorPath), { recursive: true });
   if (screenshotPath) fs.mkdirSync(path.dirname(screenshotPath), { recursive: true });
+  if (axeReportPath) fs.mkdirSync(path.dirname(axeReportPath), { recursive: true });
 
   const browserArguments = [
     "--headless=new",
@@ -125,7 +140,7 @@ async function main() {
     "--remote-debugging-port=0",
     `--user-data-dir=${profilePath}`,
     `--window-size=${width},${height}`,
-    url
+    "about:blank"
   ];
   const browser = spawn(browserPath, browserArguments, { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
   let browserOutput = "";
@@ -147,16 +162,44 @@ async function main() {
       const response = await fetch(`http://127.0.0.1:${activePort}/json/list`);
       if (!response.ok) return null;
       const targets = await response.json();
-      return targets.find(candidate => candidate.type === "page" && candidate.webSocketDebuggerUrl && candidate.url === url)
-        || targets.find(candidate => candidate.type === "page" && candidate.webSocketDebuggerUrl && candidate.url !== "about:blank")
+      return targets.find(candidate => candidate.type === "page" && candidate.webSocketDebuggerUrl)
         || null;
     }, Math.min(timeoutMs, 10000));
 
     connection = new DevToolsConnection(target.webSocketDebuggerUrl);
+    const diagnostics = {
+      consoleErrors: [],
+      networkFailures: [],
+      httpErrors: [],
+      externalRequests: []
+    };
+    const requestUrls = new Map();
+    const localOrigins = new Set([new URL(url).origin, `http://127.0.0.1:${activePort}`]);
+    connection.on("Runtime.consoleAPICalled", event => {
+      if (event.type !== "error") return;
+      diagnostics.consoleErrors.push(event.args?.map(argument => argument.value ?? argument.description ?? "").join(" ") || "Console error");
+    });
+    connection.on("Network.requestWillBeSent", event => {
+      const requestUrl = event.request?.url || "";
+      requestUrls.set(event.requestId, requestUrl);
+      if (!/^https?:\/\//i.test(requestUrl)) return;
+      const requestOrigin = new URL(requestUrl).origin;
+      if (!localOrigins.has(requestOrigin)) diagnostics.externalRequests.push(requestUrl);
+    });
+    connection.on("Network.loadingFailed", event => {
+      const requestUrl = requestUrls.get(event.requestId) || "unknown request";
+      if (!event.canceled) diagnostics.networkFailures.push(`${requestUrl}: ${event.errorText || "loading failed"}`);
+    });
+    connection.on("Network.responseReceived", event => {
+      const status = Number(event.response?.status);
+      if (status >= 400) diagnostics.httpErrors.push(`${status} ${event.response?.url || requestUrls.get(event.requestId) || "unknown request"}`);
+    });
     await connection.send("Runtime.enable");
     await connection.send("Page.enable");
+    await connection.send("Network.enable");
 
     const startedAt = Date.now();
+    await connection.send("Page.navigate", { url });
     const readResult = () => evaluate(connection, `(() => {
       const node = document.querySelector("#result");
       const text = node?.textContent?.trim() || "";
@@ -192,9 +235,56 @@ async function main() {
       });
       fs.writeFileSync(screenshotPath, Buffer.from(screenshot.data, "base64"));
     }
+    let accessibility = null;
+    if (axeScriptPath) {
+      const axeSource = fs.readFileSync(axeScriptPath, "utf8");
+      const injected = await evaluate(connection, `(() => {
+        const frame = document.querySelector("#app");
+        const targetDocument = frame?.contentDocument;
+        if (!targetDocument) return false;
+        const script = targetDocument.createElement("script");
+        script.textContent = ${JSON.stringify(axeSource)};
+        targetDocument.documentElement.appendChild(script);
+        script.remove();
+        return Boolean(frame.contentWindow.axe);
+      })()`);
+      if (!injected) throw new Error("Could not inject axe-core into the application frame.");
+      const axeResults = await evaluate(connection, `(async () => {
+        const frame = document.querySelector("#app");
+        return frame.contentWindow.axe.run(frame.contentDocument, {
+          runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"] },
+          resultTypes: ["violations", "incomplete"]
+        });
+      })()`);
+      accessibility = {
+        url: axeResults.url,
+        timestamp: axeResults.timestamp,
+        violations: axeResults.violations || [],
+        incomplete: axeResults.incomplete || []
+      };
+      if (axeReportPath) fs.writeFileSync(axeReportPath, `${JSON.stringify(accessibility, null, 2)}\n`, "utf8");
+      const blockingViolations = accessibility.violations.filter(violation => axeFailImpacts.has(violation.impact));
+      if (blockingViolations.length) {
+        throw new Error(`Accessibility audit found ${blockingViolations.length} blocking violation(s): ${blockingViolations.map(violation => `${violation.id} (${violation.impact}, ${violation.nodes.length} node(s))`).join(", ")}`);
+      }
+    }
+
+    const diagnosticFailures = Object.values(diagnostics).flat();
+    if (strictDiagnostics && diagnosticFailures.length) {
+      throw new Error(`Strict browser diagnostics failed:\n${diagnosticFailures.map(item => `- ${item}`).join("\n")}`);
+    }
 
     fs.writeFileSync(errorPath, browserOutput, "utf8");
-    process.stdout.write(`${JSON.stringify({ status: smokeResult.status, elapsedMs: Date.now() - startedAt })}\n`);
+    process.stdout.write(`${JSON.stringify({
+      status: smokeResult.status,
+      elapsedMs: Date.now() - startedAt,
+      diagnostics,
+      accessibility: accessibility ? {
+        violations: accessibility.violations.length,
+        incomplete: accessibility.incomplete.length,
+        violationIds: accessibility.violations.map(violation => violation.id)
+      } : null
+    })}\n`);
   } finally {
     if (connection) connection.close();
     if (browser.exitCode === null) browser.kill();

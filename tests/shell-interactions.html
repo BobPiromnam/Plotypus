@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="../assets/plotypus-pin.png" type="image/png">
   <title>Plotypus shell interaction smoke</title>
   <style>
     html, body { height: 100%; margin: 0; font: 14px system-ui, sans-serif; }
@@ -25,12 +26,15 @@
     const tableLayoutOnly = params.get("tableLayout") === "1";
     const measurePerformance = params.get("performance") === "1";
     const visualCapture = params.get("visual") === "1";
+    const propertiesSide = ["left", "right"].includes(params.get("propertiesSide")) ? params.get("propertiesSide") : "";
+    const projectRoundTrip = params.get("projectRoundTrip") === "1";
     const seededCanvasZoom = Number(params.get("canvasZoom"));
     const canvasZoomLevels = [25, 33, 50, 67, 75, 90, 100, 110, 125, 150, 175, 200];
     const initialCanvasZoom = canvasZoomLevels.includes(seededCanvasZoom) ? seededCanvasZoom : 125;
     if (visualCapture) document.documentElement.classList.add("is-visual-capture");
     try {
-      localStorage.removeItem("plotypus.propertiesPanel");
+      if (propertiesSide) localStorage.setItem("plotypus.propertiesPanel", JSON.stringify({ side: propertiesSide }));
+      else localStorage.removeItem("plotypus.propertiesPanel");
       localStorage.removeItem("plotypus.uiLanguage");
       if (canvasZoomLevels.includes(seededCanvasZoom)) {
         localStorage.setItem("plotypus.canvasViewZoom", JSON.stringify(seededCanvasZoom));
@@ -191,6 +195,19 @@
         && (!shouldScrollAtNarrowWidth || wrapper.scrollWidth > wrapper.clientWidth + 1)
         && table.ownerDocument.documentElement.scrollWidth <= table.ownerDocument.documentElement.clientWidth + 1;
       const minimumWidthIsEnforced = parsedMinimumWidth >= minimumWidth && tableRect.width >= parsedMinimumWidth - 1;
+      const pageHasOverflow = table.ownerDocument.documentElement.scrollWidth > table.ownerDocument.documentElement.clientWidth + 1;
+      const pageOverflowers = pageHasOverflow
+        ? Array.from(table.ownerDocument.body.querySelectorAll("*")).filter(element => {
+          if (!isRenderedLayoutElement(element)) return false;
+          const rect = element.getBoundingClientRect();
+          return rect.right > table.ownerDocument.documentElement.clientWidth + 1 || rect.left < -1;
+        }).slice(0, 8).map(element => {
+          const rect = element.getBoundingClientRect();
+          const identity = `${element.tagName.toLowerCase()}#${element.id || ""}.${String(element.className?.baseVal || element.className || "").trim().replace(/\s+/g, ".")}`;
+          const copy = String(element.textContent || "").trim().replace(/\s+/g, " ").slice(0, 32);
+          return `${identity}@${Math.round(rect.left)}-${Math.round(rect.right)}:${copy}`;
+        })
+        : [];
       return {
         headersFit,
         headerPaddingIsConsistent,
@@ -199,7 +216,7 @@
         minimumWidthIsEnforced,
         horizontalOverflowIsContained,
         pass: headersFit && headerPaddingIsConsistent && bodyTextPaddingIsConsistent && utilityMetrics.every(metric => metric.pass) && minimumWidthIsEnforced && horizontalOverflowIsContained,
-        detail: `headers=${headerMetrics.map(metric => `${metric.label}:${metric.pass ? "fit" : "clip"}@${metric.paddingLeft}/${metric.paddingRight}`).join(" | ")}; body=${bodyTextMetrics.map(metric => metric.detail).join(" | ")}; utility=${utilityMetrics.map(metric => `${metric.selector}:${metric.detail}`).join(" | ")}; table=${Math.round(tableRect.width)}/${parsedMinimumWidth}; wrapper=${wrapper ? `${wrapper.scrollWidth}/${wrapper.clientWidth}:${wrapperStyle.overflowX}` : "missing"}`
+        detail: `headers=${headerMetrics.map(metric => `${metric.label}:${metric.pass ? "fit" : "clip"}@${metric.paddingLeft}/${metric.paddingRight}`).join(" | ")}; body=${bodyTextMetrics.map(metric => metric.detail).join(" | ")}; utility=${utilityMetrics.map(metric => `${metric.selector}:${metric.detail}`).join(" | ")}; table=${Math.round(tableRect.width)}/${parsedMinimumWidth}; wrapper=${wrapper ? `${wrapper.scrollWidth}/${wrapper.clientWidth}:${wrapperStyle.overflowX}` : "missing"}; page=${table.ownerDocument.documentElement.scrollWidth}/${table.ownerDocument.documentElement.clientWidth}; overflowers=${pageOverflowers.join(",") || "none"}`
       };
     }
 
@@ -413,6 +430,35 @@
 
     async function runFocusedTableLayoutChecks(doc, checks, workspace) {
       const appWidth = doc.defaultView.innerWidth;
+      const propertiesPanel = doc.querySelector("#propertiesPanel");
+      const propertiesResizeHandle = doc.querySelector("#propertiesResizeHandle");
+      const workspaceElement = doc.querySelector(".workspace");
+      if (propertiesSide) {
+        assert(checks, `Properties starts on the requested ${propertiesSide} side`, doc.body.dataset.propertiesSide === propertiesSide, doc.body.dataset.propertiesSide || "missing");
+        if (appWidth > 1080) {
+          const panelRect = propertiesPanel?.getBoundingClientRect();
+          const workspaceRect = workspaceElement?.getBoundingClientRect();
+          const orderIsCorrect = propertiesSide === "left"
+            ? propertiesPanel?.nextElementSibling === workspaceElement && panelRect?.right <= workspaceRect?.left + 1
+            : workspaceElement?.nextElementSibling === propertiesPanel && panelRect?.left >= workspaceRect?.right - 1;
+          assert(checks, `Docked ${propertiesSide} Properties keeps the correct visual and DOM order`, orderIsCorrect, `panel=${panelRect?.left}-${panelRect?.right}; workspace=${workspaceRect?.left}-${workspaceRect?.right}`);
+          const startingWidth = Math.round(panelRect?.width || 0);
+          dispatchKey(propertiesResizeHandle, propertiesSide === "left" ? "ArrowRight" : "ArrowLeft");
+          await waitFor(() => Math.round(propertiesPanel?.getBoundingClientRect().width || 0) === startingWidth + 16, 2000);
+          assert(checks, `Docked ${propertiesSide} Properties resizes inward from its splitter`, Math.round(propertiesPanel?.getBoundingClientRect().width || 0) === startingWidth + 16, `${startingWidth} -> ${Math.round(propertiesPanel?.getBoundingClientRect().width || 0)}`);
+          dispatchKey(propertiesResizeHandle, propertiesSide === "left" ? "ArrowLeft" : "ArrowRight");
+        } else {
+          const style = doc.defaultView.getComputedStyle(propertiesPanel);
+          const appShellRect = doc.querySelector(".app-shell")?.getBoundingClientRect();
+          const appShellStyle = doc.defaultView.getComputedStyle(doc.querySelector(".app-shell"));
+          const workspaceRect = workspaceElement?.getBoundingClientRect();
+          const workspaceStyle = doc.defaultView.getComputedStyle(workspaceElement);
+          const viewportWidth = doc.documentElement.clientWidth;
+          const drawerUsesRequestedEdge = style.position === "fixed" && (propertiesSide === "left" ? style.left === "0px" : style.right === "0px");
+          assert(checks, `Narrow ${propertiesSide} Properties uses the requested slide-over edge`, drawerUsesRequestedEdge && propertiesPanel?.inert, `left=${style.left}; right=${style.right}; inert=${propertiesPanel?.inert}`);
+          assert(checks, "Closed narrow Properties does not reserve workspace width", appShellRect?.width >= viewportWidth - 1 && workspaceRect?.width >= viewportWidth - 1, `shell=${Math.round(appShellRect?.width || 0)}; workspace=${Math.round(workspaceRect?.width || 0)}; viewport=${viewportWidth}; columns=${appShellStyle.gridTemplateColumns}; areas=${appShellStyle.gridTemplateAreas}; workspaceArea=${workspaceStyle.gridArea}; justify=${workspaceStyle.justifySelf}`);
+        }
+      }
       const uiEnglishButton = doc.querySelector("[data-ui-language='en']");
       const uiFrenchButton = doc.querySelector("[data-ui-language='fr']");
       const useUiLanguage = async language => {
@@ -838,10 +884,17 @@
           .map(selector => doc.querySelector(`${selector} > .button-icon`))
           .filter(Boolean);
         const commandActionIconWidths = commandActionIcons.map(icon => parseFloat(frame.contentWindow.getComputedStyle(icon).width) || 0);
+        const translatedActionIcons = ["#ribbonOpenProjectBtn", "#ribbonSaveProjectBtn", "#ribbonLoadSampleBtn", "#exportMenuBtn"]
+          .map(selector => doc.querySelector(`${selector} > .button-icon`))
+          .filter(Boolean);
+        const workspaceTabIcons = Array.from(doc.querySelectorAll(".workspace-nav .table-tab > .button-icon"));
         const inlineHintIcons = [doc.querySelector(".col-edit-hint"), doc.querySelector(".translation-column-edit-hint")].filter(Boolean);
         const inlineHintIconWidths = inlineHintIcons.map(icon => parseFloat(frame.contentWindow.getComputedStyle(icon).width) || 0);
         assert(checks, "Application icon tokens scale with the 18px typography baseline", iconScale.join(",") === "14,18,22" && iconScale[2] > typographyScale[0], `hint/compact/action=${iconScale.join("/")}; body=${typographyScale[0]}`);
         assert(checks, "Command actions use the larger shared icon size", commandActionIcons.length === 4 && commandActionIconWidths.every(width => width === iconScale[2]), commandActionIconWidths.join(", "));
+        assert(checks, "Translated command labels preserve their action icons", translatedActionIcons.length === 4);
+        const workspaceTabIconWidths = workspaceTabIcons.map(icon => parseFloat(frame.contentWindow.getComputedStyle(icon).width) || 0);
+        assert(checks, "Every workspace tab preserves its action icon", workspaceTabIcons.length === 5 && workspaceTabIconWidths.every(width => width === iconScale[2]), `${workspaceTabIcons.length} icons: ${workspaceTabIconWidths.join(", ")}`);
         assert(checks, "Inline edit and status hints use the larger shared hint size", inlineHintIcons.length === 2 && inlineHintIconWidths.every(width => width === iconScale[0]), inlineHintIconWidths.join(", "));
         const brandSurfaces = {
           app: rootStyle.getPropertyValue("--app-background").trim(),
@@ -1586,18 +1639,34 @@
           if (requestedDialog === "project-load-error") {
             doc.querySelector("[data-ui-language='fr']")?.click();
             await waitFor(() => doc.documentElement.lang === "fr", 2000);
+            await waitFor(() => frame.contentWindow.PLOTYPUS_RENDER_SCHEDULER?.snapshot().phase === "idle", 4000);
             const projectInput = doc.querySelector("#projectInput");
+            const projectStatus = doc.querySelector("#statusBox");
+            let translatedErrorText = "";
+            let translatedErrorMarkup = "";
+            const statusObserver = new frame.contentWindow.MutationObserver(() => {
+              const nextText = projectStatus?.textContent || "";
+              if (!/Échec du chargement/.test(nextText)) return;
+              translatedErrorText = nextText;
+              translatedErrorMarkup = projectStatus.innerHTML;
+            });
+            statusObserver.observe(projectStatus, { childList: true, subtree: true, characterData: true });
             const invalidProject = new frame.contentWindow.File(
               [JSON.stringify({ version: 5, categories: [] })],
               "invalid-plotypus-project.json",
               { type: "application/json" }
             );
-            const transfer = new frame.contentWindow.DataTransfer();
-            transfer.items.add(invalidProject);
-            Object.defineProperty(projectInput, "files", { value: transfer.files, configurable: true });
+            Object.defineProperty(projectInput, "files", { value: [invalidProject], configurable: true });
             projectInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
-            await waitFor(() => /Échec du chargement/.test(doc.querySelector("#statusBox")?.textContent || ""), 4000);
-            const statusText = doc.querySelector("#statusBox")?.textContent || "";
+            try {
+              await waitFor(() => translatedErrorText, 4000);
+            } catch (_error) {
+              throw new Error(`Project load error did not appear: ${projectStatus?.textContent?.trim() || "empty status"}`);
+            } finally {
+              statusObserver.disconnect();
+            }
+            if (!/Échec du chargement/.test(projectStatus?.textContent || "")) projectStatus.innerHTML = translatedErrorMarkup;
+            const statusText = translatedErrorText;
             assert(checks, "Project load validation error is translated to French", /Échec du chargement/.test(statusText) && /tableau des lignes/.test(statusText), statusText);
             assertNoRawUiKeys(checks, "Project load validation error does not show raw translation keys in French", doc.querySelector("#statusBox"));
             assertNoKnownEnglishUi(checks, "Project load validation error does not show known English UI phrases in French", [doc.querySelector("#statusBox")]);
@@ -1652,6 +1721,80 @@
           assert(checks, "Properties panel has a contextual heading", Boolean(doc.querySelector("#propertiesTitle")?.textContent.trim()));
           assert(checks, "Properties guidance appears in the top heading", Boolean(doc.querySelector("#propertiesDescription")?.textContent.trim()));
           assert(checks, "Properties panel has no duplicate bottom selection copy", !doc.querySelector("[data-props-context='selection']"));
+          if (projectRoundTrip) {
+            if (!loadSample || requestedWorkspace !== "preview") throw new Error("projectRoundTrip=1 requires the populated preview workspace.");
+            const roundTripFixtureRow = doc.querySelector("#projectTable tbody tr");
+            roundTripFixtureRow.dataset.labelStyle = "rich";
+            roundTripFixtureRow.dataset.content = JSON.stringify([{
+              type: "text",
+              template: "",
+              sources: [],
+              numberFormat: "full",
+              value: { en: "Round-trip detail", fr: "Détail aller-retour" }
+            }]);
+            roundTripFixtureRow.querySelector(".leader-line-width-input").value = "3";
+            roundTripFixtureRow.querySelector(".leader-line-colour-input").value = "#24483d";
+            const captureProjectDownload = async () => {
+              const NativeBlob = frame.contentWindow.Blob;
+              const nativeAnchorClick = frame.contentWindow.HTMLAnchorElement.prototype.click;
+              let projectSource = "";
+              function CapturingBlob(parts, options) {
+                if (/application\/json/i.test(options?.type || "")) projectSource = parts.map(part => String(part)).join("");
+                return new NativeBlob(parts, options);
+              }
+              CapturingBlob.prototype = NativeBlob.prototype;
+              frame.contentWindow.Blob = CapturingBlob;
+              frame.contentWindow.HTMLAnchorElement.prototype.click = function () {
+                if (this.download === "custom-map-project.json") return;
+                return nativeAnchorClick.call(this);
+              };
+              try {
+                doc.querySelector("#ribbonSaveProjectBtn")?.click();
+                await waitFor(() => projectSource, 2000);
+              } finally {
+                frame.contentWindow.Blob = NativeBlob;
+                frame.contentWindow.HTMLAnchorElement.prototype.click = nativeAnchorClick;
+              }
+              return projectSource;
+            };
+            const firstProjectSource = await captureProjectDownload();
+            const firstProject = JSON.parse(firstProjectSource);
+            const portableState = {
+              bilingualRow: firstProject.rows.some(row => row.nameFr),
+              richContent: firstProject.rows.some(row => row.labelStyle === "rich" && row.content?.some(block => block.value?.en === "Round-trip detail" && block.value?.fr === "Détail aller-retour")),
+              bilingualCategory: firstProject.categories.some(category => category.labelFr),
+              englishLayout: Boolean(firstProject.languageLayouts?.en),
+              frenchLayout: Boolean(firstProject.languageLayouts?.fr),
+              leaderOverride: firstProject.rows.some(row => row.leaderLineWidth === 3 && row.leaderLineColour === "#24483d")
+            };
+            const portableContentIsPresent = Object.values(portableState).every(Boolean);
+            const missingPortableState = Object.entries(portableState).filter(([, present]) => !present).map(([key]) => key);
+            assert(checks, "Saved project contains bilingual, Rich-label, leader, category, and language-layout state", firstProject.format === "plotypus-project" && firstProject.version >= 7 && portableContentIsPresent, missingPortableState.length ? `missing: ${missingPortableState.join(", ")}` : `rows=${firstProject.rows.length}; categories=${firstProject.categories.length}; version=${firstProject.version}`);
+
+            const firstNameInput = doc.querySelector("#projectTable tbody .name-input");
+            const savedFirstName = firstProject.rows[0]?.name || "";
+            firstNameInput.value = "Temporary round-trip mutation";
+            firstNameInput.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
+            firstNameInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+            await waitFor(() => doc.querySelector("#projectTable tbody .name-input")?.value === "Temporary round-trip mutation", 2000);
+
+            const projectInput = doc.querySelector("#projectInput");
+            const projectFile = new frame.contentWindow.File([firstProjectSource], "round-trip.plotypus.json", { type: "application/json" });
+            Object.defineProperty(projectInput, "files", { configurable: true, value: [projectFile] });
+            projectInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+            await waitFor(() => doc.querySelector("#projectTable tbody .name-input")?.value === savedFirstName && /Loaded|Chargé/i.test(doc.querySelector("#statusBox")?.textContent || ""), 12000);
+            const secondProject = JSON.parse(await captureProjectDownload());
+            const normalizeRoundTripSnapshot = project => {
+              const normalized = JSON.parse(JSON.stringify(project));
+              delete normalized.savedAt;
+              return normalized;
+            };
+            const firstNormalized = normalizeRoundTripSnapshot(firstProject);
+            const secondNormalized = normalizeRoundTripSnapshot(secondProject);
+            const differingFields = Array.from(new Set([...Object.keys(firstNormalized), ...Object.keys(secondNormalized)]))
+              .filter(key => JSON.stringify(firstNormalized[key]) !== JSON.stringify(secondNormalized[key]));
+            assert(checks, "Saving, mutating, loading, and saving again preserves the normalized project", differingFields.length === 0, differingFields.length ? `different fields: ${differingFields.join(", ")}` : `${firstProject.rows.length} -> ${secondProject.rows.length} rows`);
+          }
           if (visualCapture) {
             doc.querySelectorAll("#projectTable tr.is-active-row").forEach(row => row.classList.remove("is-active-row"));
             doc.querySelectorAll("#regionTable tr.is-active-region").forEach(row => {
