@@ -31,6 +31,16 @@ test("Properties splitter keeps its full hit target inside either dock edge", ()
   assert.match(style, /body\[data-properties-side="left"\] \.properties-panel > \*\s*\{[^}]*direction:\s*ltr/s);
 });
 
+test("Properties splitter exposes an accessible range before application startup", () => {
+  const markup = fs.readFileSync(path.join(repoRoot, "index.html"), "utf8");
+  const handle = markup.match(/<div id="propertiesResizeHandle"[^>]*>/)?.[0] || "";
+
+  assert.match(handle, /role="separator"/);
+  assert.match(handle, /aria-valuemin="280"/);
+  assert.match(handle, /aria-valuemax="460"/);
+  assert.match(handle, /aria-valuenow="320"/);
+});
+
 test("pointer resize math mirrors correctly for left and right docks", () => {
   assert.match(app, /getPropertiesPanelSide\(\) === "left"\s*\? moveEvent\.clientX - startX\s*:\s*startX - moveEvent\.clientX/);
   assert.match(app, /setPropertiesPanelWidth\(startWidth \+ delta\)/);
