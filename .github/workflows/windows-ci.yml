@@ -33,6 +33,7 @@ jobs:
         run: |
           node --check app.js
           node --check config.js
+          node --check feedback.js
           node --check geometry.js
           node --check icons.js
           node --check label-layout.js
@@ -40,6 +41,7 @@ jobs:
           node --check project-io.js
           node --check project-file.js
           node --check properties.js
+          node --check tests/headless-smoke-runner.cjs
           node --check tests/validate-config.cjs
           node --check workspace.js
 
@@ -49,7 +51,7 @@ jobs:
 
       - name: Run unit tests
         shell: pwsh
-        run: node --test tests/geometry.test.cjs tests/label-layout.test.cjs tests/label-geometry.test.cjs tests/config-parity.test.cjs tests/region-matching.test.cjs tests/typography.test.cjs tests/render-scheduling.test.cjs
+        run: node --test tests/config-parity.test.cjs tests/feedback.test.cjs tests/geometry.test.cjs tests/label-geometry.test.cjs tests/label-layout.test.cjs tests/properties-panel.test.cjs tests/region-matching.test.cjs tests/render-scheduling.test.cjs tests/typography.test.cjs
 
   browser-smoke:
     name: Shell and map smoke
@@ -65,9 +67,25 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Run shell smoke test
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run core shell smoke test
         shell: pwsh
-        run: ./tests/run-shell-smoke.ps1 -Workspace preview -LoadSample -SkipScreenshot
+        run: ./tests/run-shell-smoke.ps1 -SkipScreenshot
+
+      - name: Run focused sample smoke test
+        shell: pwsh
+        run: ./tests/run-shell-smoke.ps1 -Workspace preview -LoadSample -VisualCapture -SkipScreenshot
+
+      - name: Run bilingual table layout smoke tests
+        shell: pwsh
+        run: |
+          ./tests/run-shell-smoke.ps1 -Workspace projects -LoadSample -TableLayoutOnly -SkipScreenshot
+          ./tests/run-shell-smoke.ps1 -Workspace regions -LoadSample -TableLayoutOnly -SkipScreenshot
+          ./tests/run-shell-smoke.ps1 -Workspace translate -LoadSample -TableLayoutOnly -SkipScreenshot
 
       - name: Run map output smoke test
         shell: pwsh
@@ -81,13 +99,17 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
           path: |
-            tests/smoke-output/**/*.png
-            tests/smoke-output/**/*.html
-            tests/smoke-output/**/*.err
-            tests/smoke-output/**/*.out
+            tests/smoke-output/**/shell-*.png
+            tests/smoke-output/**/shell-dom.html
+            tests/smoke-output/**/shell-dom.err
+            tests/smoke-output/**/smoke-labels*.png
+            tests/smoke-output/**/smoke-labels*.html
+            tests/smoke-output/**/smoke-labels*.err
+            tests/smoke-output/**/server.out
+            tests/smoke-output/**/server.err
 
   visual-regression:
-    name: Visual regression
+    name: Visual review
     runs-on: windows-latest
     timeout-minutes: 30
     needs: unit
@@ -100,20 +122,27 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Compare approved workspace baselines
-        shell: pwsh
-        run: ./tests/run-visual-regression.ps1
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
 
-      - name: Upload visual failure artifacts
-        if: failure()
+      - name: Capture workspace comparisons
+        shell: pwsh
+        run: ./tests/run-visual-regression.ps1 -ReportOnly
+
+      - name: Upload visual review artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: windows-visual-failure-${{ github.run_attempt }}
+          name: windows-visual-review-${{ github.run_attempt }}
           if-no-files-found: ignore
           retention-days: 14
           path: |
             tests/visual-output/**/*.png
-            tests/smoke-output/**/*.png
-            tests/smoke-output/**/*.html
-            tests/smoke-output/**/*.err
-            tests/smoke-output/**/*.out
+            tests/visual-output/**/*.json
+            tests/smoke-output/**/shell-*.png
+            tests/smoke-output/**/shell-dom.html
+            tests/smoke-output/**/shell-dom.err
+            tests/smoke-output/**/server.out
+            tests/smoke-output/**/server.err

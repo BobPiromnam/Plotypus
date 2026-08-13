@@ -1806,7 +1806,7 @@
             const documentHeaderBleedGapAfterZoom = documentHeaderBleedGap();
             assert(checks, "Document figure header stays anchored above the bleed guide while zooming", Number.isFinite(documentHeaderBleedGapBeforeZoom) && documentHeaderBleedGapBeforeZoom >= 5 && Math.abs(documentHeaderBleedGapAfterZoom - documentHeaderBleedGapBeforeZoom) <= 0.5, `${documentHeaderBleedGapBeforeZoom} -> ${documentHeaderBleedGapAfterZoom}`);
             doc.querySelector("#canvasZoomOutBtn")?.click();
-            const expectedPropertiesCopy = ["Boîtes", "Détails de la carte"];
+            const expectedPropertiesCopy = ["Boîtes", "Traits de renvoi"];
             await waitFor(() => {
               const text = propertiesPanel?.textContent || "";
               return expectedPropertiesCopy.every(copy => text.includes(copy));

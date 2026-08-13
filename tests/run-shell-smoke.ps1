@@ -1,7 +1,7 @@
 param(
   [int]$Width = 1440,
   [int]$Height = 1000,
-  [int]$VirtualTimeBudgetMs = 7000,
+  [int]$VirtualTimeBudgetMs = 0,
   [int]$ScreenshotDelayMs = 12000,
   [int]$BrowserTimeoutMs = 0,
   [ValidateSet("", "preview", "projects", "regions", "translate", "quality")]
@@ -36,6 +36,18 @@ if ($BrowserTimeoutMs -lt 0) {
   throw "-BrowserTimeoutMs must be zero (automatic) or a positive number of milliseconds."
 }
 
+if ($VirtualTimeBudgetMs -lt 0) {
+  throw "-VirtualTimeBudgetMs must be zero or a positive number of milliseconds."
+}
+
+if ($PSBoundParameters.ContainsKey("VirtualTimeBudgetMs")) {
+  Write-Warning "-VirtualTimeBudgetMs is retained for compatibility but is no longer used. The runner now waits for the page's explicit smoke completion signal."
+}
+
+if ($PSBoundParameters.ContainsKey("ScreenshotDelayMs")) {
+  Write-Warning "-ScreenshotDelayMs is retained for compatibility but is no longer used. Screenshots are captured as soon as the smoke result is ready."
+}
+
 $resolvedBrowserTimeoutMs = if ($BrowserTimeoutMs -gt 0) {
   $BrowserTimeoutMs
 } elseif ($MeasurePerformance) {
@@ -48,6 +60,7 @@ $resolvedBrowserTimeoutMs = if ($BrowserTimeoutMs -gt 0) {
 
 $repoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $outputRoot = Join-Path $repoRoot "tests\smoke-output"
+$headlessRunner = Join-Path $repoRoot "tests\headless-smoke-runner.cjs"
 $runLabel = if ($TableLayoutOnly) { "table-layout-$Workspace" } elseif ($Dialog) { "dialog-$Dialog" } elseif ($Workspace) { "workspace-$Workspace" } else { "shell" }
 $runId = "$runLabel-$($Width)x$($Height)-$(Get-Date -Format 'yyyyMMdd-HHmmss-fff')"
 $runDir = Join-Path $outputRoot $runId
@@ -65,6 +78,8 @@ $listener.Stop()
 
 $python = Get-Command python -ErrorAction SilentlyContinue
 if (-not $python) { throw "Python is required to run the local Plotypus smoke server." }
+$node = Get-Command node -ErrorAction SilentlyContinue
+if (-not $node) { throw "Node.js 22 or newer is required to run the event-driven headless browser harness." }
 
 $serverOut = Join-Path $runDir "server.out"
 $serverErr = Join-Path $runDir "server.err"
@@ -102,56 +117,28 @@ try {
   $browser = $browserCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
   if (-not $browser) { throw "Could not find Chrome or Edge in the standard Windows install locations." }
 
-  $commonArgs = @(
-    "--headless=new",
-    "--no-sandbox",
-    "--disable-gpu-sandbox",
-    "--disable-background-networking",
-    "--disable-component-update",
-    "--disable-extensions",
-    "--no-first-run",
-    "--use-gl=swiftshader",
-    "--allow-file-access-from-files",
-    "--user-data-dir=$profileDir",
-    "--virtual-time-budget=$VirtualTimeBudgetMs"
-  )
-  $dumpArgs = $commonArgs + @("--window-size=$Width,$Height", "--dump-dom", $smokeUrl)
   $dumpStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-  $dumpProcess = Start-Process -FilePath $browser -ArgumentList $dumpArgs -NoNewWindow -PassThru -RedirectStandardOutput $domPath -RedirectStandardError $errPath
-  if (-not $dumpProcess.WaitForExit($resolvedBrowserTimeoutMs)) {
-    Stop-Process -Id $dumpProcess.Id -Force -ErrorAction SilentlyContinue
-    $dumpStopwatch.Stop()
-    throw "Browser shell DOM smoke timed out after $($dumpStopwatch.ElapsedMilliseconds) ms (limit $resolvedBrowserTimeoutMs ms; sample=$([bool]$LoadSample); performance=$([bool]$MeasurePerformance); workspace='$Workspace'; dialog='$Dialog'). See $errPath"
-  }
+  $runnerArgs = @(
+    $headlessRunner,
+    "--browser", $browser,
+    "--url", $smokeUrl,
+    "--profile", $profileDir,
+    "--dom", $domPath,
+    "--error-output", $errPath,
+    "--width", $Width,
+    "--height", $Height,
+    "--timeout", $resolvedBrowserTimeoutMs
+  )
+  if (-not $SkipScreenshot) { $runnerArgs += @("--screenshot", $screenshotPath) }
+  $runnerOutput = & $node.Source @runnerArgs
+  $runnerExitCode = $LASTEXITCODE
   $dumpStopwatch.Stop()
-  $dumpProcess.WaitForExit()
-  if ($null -ne $dumpProcess.ExitCode -and $dumpProcess.ExitCode -ne 0) { throw "Browser shell smoke failed with exit code $($dumpProcess.ExitCode). See $errPath" }
+  if ($runnerExitCode -ne 0) {
+    throw "Browser shell smoke failed with exit code $runnerExitCode after $($dumpStopwatch.ElapsedMilliseconds) ms (limit $resolvedBrowserTimeoutMs ms; sample=$([bool]$LoadSample); performance=$([bool]$MeasurePerformance); workspace='$Workspace'; dialog='$Dialog'). See $errPath and $domPath"
+  }
 
   if (-not $SkipScreenshot) {
-    $shotProfileDir = Join-Path $runDir "screenshot-profile"
-    $shotArgs = @(
-      "--headless=new",
-      "--no-sandbox",
-      "--disable-gpu-sandbox",
-      "--disable-background-networking",
-      "--disable-component-update",
-      "--disable-extensions",
-      "--no-first-run",
-      "--use-gl=swiftshader",
-      "--user-data-dir=$shotProfileDir",
-      "--virtual-time-budget=$ScreenshotDelayMs",
-      "--timeout=$ScreenshotDelayMs",
-      "--window-size=$Width,$Height",
-      "--screenshot=$screenshotPath",
-      $smokeUrl
-    )
-    $shotProcess = Start-Process -FilePath $browser -ArgumentList $shotArgs -NoNewWindow -PassThru
-    if (-not $shotProcess.WaitForExit($resolvedBrowserTimeoutMs)) {
-      Stop-Process -Id $shotProcess.Id -Force -ErrorAction SilentlyContinue
-      throw "Browser shell screenshot timed out after $resolvedBrowserTimeoutMs ms."
-    }
-    $shotProcess.WaitForExit()
-    if ($null -ne $shotProcess.ExitCode -and $shotProcess.ExitCode -ne 0) { throw "Browser shell screenshot failed with exit code $($shotProcess.ExitCode)." }
+    if (-not (Test-Path -LiteralPath $screenshotPath)) { throw "Browser shell screenshot was not created: $screenshotPath" }
     if ($ScreenshotCopyPath) {
       $copyPath = if ([System.IO.Path]::IsPathRooted($ScreenshotCopyPath)) { $ScreenshotCopyPath } else { Join-Path $repoRoot $ScreenshotCopyPath }
       $copyDirectory = Split-Path -Parent $copyPath
@@ -169,9 +156,12 @@ try {
     browser = $browser
     url = $smokeUrl
     status = $result.status
+    message = $result.message
     failures = $result.failures
     checks = $result.checks
+    frameErrors = $result.frameErrors
     performance = $result.performance
+    runner = if ($runnerOutput) { $runnerOutput | ConvertFrom-Json } else { $null }
     browserElapsedMs = $dumpStopwatch.ElapsedMilliseconds
     browserTimeoutMs = $resolvedBrowserTimeoutMs
     screenshot = if ($SkipScreenshot) { $null } elseif ($ScreenshotCopyPath) { $copyPath } else { $screenshotPath }
