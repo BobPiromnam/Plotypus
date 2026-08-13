@@ -1,0 +1,25 @@
+name: Report a problem
+description: Report behaviour that is broken, unexpected, or preventing work in Plotypus.
+title: "[Issue]: "
+labels:
+  - "type: bug"
+  - "needs-reproduction"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Review the prefilled information before submitting. Do not include map or project content, personal or protected information, credentials, internal URLs, or full local file paths.
+
+  - type: textarea
+    id: details
+    attributes:
+      label: Problem details
+      description: Briefly describe what you did, what happened, and what you expected.
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Plotypus environment
+      description: Prefilled by Plotypus. Revise or remove it if needed.

@@ -834,14 +834,14 @@
         assert(checks, "Application heading tokens form a non-decreasing 18-40px hierarchy", typographyScale[0] === 18 && typographyScale.at(-1) === 40 && typographyScale.every((value, index) => index === 0 || value >= typographyScale[index - 1]), typographyScale.join(" / "));
         const iconScale = ["--icon-hint-size", "--icon-compact-size", "--icon-action-size"]
           .map(token => parseFloat(rootStyle.getPropertyValue(token)) || 0);
-        const commandActionIcons = ["#ribbonUndoBtn", "#mapDetailsBtn", "#applicationSettingsBtn"]
+        const commandActionIcons = ["#ribbonUndoBtn", "#mapDetailsBtn", "#feedbackBtn", "#applicationSettingsBtn"]
           .map(selector => doc.querySelector(`${selector} > .button-icon`))
           .filter(Boolean);
         const commandActionIconWidths = commandActionIcons.map(icon => parseFloat(frame.contentWindow.getComputedStyle(icon).width) || 0);
         const inlineHintIcons = [doc.querySelector(".col-edit-hint"), doc.querySelector(".translation-column-edit-hint")].filter(Boolean);
         const inlineHintIconWidths = inlineHintIcons.map(icon => parseFloat(frame.contentWindow.getComputedStyle(icon).width) || 0);
         assert(checks, "Application icon tokens scale with the 18px typography baseline", iconScale.join(",") === "14,18,22" && iconScale[2] > typographyScale[0], `hint/compact/action=${iconScale.join("/")}; body=${typographyScale[0]}`);
-        assert(checks, "Command actions use the larger shared icon size", commandActionIcons.length === 3 && commandActionIconWidths.every(width => width === iconScale[2]), commandActionIconWidths.join(", "));
+        assert(checks, "Command actions use the larger shared icon size", commandActionIcons.length === 4 && commandActionIconWidths.every(width => width === iconScale[2]), commandActionIconWidths.join(", "));
         assert(checks, "Inline edit and status hints use the larger shared hint size", inlineHintIcons.length === 2 && inlineHintIconWidths.every(width => width === iconScale[0]), inlineHintIconWidths.join(", "));
         const brandSurfaces = {
           app: rootStyle.getPropertyValue("--app-background").trim(),
@@ -856,6 +856,21 @@
         assert(checks, "Brand surfaces preserve readable text contrast", brandSurfaceContrasts.every(([, ratio]) => ratio >= 4.5), brandSurfaceContrasts.map(([name, ratio]) => `${name}=${ratio.toFixed(2)}`).join(", "));
         const primaryButtonContrast = contrastRatioFromCssColors("#ffffff", brandAccent);
         assert(checks, "Primary brand buttons preserve readable contrast", primaryButtonContrast >= 4.5, primaryButtonContrast.toFixed(2));
+        const feedbackButton = doc.querySelector("#feedbackBtn");
+        const feedbackIcon = feedbackButton?.querySelector(".button-icon");
+        const feedbackButtonStyle = feedbackButton && frame.contentWindow.getComputedStyle(feedbackButton);
+        const feedbackIconStyle = feedbackIcon && frame.contentWindow.getComputedStyle(feedbackIcon);
+        const feedbackTextContrast = feedbackButtonStyle
+          ? contrastRatioFromCssColors(feedbackButtonStyle.color, feedbackButtonStyle.backgroundColor)
+          : 0;
+        const feedbackIconContrast = feedbackButtonStyle && feedbackIconStyle
+          ? contrastRatioFromCssColors(feedbackIconStyle.color, feedbackButtonStyle.backgroundColor)
+          : 0;
+        const feedbackBoundaryContrast = feedbackButtonStyle
+          ? contrastRatioFromCssColors(feedbackButtonStyle.borderTopColor, brandSurfaces.app)
+          : 0;
+        assert(checks, "Send feedback has high-contrast text, icon, and control boundary", feedbackTextContrast >= 7 && feedbackIconContrast >= 7 && feedbackBoundaryContrast >= 3, `text=${feedbackTextContrast.toFixed(2)}, icon=${feedbackIconContrast.toFixed(2)}, boundary=${feedbackBoundaryContrast.toFixed(2)}`);
+        assert(checks, "Send feedback remains visually secondary to Export", feedbackButtonStyle && !cssColoursMatch(feedbackButtonStyle.backgroundColor, brandAccent) && cssColoursMatch(frame.contentWindow.getComputedStyle(doc.querySelector("#exportMenuBtn")).backgroundColor, brandAccent), `feedback=${feedbackButtonStyle?.backgroundColor || "missing"}, export=${frame.contentWindow.getComputedStyle(doc.querySelector("#exportMenuBtn")).backgroundColor}`);
         const dialogCardSurfaces = [
           ...doc.querySelectorAll(".app-dialog .dialog-card"),
           doc.querySelector(".shortcuts-overlay .shortcuts-card")
@@ -869,10 +884,10 @@
         const contentSurface = brandSurfaces.content;
         const controlSurface = brandSurfaces.controls;
         const dialogScrim = rootStyle.getPropertyValue("--dialog-scrim").trim();
-        assert(checks, "Every modal uses the branded content surface", dialogCardSurfaces.length === 6 && dialogCardSurfaces.every(node => cssColoursMatch(frame.contentWindow.getComputedStyle(node).backgroundColor, contentSurface)), dialogCardSurfaces.map(node => frame.contentWindow.getComputedStyle(node).backgroundColor).join(", "));
+        assert(checks, "Every modal uses the branded content surface", dialogCardSurfaces.length === 7 && dialogCardSurfaces.every(node => cssColoursMatch(frame.contentWindow.getComputedStyle(node).backgroundColor, contentSurface)), dialogCardSurfaces.map(node => frame.contentWindow.getComputedStyle(node).backgroundColor).join(", "));
         assert(checks, "Dialog headers, toolbars, and footers use the branded control surface", dialogChromeSurfaces.length >= 10 && dialogChromeSurfaces.every(node => cssColoursMatch(frame.contentWindow.getComputedStyle(node).backgroundColor, controlSurface)), dialogChromeSurfaces.map(node => frame.contentWindow.getComputedStyle(node).backgroundColor).join(", "));
-        assert(checks, "Dialog bodies use the branded content surface", dialogBodySurfaces.length === 6 && dialogBodySurfaces.every(node => cssColoursMatch(frame.contentWindow.getComputedStyle(node).backgroundColor, contentSurface)), dialogBodySurfaces.map(node => frame.contentWindow.getComputedStyle(node).backgroundColor).join(", "));
-        assert(checks, "Every modal uses the shared branded scrim", dialogScrimSurfaces.length === 6 && dialogScrimSurfaces.every(node => cssColoursMatch(frame.contentWindow.getComputedStyle(node).backgroundColor, dialogScrim)), dialogScrimSurfaces.map(node => frame.contentWindow.getComputedStyle(node).backgroundColor).join(", "));
+        assert(checks, "Dialog bodies use the branded content surface", dialogBodySurfaces.length === 7 && dialogBodySurfaces.every(node => cssColoursMatch(frame.contentWindow.getComputedStyle(node).backgroundColor, contentSurface)), dialogBodySurfaces.map(node => frame.contentWindow.getComputedStyle(node).backgroundColor).join(", "));
+        assert(checks, "Every modal uses the shared branded scrim", dialogScrimSurfaces.length === 7 && dialogScrimSurfaces.every(node => cssColoursMatch(frame.contentWindow.getComputedStyle(node).backgroundColor, dialogScrim)), dialogScrimSurfaces.map(node => frame.contentWindow.getComputedStyle(node).backgroundColor).join(", "));
         const workspaceIntros = Array.from(doc.querySelectorAll(".workspace-intro"));
         const workspaceIntroSignatures = workspaceIntros.map(intro => {
           const introStyle = frame.contentWindow.getComputedStyle(intro);
@@ -920,6 +935,8 @@
 
         if (requestedDialog === "point-selection") {
           doc.querySelector("#startupLoadSampleBtn")?.click();
+          await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='document']"), 2000);
+          assert(checks, "Document Properties omit the duplicate Map details and accessibility section", !doc.querySelector("#propertiesSelectionControls .map-details-status-card, #propertiesSelectionControls [data-property-action='open-map-details']") && !/Map details & accessibility|Détails de la carte et accessibilité/.test(doc.querySelector("#propertiesSelectionControls")?.textContent || ""));
           const marker = await waitFor(() => doc.querySelector("#mapSvg .marker-layer .marker"), 12000);
           marker.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
           await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='marker']"), 2000);
@@ -1236,6 +1253,7 @@
 
         if (requestedDialog) {
           const dialogMap = {
+            "feedback": "#feedbackDialog",
             "map-details": "#mapDetailsDialog",
             "csv-map": "#csvMapDialog",
             "point-catalog": "#pointCatalogDialog",
@@ -1247,6 +1265,46 @@
           };
           const dialogSelector = dialogMap[requestedDialog];
           if (!dialogSelector) throw new Error(`Unknown dialog: ${requestedDialog}`);
+          if (requestedDialog === "feedback") {
+            const trigger = doc.querySelector("#feedbackBtn");
+            trigger.focus();
+            trigger.click();
+            const dialog = await waitFor(() => doc.querySelector(dialogSelector)?.hidden === false && doc.querySelector(dialogSelector), 2000);
+            const githubLink = doc.querySelector("#githubIssueLink");
+            const emailLink = doc.querySelector("#feedbackEmailLink");
+            const titleInput = doc.querySelector("#feedbackTitle");
+            const detailsInput = doc.querySelector("#feedbackDetails");
+            const suggestionInput = dialog.querySelector("[name='feedback-type'][value='improvement']");
+            assert(checks, "Send feedback opens from the command bar", !dialog.hidden && trigger.getAttribute("aria-expanded") === "true" && trigger.dataset.icon === "mail");
+            const feedbackSurfaceState = floatingSurfaceState(dialog.querySelector(".dialog-card"));
+            assert(checks, "Send feedback dialog is fully visible and unobscured", feedbackSurfaceState.pass, feedbackSurfaceState.detail);
+            assert(checks, "Send feedback exposes modal and form semantics", dialog.getAttribute("role") === "dialog" && dialog.getAttribute("aria-modal") === "true" && dialog.getAttribute("aria-labelledby") === "feedbackDialogTitle" && titleInput.required && detailsInput.required);
+            assert(checks, "Send feedback starts on Issue", doc.activeElement === dialog.querySelector("[name='feedback-type'][value='problem']") && /What happened/.test(doc.querySelector("#feedbackDetailsLabel")?.textContent || ""));
+            assert(checks, "Send feedback includes the Propel privacy warning and both destinations", /personal or protected information/.test(dialog.querySelector(".feedback-privacy")?.textContent || "") && Boolean(githubLink && emailLink));
+            const invalidGitHubHandoffAllowed = githubLink.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true, cancelable: true }));
+            assert(checks, "Feedback handoff requires a title and details", invalidGitHubHandoffAllowed === false && !titleInput.checkValidity());
+            titleInput.value = "Reuse common map settings";
+            titleInput.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
+            detailsInput.value = "Let me save common map settings and apply them to another map.";
+            detailsInput.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
+            suggestionInput.checked = true;
+            suggestionInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+            const githubUrl = new URL(githubLink.href);
+            const emailUrl = new URL(emailLink.href);
+            assert(checks, "Suggestion handoff targets this Plotypus repository and issue form", githubUrl.origin + githubUrl.pathname === "https://github.com/BobPiromnam/Plotypus/issues/new" && githubUrl.searchParams.get("template") === "feature_request.yml" && githubUrl.searchParams.get("title") === titleInput.value && githubUrl.searchParams.get("details") === detailsInput.value);
+            assert(checks, "GitHub handoff includes only broad privacy-safe environment details", /Plotypus version:/.test(githubUrl.searchParams.get("environment") || "") && !/shell-interactions|file:\/\/|Mozilla\/5\.0/.test(githubUrl.searchParams.get("environment") || ""), githubUrl.searchParams.get("environment") || "");
+            assert(checks, "Email handoff uses the shared mailbox and requested CC", emailUrl.protocol === "mailto:" && emailUrl.pathname === "web@fin.gc.ca" && emailUrl.searchParams.get("cc") === "itthiphol.piromnam@fin.gc.ca" && emailUrl.searchParams.get("subject") === `Plotypus feedback: ${titleInput.value}`);
+            assert(checks, "Suggestion choice updates the feedback prompt", /What would improve Plotypus/.test(doc.querySelector("#feedbackDetailsLabel")?.textContent || "") && /reuse common map settings/i.test(titleInput.placeholder));
+            doc.querySelector("[data-ui-language='fr']")?.click();
+            await waitFor(() => doc.documentElement.lang === "fr" && /Envoyer des commentaires/.test(doc.querySelector("#feedbackDialogTitle")?.textContent || ""), 2000);
+            assert(checks, "Send feedback switches fully to French", /Qu’est-ce qui améliorerait Plotypus/.test(doc.querySelector("#feedbackDetailsLabel")?.textContent || "") && /Choisissez où l’envoyer/.test(dialog.textContent || "") && /Courriel/.test(emailLink.textContent || ""), dialog.textContent || "");
+            assertNoRawUiKeys(checks, "Send feedback does not show raw translation keys in French", dialog);
+            assertNoRawUiKeysInAttributes(checks, "Send feedback attributes do not show raw translation keys in French", [dialog]);
+            doc.querySelector("[data-ui-language='en']")?.click();
+            await waitFor(() => doc.documentElement.lang === "en" && /Send feedback/.test(doc.querySelector("#feedbackDialogTitle")?.textContent || ""), 2000);
+            dispatchKey(doc, "Escape");
+            assert(checks, "Escape closes Send feedback and restores command-bar focus", dialog.hidden && trigger.getAttribute("aria-expanded") === "false" && doc.activeElement === trigger);
+          }
           if (requestedDialog === "map-details") {
             const trigger = doc.querySelector("#mapDetailsBtn");
             trigger.focus();
@@ -1690,6 +1748,31 @@
             const leftPanelRect = propertiesPanel.getBoundingClientRect();
             const leftWorkspaceRect = workspaceElement.getBoundingClientRect();
             assert(checks, "Left Properties is visually before the workspace", leftPanelRect.right <= leftWorkspaceRect.left + 1, `panel=${leftPanelRect.left}-${leftPanelRect.right}, workspace=${leftWorkspaceRect.left}-${leftWorkspaceRect.right}`);
+            const leftResizeHandleRect = propertiesResizeHandle?.getBoundingClientRect();
+            const leftResizeHitWidth = Math.max(0, Math.min(leftResizeHandleRect?.right || 0, leftPanelRect.right) - Math.max(leftResizeHandleRect?.left || 0, leftPanelRect.left));
+            const leftResizeHitTarget = doc.elementFromPoint(leftPanelRect.right - 2, leftPanelRect.top + Math.min(80, leftPanelRect.height / 2));
+            assert(checks, "Left Properties exposes the full splitter hit target inside the panel", leftResizeHitWidth >= 8 && (leftResizeHitTarget === propertiesResizeHandle || propertiesResizeHandle?.contains(leftResizeHitTarget)), `handle=${leftResizeHandleRect?.left}-${leftResizeHandleRect?.right}; panel=${leftPanelRect.left}-${leftPanelRect.right}; hit=${leftResizeHitTarget?.id || leftResizeHitTarget?.className || "none"}`);
+            const leftWidthBeforePointerResize = Math.round(leftPanelRect.width);
+            const originalSetPointerCapture = propertiesResizeHandle?.setPointerCapture;
+            const originalReleasePointerCapture = propertiesResizeHandle?.releasePointerCapture;
+            if (propertiesResizeHandle) {
+              propertiesResizeHandle.setPointerCapture = () => {};
+              propertiesResizeHandle.releasePointerCapture = () => {};
+            }
+            const leftResizeStartX = leftPanelRect.right - 2;
+            propertiesResizeHandle?.dispatchEvent(new frame.contentWindow.PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0, pointerId: 41, clientX: leftResizeStartX }));
+            frame.contentWindow.dispatchEvent(new frame.contentWindow.PointerEvent("pointermove", { bubbles: true, pointerId: 41, clientX: leftResizeStartX + 32 }));
+            frame.contentWindow.dispatchEvent(new frame.contentWindow.PointerEvent("pointerup", { bubbles: true, pointerId: 41, clientX: leftResizeStartX + 32 }));
+            if (propertiesResizeHandle) {
+              propertiesResizeHandle.setPointerCapture = originalSetPointerCapture;
+              propertiesResizeHandle.releasePointerCapture = originalReleasePointerCapture;
+            }
+            await waitFor(() => Math.round(propertiesPanel.getBoundingClientRect().width) === leftWidthBeforePointerResize + 32, 2000);
+            const savedLeftResizePreference = JSON.parse(frame.contentWindow.localStorage.getItem("plotypus.propertiesPanel") || "{}");
+            assert(checks, "Dragging the left-side splitter toward the workspace grows and saves the panel width", Math.round(propertiesPanel.getBoundingClientRect().width) === leftWidthBeforePointerResize + 32 && savedLeftResizePreference.width === leftWidthBeforePointerResize + 32, `width=${propertiesPanel.getBoundingClientRect().width}; saved=${savedLeftResizePreference.width}`);
+            propertiesResizeHandle?.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true }));
+            propertiesResizeHandle?.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true }));
+            await waitFor(() => Math.round(propertiesPanel.getBoundingClientRect().width) === leftWidthBeforePointerResize, 2000);
           }
           const uiFrenchButton = doc.querySelector("[data-ui-language='fr']");
           const uiEnglishButton = doc.querySelector("[data-ui-language='en']");
@@ -3659,7 +3742,7 @@
             doc.querySelector("#previewTableTab")?.click();
             await waitFor(() => doc.body.dataset.workspaceView === "preview");
             assert(checks, "Map tab resets region map controls to document Properties", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='document']")));
-            assert(checks, "Map details title and text status labels do not show origin icons", !doc.querySelector("#propertiesSelectionControls [data-property-kind='document'] .map-details-status-row .field-origin-svg"));
+            assert(checks, "Document Properties omit the duplicate Map details and accessibility section", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='document']")) && !doc.querySelector("#propertiesSelectionControls .map-details-status-card, #propertiesSelectionControls [data-property-action='open-map-details']") && !/Map details & accessibility|Détails de la carte et accessibilité/.test(doc.querySelector("#propertiesSelectionControls")?.textContent || ""));
             doc.querySelector("#regionTableTab")?.click();
             await waitFor(() => doc.body.dataset.workspaceView === "regions");
             assert(checks, "Returning to Map baselayer restores map controls", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='map']")));

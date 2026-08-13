@@ -16,6 +16,11 @@ function loadApi() {
   const windowStub = {
     d3: {},
     PLOTYPUS_TEST_MODE: true,
+    PLOTYPUS_FEEDBACK: {
+      createFeedbackComposer() {
+        return { update() {} };
+      }
+    },
     MAP_APP_STYLE_PRESETS: undefined,
     MAP_APP_CATEGORY_COLOUR_PRESETS: undefined,
     localStorage: {

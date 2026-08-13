@@ -79,6 +79,13 @@
     return;
   }
 
+  if (!window.PLOTYPUS_FEEDBACK) {
+    const message = startupT("startup.error.module", { module: "feedback.js" });
+    const statusBox = document.querySelector("#statusBox");
+    if (statusBox) statusBox.innerHTML = `<div class="status-danger">${message}</div>`;
+    return;
+  }
+
   const {
     inflateRect,
     outsideRectArea,
@@ -95,6 +102,7 @@
   const workspace = window.PLOTYPUS_WORKSPACE;
   const regionMatching = window.PLOTYPUS_REGION_MATCHING;
   const properties = window.PLOTYPUS_PROPERTIES;
+  const feedback = window.PLOTYPUS_FEEDBACK;
   const i18n = window.PLOTYPUS_I18N;
 
   const labelLayoutPolicies = window.PLOTYPUS_LABEL_LAYOUT.create({
@@ -345,6 +353,7 @@
     ribbonExportCsvBtn: document.querySelector("#ribbonExportCsvBtn"),
     exportMenuBtn: document.querySelector("#exportMenuBtn"),
     exportMenu: document.querySelector("#exportMenu"),
+    feedbackBtn: document.querySelector("#feedbackBtn"),
     applicationSettingsBtn: document.querySelector("#applicationSettingsBtn"),
     applicationSettingsMenu: document.querySelector("#applicationSettingsMenu"),
     applicationSettingsCloseBtn: document.querySelector("#applicationSettingsCloseBtn"),
@@ -415,6 +424,14 @@
     mapDetailsBtn: document.querySelector("#mapDetailsBtn"),
     propertiesToggleBtn: document.querySelector("#propertiesToggleBtn"),
     frMetaWarning: document.querySelector("#frMetaWarning"),
+    feedbackDialog: document.querySelector("#feedbackDialog"),
+    feedbackForm: document.querySelector("#feedbackForm"),
+    feedbackTypeInputs: Array.from(document.querySelectorAll("[name='feedback-type']")),
+    feedbackTitle: document.querySelector("#feedbackTitle"),
+    feedbackDetails: document.querySelector("#feedbackDetails"),
+    feedbackDetailsLabel: document.querySelector("#feedbackDetailsLabel"),
+    githubIssueLink: document.querySelector("#githubIssueLink"),
+    feedbackEmailLink: document.querySelector("#feedbackEmailLink"),
     startupDialog: document.querySelector("#startupDialog"),
     startupStartScreen: document.querySelector("#startupStartScreen"),
     startupStartNewBtn: document.querySelector("#startupStartNewBtn"),
@@ -519,6 +536,7 @@
   let activeDataTable = "preview";
   let activeAuthoringLanguage = "en";
   let currentUiLanguage = "en";
+  let feedbackComposer = null;
   let activeCategoryId = categorySettings[0] ? categorySettings[0].id : "";
   let currentMapLanguage = "en";
   const languageLayoutStates = {
@@ -3026,6 +3044,7 @@
     if (i18n && typeof i18n.applyStaticTranslations === "function") {
       i18n.applyStaticTranslations(nextLanguage, document);
     }
+    feedbackComposer?.update();
     renderBookSizeOptions();
     renderImageSizeOptions();
     renderFontOptions();
@@ -7432,12 +7451,7 @@
   }
 
   function renderDocumentPropertyControls() {
-    const missingFields = getMapDetailsMissingFields();
-    const missingDetails = missingFields.length;
     return properties.renderDocumentPropertyControls({
-      missingDetails,
-      titleMissing: missingFields.includes("titleEn") || missingFields.includes("titleFr"),
-      textMissing: missingFields.includes("textEn") || missingFields.includes("textFr"),
       selectOptions: {
         mapStyle: selectOptionsHtml(els.mapStylePresetInput),
         fontFamily: selectOptionsHtml(els.fontFamilyInput),
@@ -10397,7 +10411,7 @@
   }
 
   function getOpenDialogElement() {
-    return [els.confirmationDialog, els.startupDialog, els.csvMapDialog, els.pointCatalogDialog, els.mapDetailsDialog]
+    return [els.feedbackDialog, els.confirmationDialog, els.startupDialog, els.csvMapDialog, els.pointCatalogDialog, els.mapDetailsDialog]
       .find(dialog => dialog && !dialog.hidden) || null;
   }
 
@@ -11784,6 +11798,7 @@
 
   function getDialogByCloseKey(key) {
     if (key === "startup") return els.startupDialog;
+    if (key === "feedback") return els.feedbackDialog;
     if (key === "map-details") return els.mapDetailsDialog;
     if (key === "point-catalog") return els.pointCatalogDialog;
     return els.csvMapDialog;
@@ -11873,14 +11888,40 @@
     if (!dialog) return;
     dialog._returnFocus = returnFocus || document.activeElement;
     dialog.hidden = false;
-    const focusTarget = dialog.querySelector("[data-dialog-initial-focus], input, textarea, select, button");
+    const focusTarget = dialog.querySelector("[data-dialog-initial-focus]")
+      || dialog.querySelector("input, textarea, select, button");
     if (focusTarget) focusTarget.focus();
   }
 
   function closeDialog(dialog) {
     if (!dialog || dialog.hidden) return;
     dialog.hidden = true;
+    if (dialog === els.feedbackDialog) els.feedbackBtn?.setAttribute("aria-expanded", "false");
     if (dialog._returnFocus && typeof dialog._returnFocus.focus === "function") dialog._returnFocus.focus();
+  }
+
+  function initializeFeedbackComposer() {
+    feedbackComposer = feedback.createFeedbackComposer({
+      form: els.feedbackForm,
+      typeInputs: els.feedbackTypeInputs,
+      titleInput: els.feedbackTitle,
+      detailsInput: els.feedbackDetails,
+      detailsLabel: els.feedbackDetailsLabel,
+      githubIssueLink: els.githubIssueLink,
+      feedbackEmailLink: els.feedbackEmailLink
+    }, {
+      appVersion: currentAppVersion,
+      protocol: window.location.protocol,
+      hostname: window.location.hostname,
+      userAgent: window.navigator.userAgent,
+      browserLanguage: window.navigator.language
+    }, { t });
+  }
+
+  function openFeedbackDialog() {
+    feedbackComposer?.update();
+    els.feedbackBtn?.setAttribute("aria-expanded", "true");
+    openDialog(els.feedbackDialog, els.feedbackBtn);
   }
 
   function setDynamicDialogTranslation(node, key, params = {}) {
@@ -12610,6 +12651,8 @@
     on(els.exportMenuBtn, "click", () => setExportMenuOpen(els.exportMenu.hidden));
     on(els.exportMenuBtn, "keydown", handleExportMenuKeydown);
     on(els.exportMenu, "keydown", handleExportMenuKeydown);
+    on(els.feedbackBtn, "click", openFeedbackDialog);
+    on(els.feedbackForm, "submit", event => event.preventDefault());
     on(els.applicationSettingsBtn, "click", () => setApplicationSettingsOpen(els.applicationSettingsMenu.hidden, { focusFirst: true }));
     on(els.applicationSettingsBtn, "keydown", handleApplicationSettingsKeydown);
     on(els.applicationSettingsCloseBtn, "click", () => setApplicationSettingsOpen(false, { restoreFocus: true }));
@@ -13262,6 +13305,7 @@
 
   async function init() {
     renderRibbonIcons();
+    initializeFeedbackComposer();
     initEvents();
     initializePropertiesPanelState();
     updateMapDetailsState();

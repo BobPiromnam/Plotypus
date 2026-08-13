@@ -55,7 +55,7 @@ function getStaticI18nKeys() {
 }
 
 function getLiteralJsI18nKeys() {
-  const files = ["app.js", "properties.js", "workspace.js", "project-io.js", "project-file.js"];
+  const files = ["app.js", "feedback.js", "properties.js", "workspace.js", "project-io.js", "project-file.js"];
   const keys = new Set();
   const pattern = /\b(?:t|tOr|startupT)\("([^"`$]+)"/g;
   files.forEach(file => {
@@ -69,7 +69,7 @@ function getLiteralJsI18nKeys() {
 }
 
 function getAllReferencedJsI18nKeys(i18n) {
-  const files = ["app.js", "properties.js", "workspace.js", "project-io.js", "project-file.js", "xlsx-lite.js"];
+  const files = ["app.js", "feedback.js", "properties.js", "workspace.js", "project-io.js", "project-file.js", "xlsx-lite.js"];
   const namespaces = [...new Set(Object.keys(i18n.dictionaries.en).map(key => key.split(".")[0]))];
   const pattern = new RegExp(`["'\`]((?:${namespaces.join("|")})\\.[A-Za-z0-9_.-]+)["'\`]`, "g");
   const keys = new Set();

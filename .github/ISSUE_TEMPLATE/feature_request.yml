@@ -1,0 +1,24 @@
+name: Suggest an improvement
+description: Propose an enhancement to Plotypus or its map-authoring workflow.
+title: "[Suggestion]: "
+labels:
+  - "type: enhancement"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Review the prefilled information before submitting. Do not include map or project content, personal or protected information, credentials, internal URLs, or full local file paths.
+
+  - type: textarea
+    id: details
+    attributes:
+      label: Improvement details
+      description: Briefly describe the need and what would help.
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Plotypus environment
+      description: Prefilled by Plotypus. Revise or remove it if needed.

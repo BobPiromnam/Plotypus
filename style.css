@@ -32,6 +32,11 @@
   --properties-background: #e8efeb;
   --button-background: #ffffff;
   --button-hover: #e6eee9;
+  --feedback-action-background: #f7fbf9;
+  --feedback-action-border: #527267;
+  --feedback-action-ink: #234f43;
+  --feedback-action-hover-background: #e2eee8;
+  --feedback-action-hover-border: #365e52;
   --field-computed-tint: #edf2ef;
   --field-computed-border: #d8e1dc;
   --workspace-canvas-bg: #dfe6e2;
@@ -4916,6 +4921,30 @@ body {
   padding-inline: 0;
 }
 
+.ribbon-feedback {
+  position: relative;
+  margin-left: var(--space-1);
+}
+
+.command-bar .feedback-header-button {
+  border-color: var(--feedback-action-border);
+  background: var(--feedback-action-background);
+  color: var(--feedback-action-ink);
+  box-shadow: 0 1px 2px rgba(32, 41, 35, 0.12), inset 0 0 0 1px rgba(255, 255, 255, 0.72);
+}
+
+.command-bar .feedback-header-button .button-icon {
+  color: inherit;
+}
+
+.command-bar .feedback-header-button:hover,
+.command-bar .feedback-header-button:focus-visible {
+  border-color: var(--feedback-action-hover-border);
+  background: var(--feedback-action-hover-background);
+  color: var(--feedback-action-ink);
+  box-shadow: 0 2px 5px rgba(32, 41, 35, 0.16), inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+}
+
 .ribbon-export {
   position: relative;
 }
@@ -5392,6 +5421,14 @@ body[data-properties-side="right"].properties-collapsed .app-shell {
   line-height: var(--line-copy);
 }
 
+body[data-properties-side="left"] .properties-panel {
+  direction: rtl;
+}
+
+body[data-properties-side="left"] .properties-panel > * {
+  direction: ltr;
+}
+
 body[data-properties-side="right"] .properties-panel {
   border-right: 0;
   border-left: 1px solid var(--border);
@@ -5404,7 +5441,7 @@ body.properties-collapsed .properties-panel {
 
 .properties-resize-handle {
   position: absolute;
-  inset: 0 -4px 0 auto;
+  inset: 0 0 0 auto;
   z-index: 3;
   width: var(--space-4);
   cursor: ew-resize;
@@ -5412,17 +5449,23 @@ body.properties-collapsed .properties-panel {
 }
 
 body[data-properties-side="right"] .properties-resize-handle {
-  inset: 0 auto 0 -4px;
+  inset: 0 auto 0 0;
 }
 
 .properties-resize-handle::after {
   content: "";
   position: absolute;
   top: 0;
+  right: 0;
   bottom: 0;
-  left: 3px;
+  left: auto;
   width: 2px;
   background: transparent;
+}
+
+body[data-properties-side="right"] .properties-resize-handle::after {
+  right: auto;
+  left: 0;
 }
 
 .properties-resize-handle:hover::after,
@@ -5879,39 +5922,6 @@ body.properties-collapsed .properties-section {
   height: 15px;
 }
 
-.map-details-status-card {
-  display: grid;
-  gap: var(--space-6);
-  padding: var(--space-8);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--panel);
-}
-
-.map-details-status-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-6);
-  color: var(--ink-2);
-  font-size: var(--text-md);
-}
-
-.map-details-status-row strong {
-  color: var(--danger);
-  font: var(--font-weight-data-semibold) var(--text-body)/var(--line-ui) var(--font-data);
-}
-
-.map-details-status-card[data-state="ok"] .map-details-status-row strong {
-  color: var(--accent);
-}
-
-.map-details-status-card button {
-  justify-content: center;
-  width: 100%;
-  min-height: 40px;
-}
-
 .properties-form[data-property-kind="document"] .properties-muted {
   margin: calc(var(--space-1) * -1) 0 0;
   color: var(--muted);
@@ -6217,12 +6227,6 @@ body.properties-collapsed .properties-section {
 .leader-line-property-section [data-property-field="leaderLineWidth"]::placeholder {
   color: var(--muted);
   opacity: 0.8;
-}
-
-.map-details-status-card button svg {
-  width: 16px;
-  height: 16px;
-  flex: 0 0 auto;
 }
 
 .properties-form[data-property-kind="category"] {
@@ -7358,6 +7362,184 @@ body[data-workspace-view="translate"] .translation-status {
 
 form.dialog-card {
   display: grid;
+}
+
+.feedback-dialog-card {
+  width: min(680px, calc(100vw - 48px));
+}
+
+.feedback-dialog-body {
+  display: grid;
+  gap: var(--space-7);
+}
+
+.feedback-type-toggle {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.feedback-type-toggle legend,
+.feedback-title-field label,
+.feedback-details-field label,
+.feedback-actions-label {
+  margin-bottom: var(--space-3);
+  color: var(--ink-2);
+  font-size: var(--text-ui);
+  font-weight: var(--font-weight-bold);
+}
+
+.feedback-type-toggle legend {
+  padding: 0;
+}
+
+.feedback-type-toggle > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.feedback-type-card {
+  position: relative;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.feedback-type-card input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.feedback-type-card-content {
+  min-height: 92px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-5) var(--space-6);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--button-background);
+  color: var(--muted);
+}
+
+.feedback-type-card input:checked + .feedback-type-card-content {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.feedback-type-card input:focus-visible + .feedback-type-card-content {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.feedback-type-icon {
+  width: 30px;
+  height: 30px;
+  fill: currentColor;
+}
+
+.feedback-type-card-copy {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.feedback-type-card-copy strong {
+  color: var(--ink);
+  font-size: var(--text-md);
+}
+
+.feedback-type-card-copy span {
+  color: var(--muted);
+  font-size: var(--text-ui);
+  line-height: var(--line-copy);
+}
+
+.feedback-form-row,
+.feedback-title-field,
+.feedback-details-field {
+  min-width: 0;
+}
+
+.feedback-title-field,
+.feedback-details-field {
+  display: grid;
+}
+
+.feedback-title-field input,
+.feedback-details-field textarea {
+  width: 100%;
+}
+
+.feedback-details-field textarea {
+  min-height: 118px;
+  resize: vertical;
+}
+
+.feedback-privacy {
+  margin: 0;
+  padding: var(--space-5) var(--space-6);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-md);
+  background: var(--warning-bg);
+  color: var(--ink-2);
+  font-size: var(--text-ui);
+  line-height: var(--line-copy);
+}
+
+.feedback-privacy strong {
+  color: var(--warning);
+}
+
+.feedback-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.feedback-actions-label {
+  grid-column: 1 / -1;
+  margin-bottom: 0;
+}
+
+.feedback-destination {
+  min-height: var(--control-h-lg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4) var(--space-7);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--button-background);
+  color: var(--ink);
+  font-weight: var(--font-weight-bold);
+  text-align: center;
+  text-decoration: none;
+}
+
+.feedback-destination.primary-action {
+  border-color: var(--accent-dark);
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.feedback-destination:hover,
+.feedback-destination:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+}
+
+.feedback-destination.primary-action:hover,
+.feedback-destination.primary-action:focus-visible {
+  border-color: var(--accent-dark);
+  background: var(--accent-dark);
+  color: #ffffff;
 }
 
 .dialog-header,
@@ -8539,6 +8721,12 @@ button.catalog-card:hover {
     min-width: 142px;
   }
 
+  .command-bar #feedbackBtn {
+    width: 44px;
+    padding-inline: 0;
+    font-size: 0;
+  }
+
   .workspace-nav .table-tab {
     padding-inline: 9px;
     font-size: var(--text-ui);
@@ -8727,6 +8915,15 @@ button.catalog-card:hover {
     top: -5px;
     right: -5px;
     margin: 0;
+  }
+
+  .feedback-type-toggle > div,
+  .feedback-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .feedback-actions-label {
+    grid-column: auto;
   }
 
   .workspace-nav-band {

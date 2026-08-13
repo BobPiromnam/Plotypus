@@ -9,7 +9,7 @@
   <link rel="preload" href="assets/fonts/lato/lato-4.woff2" as="font" type="font/woff2" />
   <link rel="stylesheet" href="assets/fonts/lato/lato.css?v=20260612-file-fonts" />
   <link rel="stylesheet" href="assets/fonts/ibm-plex-mono/ibm-plex-mono.css?v=20260622-offline-fonts" />
-  <link rel="stylesheet" href="style.css?v=20260727-label-width-state" />
+  <link rel="stylesheet" href="style.css?v=20260812-send-feedback" />
   <link id="themeStylesheet" rel="stylesheet" href="themes/goc-green.css?v=20260612-map-only" />
 </head>
 <body data-properties-side="right">
@@ -69,6 +69,11 @@
             <div id="exportLanguageNotice" class="export-language-notice" hidden></div>
           </div>
         </div>
+      </div>
+      <div class="ribbon-group ribbon-feedback" aria-label="Feedback" data-i18n-aria-label="aria.feedback">
+        <button id="feedbackBtn" class="ribbon-button feedback-header-button" type="button" data-icon="mail" aria-haspopup="dialog" aria-expanded="false" aria-controls="feedbackDialog" title="Send feedback" data-i18n-title="action.sendFeedback">
+          <span data-i18n="action.sendFeedback">Send feedback</span>
+        </button>
       </div>
       <div class="ribbon-group ribbon-application-settings" aria-label="Application settings" data-i18n-aria-label="aria.applicationSettings">
         <div class="application-settings-wrap">
@@ -793,6 +798,68 @@
     </div>
   </div>
 
+  <div id="feedbackDialog" class="app-dialog" role="dialog" aria-modal="true" aria-labelledby="feedbackDialogTitle" aria-describedby="feedbackDialogSubtitle" hidden>
+    <div class="dialog-scrim" data-dialog-close="feedback"></div>
+    <form id="feedbackForm" class="dialog-card feedback-dialog-card">
+      <header class="dialog-header">
+        <div class="dialog-title-row">
+          <span class="dialog-title-icon" data-icon="mail" aria-hidden="true"></span>
+          <div>
+            <h2 id="feedbackDialogTitle" data-i18n="feedback.title">Send feedback</h2>
+            <p id="feedbackDialogSubtitle" data-i18n="feedback.subtitle">Enter the essentials here, then review and send through GitHub or email.</p>
+          </div>
+        </div>
+        <button type="button" class="icon-button dialog-close" data-dialog-close="feedback" aria-label="Close feedback" data-i18n-aria-label="feedback.close" data-icon="x"></button>
+      </header>
+      <div class="dialog-body feedback-dialog-body">
+        <fieldset class="feedback-type-toggle">
+          <legend data-i18n="feedback.type">Feedback type</legend>
+          <div>
+            <label class="feedback-type-card">
+              <input type="radio" name="feedback-type" value="problem" checked data-dialog-initial-focus />
+              <span class="feedback-type-card-content">
+                <svg class="feedback-type-icon" viewBox="0 0 512 512" aria-hidden="true" focusable="false"><path d="M128 32h32c17.7 0 32 14.3 32 32v32H96V64c0-17.7 14.3-32 32-32Zm64 96v320c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32v-59.1c0-34.6 9.4-68.6 27.2-98.3 13.7-22.8 22.5-48.2 25.8-74.6l7.5-60c2-16 15.6-28 31.8-28H192Zm227.8 0c16.1 0 29.8 12 31.8 28l7.4 60c3.3 26.4 12.1 51.8 25.8 74.6 17.8 29.7 27.2 63.7 27.2 98.3V448c0 17.7-14.3 32-32 32H352c-17.7 0-32-14.3-32-32V128h99.8ZM320 64c0-17.7 14.3-32 32-32h32c17.7 0 32 14.3 32 32v32h-96V64Zm-32 64v160h-64V128h64Z" /></svg>
+                <span>
+                  <strong data-i18n="feedback.issue">Issue</strong>
+                  <span data-i18n="feedback.issue.description">Report something broken or unexpected.</span>
+                </span>
+              </span>
+            </label>
+            <label class="feedback-type-card">
+              <input type="radio" name="feedback-type" value="improvement" />
+              <span class="feedback-type-card-content">
+                <svg class="feedback-type-icon" viewBox="0 0 448 512" aria-hidden="true" focusable="false"><path d="M64 32C28.7 32 0 60.7 0 96v320c0 35.3 28.7 64 64 64h320c35.3 0 64-28.7 64-64V96c0-35.3-28.7-64-64-64H64Zm136 312v-64h-64c-13.3 0-24-10.7-24-24s10.7-24 24-24h64v-64c0-13.3 10.7-24 24-24s24 10.7 24 24v64h64c13.3 0 24 10.7 24 24s-10.7 24-24 24h-64v64c0 13.3-10.7 24-24 24s-24-10.7-24-24Z" /></svg>
+                <span>
+                  <strong data-i18n="feedback.suggestion">Suggestion</strong>
+                  <span data-i18n="feedback.suggestion.description">Share an idea that could improve Plotypus.</span>
+                </span>
+              </span>
+            </label>
+          </div>
+        </fieldset>
+        <div class="feedback-form-row">
+          <div class="feedback-title-field">
+            <label for="feedbackTitle" data-i18n="feedback.shortTitle">Short title</label>
+            <input id="feedbackTitle" name="feedback-title" type="text" maxlength="120" placeholder="Example: Map preview remains empty" required />
+          </div>
+        </div>
+        <div class="feedback-details-field">
+          <label for="feedbackDetails" id="feedbackDetailsLabel" data-i18n="feedback.details.problemLabel">What happened?</label>
+          <textarea id="feedbackDetails" name="feedback-details" rows="4" placeholder="Example: I imported my CSV, but the map preview remained empty. I expected to see the mapped points." required></textarea>
+        </div>
+        <p class="feedback-privacy"><strong data-i18n="feedback.privacy.title">Keep it safe:</strong> <span data-i18n="feedback.privacy.body">Do not include map or project content, personal or protected information, credentials, internal URLs, or full local file paths.</span></p>
+        <div class="feedback-actions">
+          <span class="feedback-actions-label" data-i18n="feedback.destination">Choose where to send it:</span>
+          <a class="feedback-destination primary-action" id="githubIssueLink" href="https://github.com/BobPiromnam/Plotypus/issues/new?template=bug_report.yml" target="_blank" rel="noopener noreferrer"><span data-i18n="feedback.github">GitHub Issues</span><span class="visually-hidden" data-i18n="feedback.newTab">, opens in a new tab</span></a>
+          <a class="feedback-destination" id="feedbackEmailLink" href="mailto:web@fin.gc.ca?cc=itthiphol.piromnam@fin.gc.ca&amp;subject=Plotypus%20feedback" data-i18n="feedback.email">Email</a>
+        </div>
+      </div>
+      <footer class="dialog-footer">
+        <button type="button" data-dialog-close="feedback" data-i18n="dialog.common.close">Close</button>
+      </footer>
+    </form>
+  </div>
+
   <div id="csvMapDialog" class="app-dialog" role="dialog" aria-modal="true" aria-labelledby="csvMapTitle" hidden>
     <div class="dialog-scrim" data-dialog-close="csv-map"></div>
     <div class="dialog-card csv-map-dialog-card">
@@ -903,6 +970,7 @@
   <script src="workspace.js?v=20260723-off-canvas-points"></script>
   <script src="properties.js?v=20260727-label-width"></script>
   <script src="i18n.js?v=20260727-label-width-state"></script>
+  <script src="feedback.js?v=20260812-send-feedback"></script>
   <script src="app.js?v=20260812-idle-render-scheduler"></script>
 </body>
 </html>

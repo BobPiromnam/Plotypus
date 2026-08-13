@@ -6,7 +6,7 @@ param(
   [int]$BrowserTimeoutMs = 0,
   [ValidateSet("", "preview", "projects", "regions", "translate", "quality")]
   [string]$Workspace = "",
-  [ValidateSet("", "startup", "map-details", "csv-map", "point-catalog", "point-selection", "confirmation", "shortcuts", "export-menu", "add-data-menu", "project-load-error")]
+  [ValidateSet("", "startup", "feedback", "map-details", "csv-map", "point-catalog", "point-selection", "confirmation", "shortcuts", "export-menu", "add-data-menu", "project-load-error")]
   [string]$Dialog = "",
   [ValidateSet("projects", "regions")]
   [string]$CatalogOrigin = "projects",

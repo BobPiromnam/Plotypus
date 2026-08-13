@@ -190,13 +190,9 @@
 
   function renderDocumentPropertyControls(options) {
     const {
-      missingDetails = 0,
-      titleMissing = false,
-      textMissing = false,
       selectOptions = {},
       values = {},
-      escapeHtml,
-      iconSvg
+      escapeHtml
     } = options || {};
     const t = translator(options);
     return `
@@ -267,21 +263,6 @@
             </label>
           </div>
           <p class="properties-muted">${escapeHtml(t("properties.leaderLines.precedence"))}</p>
-        </section>
-        <section class="document-property-section">
-          <h3>${escapeHtml(t("properties.section.mapDetails"))}</h3>
-          <div class="map-details-status-card" data-state="${missingDetails ? "review" : "ok"}">
-            <div class="map-details-status-row">
-              <span>${escapeHtml(t("properties.status.titleRequired"))}</span>
-              <strong>${escapeHtml(titleMissing ? t("properties.status.missing") : t("properties.status.complete"))}</strong>
-            </div>
-            <div class="map-details-status-row">
-              <span>${escapeHtml(t("properties.status.textRequired"))}</span>
-              <strong>${escapeHtml(textMissing ? t("properties.status.missing") : t("properties.status.complete"))}</strong>
-            </div>
-            <button type="button" data-property-action="open-map-details">${iconSvg("file-text")} ${escapeHtml(t("properties.button.openMapDetails"))}</button>
-          </div>
-          <p class="properties-muted">${escapeHtml(t("properties.helper.mapDetails"))}</p>
         </section>
       </div>
     `;
