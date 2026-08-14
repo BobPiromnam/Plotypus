@@ -727,15 +727,9 @@
       /\bFit: map \+ labels\b/i,
       /\bFit: labels only\b/i,
       /\bExport readiness\b/i,
-      /\bAdd points from a source\b/i,
-      /\bCurated presets\b/i,
-      /\bCapital cities\b/i,
-      /\bMajor cities\b/i,
-      /\bSea & inland ports\b/i,
-      /\bInternational airports\b/i,
-      /\bNational parks\b/i,
-      /\bUniversities\b/i,
-      /\bGovernment open data\b/i,
+      /\bAdd cities to Project points\b/i,
+      /\bCities to add\b/i,
+      /\bSearch the offline catalogue\b/i,
       /\bSave map details\b/i,
       /\bMap CSV columns\b/i,
       /\bPlotypus field\b/i,
@@ -1076,6 +1070,45 @@
           await waitFor(() => startupDialog.dataset.startupScreen === "setup" && doc.querySelector("#startupSetupForm")?.hidden === false, 2000);
           assert(checks, "Start from scratch opens the bilingual setup step", startupDialog.getAttribute("aria-labelledby") === "startupSetupTitle" && /Configurer votre carte/.test(doc.querySelector("#startupSetupTitle")?.textContent || "") && doc.querySelectorAll("[data-startup-baselayer]").length === 6);
           assert(checks, "New maps default to the two-thirds Letter canvas", doc.querySelector("#startupBookSizeInput")?.value === "letter" && doc.querySelector("#startupImageSizeInput")?.value === "two-thirds", `${doc.querySelector("#startupBookSizeInput")?.value} / ${doc.querySelector("#startupImageSizeInput")?.value}`);
+          const referenceCitiesField = doc.querySelector("#referenceCitiesField");
+          const setReferenceCityQuery = value => {
+            const input = doc.querySelector("#refCityInput");
+            input.value = value;
+            input.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
+          };
+          const pressReferenceCityKey = key => {
+            doc.querySelector("#refCityInput")?.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+          };
+          assert(checks, "Reference cities mounts below the baselayer grid", referenceCitiesField?.parentElement?.classList.contains("startup-baselayer-section") && referenceCitiesField.previousElementSibling?.classList.contains("startup-baselayer-grid"));
+          setReferenceCityQuery("st john");
+          await waitFor(() => doc.querySelectorAll("#refCityResults .refCityResultRow").length === 2, 2000);
+          const referenceCityResultText = doc.querySelector("#refCityResults")?.textContent || "";
+          const referenceCityResultPadding = frame.contentWindow.getComputedStyle(doc.querySelector("#refCityResults .refCityResultRow")).padding;
+          assert(checks, "Reference-city Saint search returns both provinces", /St\. John/.test(referenceCityResultText) && /Terre-Neuve-et-Labrador/.test(referenceCityResultText) && /Nouveau-Brunswick/.test(referenceCityResultText), referenceCityResultText);
+          pressReferenceCityKey("ArrowDown");
+          pressReferenceCityKey("Enter");
+          await waitFor(() => doc.querySelectorAll("#referenceCitiesField .refCityChip").length === 1, 2000);
+          setReferenceCityQuery("st john");
+          await waitFor(() => doc.querySelectorAll("#refCityResults .refCityResultRow").length === 1, 2000);
+          doc.querySelector("#refCityResults .refCityResultRow")?.dispatchEvent(new frame.contentWindow.MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+          await waitFor(() => doc.querySelectorAll("#referenceCitiesField .refCityChip").length === 2, 2000);
+          setReferenceCityQuery("mont");
+          pressReferenceCityKey("Escape");
+          assert(checks, "Reference-city Escape closes only its popover", startupDialog.dataset.startupScreen === "setup" && startupDialog.hidden === false && doc.querySelector("#refCityInput")?.value === "mont" && doc.querySelector("#refCityResults")?.hidden === true);
+          setReferenceCityQuery("moncton, victoria, atlantis");
+          pressReferenceCityKey("Enter");
+          await waitFor(() => doc.querySelectorAll("#referenceCitiesField .refCityChip").length === 4, 2000);
+          assert(checks, "Reference-city bulk paste adds hits and names misses", /atlantis/.test(doc.querySelector("#referenceCitiesField .refCityHint")?.textContent || "") && /Moncton/.test(referenceCitiesField.textContent || "") && /Victoria/.test(referenceCitiesField.textContent || ""), referenceCitiesField.textContent || "");
+          setReferenceCityQuery("");
+          pressReferenceCityKey("Backspace");
+          assert(checks, "Reference-city Backspace removes the last chip", doc.querySelectorAll("#referenceCitiesField .refCityChip").length === 3);
+          setReferenceCityQuery("st john");
+          assert(checks, "Already-added reference cities stay out of results", doc.querySelectorAll("#refCityResults .refCityResultRow").length === 0);
+          const referenceCityInputStyle = frame.contentWindow.getComputedStyle(doc.querySelector("#refCityInput"));
+          const referenceCityResultsStyle = frame.contentWindow.getComputedStyle(doc.querySelector("#refCityResults"));
+          const referenceCityChipStyle = frame.contentWindow.getComputedStyle(doc.querySelector("#referenceCitiesField .refCityChip"));
+          const referenceCityHintStyle = frame.contentWindow.getComputedStyle(doc.querySelector("#referenceCitiesField .refCityHint"));
+          assert(checks, "Reference-city component matches the reviewed geometry", referenceCityInputStyle.height === "38px" && referenceCityResultsStyle.top === "42px" && referenceCityChipStyle.borderRadius === "999px" && referenceCityResultPadding === "9px 11px" && referenceCityHintStyle.fontSize === "11.5px", `${referenceCityInputStyle.height} / ${referenceCityResultsStyle.top} / ${referenceCityChipStyle.borderRadius} / ${referenceCityResultPadding} / ${referenceCityHintStyle.fontSize}`);
           await waitFor(() => Array.from(doc.querySelectorAll(".startup-baselayer-map")).every(svg => svg.querySelector(".startup-baselayer-land")), 4000);
           const baselayerThumbnailSvgs = Array.from(doc.querySelectorAll(".startup-baselayer-map"));
           const baselayerThumbnailSignatures = baselayerThumbnailSvgs.map(svg => Array.from(svg.querySelectorAll(".startup-baselayer-land")).map(path => path.getAttribute("d") || "").join("|"));
@@ -1491,27 +1524,26 @@
             trigger.click();
             await waitFor(() => doc.querySelector(dialogSelector)?.hidden === false);
             const dialog = doc.querySelector(dialogSelector);
-            const presetsTab = doc.querySelector("#pointCatalogPresetsTab");
+            const citiesTab = doc.querySelector("#pointCatalogPresetsTab");
             const sourcesTab = doc.querySelector("#pointCatalogSourcesTab");
             assert(checks, "Point catalog opens", !dialog.hidden);
             const pointCatalogSurfaceState = floatingSurfaceState(dialog.querySelector(".dialog-card"));
             assert(checks, "Point catalog dialog is fully visible and unobscured", pointCatalogSurfaceState.pass, pointCatalogSurfaceState.detail);
             assert(checks, "Point catalog exposes modal semantics", dialog.getAttribute("role") === "dialog" && dialog.getAttribute("aria-modal") === "true" && dialog.getAttribute("aria-labelledby") === "pointCatalogTitle");
-            assert(checks, "Point catalog starts on Presets", doc.activeElement === presetsTab && presetsTab.getAttribute("aria-selected") === "true" && !doc.querySelector("#pointCatalogPresetsPanel").hidden);
+            assert(checks, "Point catalog starts on Cities with search focused", doc.activeElement === doc.querySelector("#projectCityInput") && citiesTab.getAttribute("aria-selected") === "true" && !doc.querySelector("#pointCatalogPresetsPanel").hidden);
             assert(checks, "Point catalog source tab is labelled Import CSV", sourcesTab.textContent.trim() === "Import CSV", sourcesTab.textContent.trim());
-            assert(checks, "Point catalog reports its entry context", /Project points/.test(doc.querySelector("#pointCatalogScope")?.textContent || ""));
+            assert(checks, "Point catalog reports its offline catalogue and province behaviour", /\d+ offline cities/.test(doc.querySelector("#pointCatalogScope")?.textContent || "") && /provinces are included automatically/.test(doc.querySelector("#pointCatalogScope")?.textContent || ""));
             doc.querySelector("[data-ui-language='fr']")?.click();
-            await waitFor(() => doc.documentElement.lang === "fr" && /Ajouter des points/.test(doc.querySelector("#pointCatalogTitle")?.textContent || ""), 2000);
-            const catalogCountText = Array.from(doc.querySelectorAll(".catalog-card-count")).map(node => node.textContent.trim());
+            await waitFor(() => doc.documentElement.lang === "fr" && /Créer des points dans des villes/.test(doc.querySelector("#pointCatalogTitle")?.textContent || ""), 2000);
             assert(checks, "Application language setting switches Point catalog source tab to Quebec French", sourcesTab.textContent.trim() === "Importer un CSV", sourcesTab.textContent.trim());
-            assert(checks, "Application language setting switches Point catalog copy to French", /Points de projet/.test(doc.querySelector("#pointCatalogScope")?.textContent || "") && /Capitales/.test(doc.querySelector("[data-catalog-preset='capitals'] strong")?.textContent || "") && catalogCountText.every(text => /^\d+ pts$/.test(text)), `${doc.querySelector("#pointCatalogScope")?.textContent || ""} | ${catalogCountText.join(", ")}`);
+            assert(checks, "Application language setting switches Point catalog copy to French", citiesTab.textContent.trim() === "Villes" && /Catalogue hors ligne/.test(doc.querySelector("#pointCatalogScope")?.textContent || "") && /provinces correspondantes/.test(doc.querySelector("#pointCatalogScope")?.textContent || "") && /Villes à ajouter/.test(doc.querySelector("#projectCitiesField .refCityLabel")?.textContent || ""), `${citiesTab.textContent.trim()} | ${doc.querySelector("#pointCatalogScope")?.textContent || ""}`);
             assertNoRawUiKeys(checks, "Point catalog dialog does not show raw translation keys in French", dialog);
             assertNoKnownEnglishUi(checks, "Point catalog dialog does not show known English UI phrases in French", [dialog]);
             assertNoRawUiKeysInAttributes(checks, "Point catalog dialog attributes do not show raw translation keys in French", [dialog]);
             assertNoKnownEnglishUiInAttributes(checks, "Point catalog dialog attributes do not show known English UI phrases in French", [dialog]);
             doc.querySelector("[data-ui-language='en']")?.click();
-            await waitFor(() => doc.documentElement.lang === "en" && /Add points/.test(doc.querySelector("#pointCatalogTitle")?.textContent || ""), 2000);
-            dispatchKey(presetsTab, "ArrowRight");
+            await waitFor(() => doc.documentElement.lang === "en" && /Create points at cities/.test(doc.querySelector("#pointCatalogTitle")?.textContent || ""), 2000);
+            dispatchKey(citiesTab, "ArrowRight");
             assert(checks, "Catalog tabs support arrow-key navigation", doc.activeElement === sourcesTab && sourcesTab.getAttribute("aria-selected") === "true" && !doc.querySelector("#pointCatalogSourcesPanel").hidden);
             assert(checks, "Browsing catalog sources does not re-plot", (doc.querySelector("#mapSvg")?.innerHTML || "") === mapBeforeCatalog);
             dispatchKey(doc, "Escape");
@@ -1520,17 +1552,50 @@
             trigger.click();
             await waitFor(() => dialog.hidden === false);
             const initialProjectRows = doc.querySelectorAll("#projectTable tbody tr[data-row-id]").length;
-            const capitalsPreset = doc.querySelector("[data-catalog-preset='capitals']");
-            capitalsPreset?.click();
-            assert(checks, "Catalog preset selection stays in the dialog", dialog.hidden === false && capitalsPreset?.classList.contains("is-selected") && doc.querySelector("#catalogAddPointsBtn")?.disabled === false);
+            const cityInput = doc.querySelector("#projectCityInput");
+            cityInput.value = "Toronto";
+            cityInput.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
+            const torontoResult = await waitFor(() => doc.querySelector("[data-reference-city-result='ca-on-toronto']"), 2000);
+            torontoResult.dispatchEvent(new frame.contentWindow.MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+            await waitFor(() => doc.querySelector("#projectCitiesField [data-reference-city-remove='ca-on-toronto']") && doc.querySelector("#catalogAddPointsBtn")?.disabled === false, 2000);
+            assert(checks, "City autosuggest selection stays in the dialog", dialog.hidden === false && doc.querySelector("#projectCitiesField [data-reference-city-remove='ca-on-toronto']") && doc.querySelector("#catalogAddPointsBtn")?.disabled === false);
             const addPointsStyle = frame.contentWindow.getComputedStyle(doc.querySelector("#catalogAddPointsBtn"));
             assert(checks, "Catalog Add points enabled state is clickable", doc.querySelector("#catalogAddPointsBtn")?.disabled === false && addPointsStyle.pointerEvents !== "none");
             doc.querySelector("#catalogAddPointsBtn")?.click();
             await new Promise(resolve => setTimeout(resolve, 0));
             assert(checks, "Catalog Add points button closes dialog after import", dialog.hidden === true, `rows=${doc.querySelectorAll("#projectTable tbody tr[data-row-id]").length}, status=${doc.querySelector("#statusMessage")?.textContent || ""}`);
-            await waitFor(() => doc.querySelectorAll("#projectTable tbody tr[data-row-id]").length >= initialProjectRows + 13);
-            assert(checks, "Capital-cities preset adds editable project rows", doc.body.dataset.workspaceView === "projects" && doc.querySelectorAll("#projectTable tbody tr[data-row-id]").length >= initialProjectRows + 13);
-            assert(checks, "Adding a preset outside Map does not re-plot", (doc.querySelector("#mapSvg")?.innerHTML || "") === mapBeforeCatalog);
+            await waitFor(() => doc.querySelectorAll("#projectTable tbody tr[data-row-id]").length === initialProjectRows + 1);
+            const torontoRow = Array.from(doc.querySelectorAll("#projectTable tbody tr[data-row-id]")).find(row => row.dataset.cityId === "ca-on-toronto");
+            const torontoCity = frame.contentWindow.PLOTYPUS_CITIES?.find(city => city.id === "ca-on-toronto");
+            assert(checks, "City autosuggest creates a blank Project-point row with a separate city location", doc.body.dataset.workspaceView === "projects" && doc.querySelector("#projectTable")?.dataset.locationMode === "cities" && torontoRow?.dataset.anchor === "city" && torontoRow?.dataset.region === "Ontario" && torontoRow.querySelector(".name-input")?.value === "" && torontoRow.querySelector(".lat-input")?.value === String(torontoCity?.lat) && torontoRow.querySelector(".lon-input")?.value === String(torontoCity?.lon), `${doc.querySelector("#projectTable")?.dataset.locationMode || ""}/${torontoRow?.dataset.anchor || ""}/${torontoRow?.dataset.region || ""}/${torontoRow?.querySelector(".name-input")?.value || ""}`);
+            const rowCityField = torontoRow?.querySelector(".cityLocationInput");
+            const rowCityIcon = torontoRow?.querySelector(".refCitySearchIcon");
+            const rowCityInputRect = rowCityField?.getBoundingClientRect();
+            const rowCityIconRect = rowCityIcon?.getBoundingClientRect();
+            const rowCityPadding = parseFloat(frame.contentWindow.getComputedStyle(rowCityField).paddingLeft || "0");
+            const rowCityIconGap = rowCityInputRect && rowCityIconRect ? rowCityInputRect.left + rowCityPadding - rowCityIconRect.right : -1;
+            const rowCityCenterDelta = rowCityInputRect && rowCityIconRect ? Math.abs(rowCityInputRect.top + rowCityInputRect.height / 2 - rowCityIconRect.top - rowCityIconRect.height / 2) : 99;
+            assert(checks, "City field keeps its search icon clear of placeholder and value text", rowCityIconGap >= 12 && rowCityCenterDelta <= 1, `gap=${rowCityIconGap.toFixed(1)}, center=${rowCityCenterDelta.toFixed(1)}, padding=${rowCityPadding}`);
+            const projectNameInput = torontoRow?.querySelector(".name-input");
+            torontoRow.click();
+            await waitFor(() => doc.querySelector("#projectCityPropertiesField .cityLocationInput"), 2000);
+            projectNameInput.value = "Housing project";
+            projectNameInput.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
+            const rowCityInput = torontoRow?.querySelector(".cityLocationInput");
+            rowCityInput.focus();
+            rowCityInput.value = "Montréal";
+            rowCityInput.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
+            const montrealResult = await waitFor(() => torontoRow.querySelector("[data-city-location-result='ca-qc-montreal']"), 2000);
+            montrealResult.dispatchEvent(new frame.contentWindow.MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+            await waitFor(() => torontoRow.dataset.cityId === "ca-qc-montreal", 2000);
+            assert(checks, "Changing City relocates the point without replacing its project name", torontoRow.dataset.region === "Quebec" && projectNameInput.value === "Housing project" && torontoRow.querySelector(".cityLocationInput")?.value.startsWith("Montréal"), `${torontoRow.dataset.region}/${projectNameInput.value}/${torontoRow.querySelector(".cityLocationInput")?.value || ""}`);
+            const propertiesCityInput = doc.querySelector("#projectCityPropertiesField .cityLocationInput");
+            const propertiesCityRegion = doc.querySelector("#propertiesSelectionControls [data-city-derived='region']");
+            const propertiesCityCoordinates = doc.querySelector("#propertiesSelectionControls [data-city-derived='coordinates']");
+            assert(checks, "City edits update the open Properties panel without resetting it", propertiesCityInput?.value.startsWith("Montréal") && propertiesCityRegion?.value === "Quebec" && propertiesCityCoordinates?.value.includes(String(torontoRow.querySelector(".lat-input")?.value || "")), `${propertiesCityInput?.value || ""}/${propertiesCityRegion?.value || ""}/${propertiesCityCoordinates?.value || ""}`);
+            const ontarioRow = doc.querySelector("#regionTable tbody tr[data-region-id='Ontario']");
+            const quebecRow = doc.querySelector("#regionTable tbody tr[data-region-id='Quebec']");
+            assert(checks, "City selection keeps its containing province in the baselayer", (!ontarioRow || ontarioRow.querySelector(".region-table-included-input")?.checked === true) && (!quebecRow || quebecRow.querySelector(".region-table-included-input")?.checked === true));
             doc.querySelector("#addPointsBtn")?.click();
             await waitFor(() => dialog.hidden === false);
           }

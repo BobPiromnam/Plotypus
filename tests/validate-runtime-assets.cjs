@@ -64,7 +64,10 @@ function visit(filePath) {
   }
 }
 
-visit(path.join(repoRoot, "index.html"));
+const indexPath = path.join(repoRoot, "index.html");
+visit(indexPath);
+recordReference("data/cities.json", indexPath);
+recordReference("src/lib/city-search.js", indexPath);
 
 const errors = [
   ...missing.map(item => `${item.owner}: ${item.reference} (${item.reason})`),

@@ -66,6 +66,38 @@
     if (!Number.isFinite(size) || size < 1 || size > 256 * 1024) throw validationError(`${labelText} must be 256 KB or smaller.`, "project.error.customIconSize", labelParams);
   }
 
+  function normalizeReferenceCities(value) {
+    const source = isPlainObject(value) ? value : {};
+    const ids = Array.isArray(source.ids)
+      ? source.ids.map(id => String(id || "").trim()).filter((id, index, all) => id && all.indexOf(id) === index)
+      : [];
+    const overrides = {};
+    if (isPlainObject(source.overrides)) {
+      Object.entries(source.overrides).forEach(([id, override]) => {
+        if (!id || !isPlainObject(override)) return;
+        const name = isPlainObject(override.name) ? override.name : {};
+        overrides[id] = { name: { en: String(name.en || ""), fr: String(name.fr || "") } };
+      });
+    }
+    return {
+      ids,
+      overrides,
+      rule: source.rule == null ? null : source.rule,
+      style: String(source.style || "default")
+    };
+  }
+
+  function normalizeBaselayer(value, boundary, boundarySources = {}) {
+    const source = isPlainObject(value) ? value : {};
+    const boundarySource = boundarySources[boundary] || {};
+    return {
+      id: String(source.id || boundary),
+      geometrySource: String(source.geometrySource || boundary),
+      projection: String(source.projection || boundarySource.projection || boundary),
+      referenceCities: normalizeReferenceCities(source.referenceCities)
+    };
+  }
+
   function validateAndNormalizeProject(rawProject, options = {}) {
     const currentVersion = Number(options.currentVersion) || 1;
     const supportedFormat = String(options.projectFormat || "plotypus-project");
@@ -77,11 +109,15 @@
     const normalizeLanguage = options.normalizeLanguage || (value => value === "fr" ? "fr" : "en");
     const normalizeProjectLocationMode = value => {
       const normalized = String(value || "").toLowerCase();
-      return normalized === "region" || normalized === "regions" ? "regions" : "coordinates";
+      if (normalized === "region" || normalized === "regions") return "regions";
+      if (normalized === "city" || normalized === "cities") return "cities";
+      return "coordinates";
     };
     const deriveProjectLocationMode = rows => {
       const meaningfulRows = (rows || []).filter(row => row && (row.name || row.nameFr || row.region || row.lon !== "" || row.lat !== ""));
       if (!meaningfulRows.length) return "coordinates";
+      const cityRows = meaningfulRows.filter(row => String(row.anchor || "").toLowerCase() === "city" && (row.cityId || row.sourceCityId));
+      if (cityRows.length === meaningfulRows.length) return "cities";
       const regionRows = meaningfulRows.filter(row => String(row.anchor || "").toLowerCase() === "region" || (row.region && row.lon === "" && row.lat === ""));
       return regionRows.length === meaningfulRows.length ? "regions" : "coordinates";
     };
@@ -137,6 +173,15 @@
     if (rawProject.languageLayouts !== undefined && !isPlainObject(rawProject.languageLayouts)) {
       throw validationError("Project language layouts must be an object.", "project.error.languageLayoutsObject");
     }
+    if (rawProject.baselayer !== undefined && !isPlainObject(rawProject.baselayer)) {
+      throw validationError("Project baselayer must be an object.", "project.error.fieldObject", { field: "baselayer" });
+    }
+    if (rawProject.baselayer && rawProject.baselayer.referenceCities !== undefined && !isPlainObject(rawProject.baselayer.referenceCities)) {
+      throw validationError("Project reference cities must be an object.", "project.error.fieldObject", { field: "baselayer.referenceCities" });
+    }
+    if (rawProject.baselayer && rawProject.baselayer.referenceCities && rawProject.baselayer.referenceCities.ids !== undefined && !Array.isArray(rawProject.baselayer.referenceCities.ids)) {
+      throw validationError("Project reference city IDs must be an array.", "project.error.fieldObject", { field: "baselayer.referenceCities.ids" });
+    }
 
     [
       "chromeTranslations",
@@ -159,11 +204,13 @@
       });
     }
 
+    const boundary = Object.prototype.hasOwnProperty.call(boundarySources, rawProject.boundary) ? rawProject.boundary : defaultBoundary;
     return {
       ...rawProject,
       format: rawProject.format || supportedFormat,
       version,
-      boundary: Object.prototype.hasOwnProperty.call(boundarySources, rawProject.boundary) ? rawProject.boundary : defaultBoundary,
+      boundary,
+      baselayer: normalizeBaselayer(rawProject.baselayer, boundary, boundarySources),
       mapStyle: Object.prototype.hasOwnProperty.call(mapStylePresets, rawProject.mapStyle) ? rawProject.mapStyle : defaultMapStyle,
       mapLanguage: normalizeLanguage(rawProject.mapLanguage || rawProject.settings && rawProject.settings.mapLanguage),
       projectLocationMode: rawProject.projectLocationMode === undefined ? deriveProjectLocationMode(rawProject.rows) : normalizeProjectLocationMode(rawProject.projectLocationMode),
@@ -173,5 +220,5 @@
     };
   }
 
-  return { validateAndNormalizeProject };
+  return { normalizeBaselayer, normalizeReferenceCities, validateAndNormalizeProject };
 });

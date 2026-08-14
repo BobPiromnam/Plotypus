@@ -26,6 +26,16 @@
   --ok: #3f6b5e;
   --focus: #3f6b5e;
   --focus-ring: rgba(63, 107, 94, 0.22);
+  --reference-city-text: #282a27;
+  --reference-city-text-soft: #4a4338;
+  --reference-city-muted: #6b6155;
+  --reference-city-border: #d4ccbd;
+  --reference-city-hairline: #efeae0;
+  --reference-city-border-soft: #f1ede3;
+  --reference-city-selected: #f6f3ec;
+  --reference-city-chip: #eef4f0;
+  --reference-city-chip-border: #cfe0d8;
+  --reference-city-chip-button: #dce8e2;
   --app-background: #e5ebe7;
   --control-background: #eef3f0;
   --content-background: #fafcfb;
@@ -1416,6 +1426,10 @@ body[data-workspace-view="projects"] .project-workspace-intro {
 
 .status-danger {
   color: var(--danger);
+}
+
+.status-neutral {
+  color: var(--muted);
 }
 
 .quality-checklist {
@@ -4921,6 +4935,27 @@ body {
   padding-inline: 0;
 }
 
+.reference-city-layer {
+  pointer-events: none;
+}
+
+.reference-city-dot {
+  fill: var(--accent);
+  stroke: var(--map-background);
+  stroke-width: 0.8;
+  vector-effect: non-scaling-stroke;
+}
+
+.reference-city-label {
+  fill: var(--map-ink);
+  font-family: var(--font-content);
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: var(--map-background);
+  stroke-width: 2.5px;
+  stroke-linejoin: round;
+}
+
 .ribbon-feedback {
   position: relative;
   margin-left: var(--space-1);
@@ -7846,6 +7881,304 @@ form.startup-screen {
   gap: var(--space-5);
 }
 
+.reference-cities-field {
+  min-width: 0;
+  margin-top: 15px;
+  padding-top: 14px;
+  border-top: 1px solid var(--reference-city-hairline);
+  color: var(--reference-city-text);
+  font-family: var(--font-content);
+}
+
+.refCityLabel,
+.properties-form .refCityLabel:not(.toolbar-check) {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--reference-city-text-soft);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.refCityLabel span {
+  color: var(--reference-city-muted);
+  font-weight: 500;
+}
+
+.refCityCombobox {
+  position: relative;
+}
+
+.refCitySearchIcon {
+  position: absolute;
+  z-index: 1;
+  top: 11px;
+  left: 11px;
+  width: 16px;
+  height: 16px;
+  color: var(--reference-city-muted);
+  pointer-events: none;
+}
+
+.refCitySearchIcon svg {
+  display: block;
+}
+
+input.refCityInput[type="text"],
+.properties-form input.refCityInput[type="text"] {
+  width: 100%;
+  height: 38px;
+  min-height: 38px;
+  padding: 0 11px 0 34px;
+  border: 1px solid var(--reference-city-border);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--reference-city-text);
+  font: 500 13.5px/1.3 var(--font-content);
+  cursor: text;
+}
+
+input.refCityInput[type="text"]:focus {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(63, 107, 94, 0.15);
+}
+
+.refCityResults {
+  position: absolute;
+  z-index: 20;
+  top: 42px;
+  right: 0;
+  left: 0;
+  overflow: hidden;
+  border: 1px solid var(--reference-city-border);
+  border-radius: 9px;
+  background: #ffffff;
+  box-shadow: 0 14px 30px -14px rgba(40, 37, 32, 0.45);
+}
+
+.refCityResultRow {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 0;
+  border-bottom: 1px solid var(--reference-city-border-soft);
+  border-radius: 0;
+  background: #ffffff;
+  color: var(--reference-city-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.refCityResultRow:last-child {
+  border-bottom: 0;
+}
+
+.refCityResultRow:hover,
+.refCityResultRow.is-selected {
+  background: var(--reference-city-selected);
+}
+
+.refCityResultDot {
+  flex: 0 0 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.refCityResultMain {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.refCityResultName,
+.refCityResultCoordinates,
+.refCityResultProvince,
+.refCityResultPopulation {
+  display: block;
+}
+
+.refCityResultName {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.refCityResultCoordinates,
+.refCityResultPopulation {
+  margin-top: 1px;
+  color: var(--reference-city-muted);
+  font: 500 10.5px/1.2 var(--font-data);
+}
+
+.refCityResultMeta {
+  flex: 0 1 auto;
+  min-width: 0;
+  text-align: right;
+}
+
+.refCityResultProvince {
+  overflow: hidden;
+  color: var(--reference-city-text-soft);
+  font-size: 11.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.refCityNoMatch {
+  padding: 14px 12px;
+  color: var(--reference-city-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.refCityNoMatch span {
+  font: 500 11.5px/1.2 var(--font-data);
+}
+
+.refCityChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.refCityChips:empty {
+  display: none;
+}
+
+.refCityChipWrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.refCityChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 6px 4px 9px;
+  border: 1px solid var(--reference-city-chip-border);
+  border-radius: 999px;
+  background: var(--reference-city-chip);
+  color: #2f5045;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.refCityChip.is-unresolved {
+  border-style: dashed;
+}
+
+.refCityChipName {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+button.refCityChipName {
+  border-bottom: 1px dotted currentColor;
+  border-radius: 0;
+  cursor: pointer;
+}
+
+.refCityChipProvince {
+  color: var(--accent);
+  font: 500 10px/1.2 var(--font-data);
+  opacity: 0.75;
+}
+
+.refCityChipRemove,
+.refCityOverrideClose {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  min-height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--reference-city-chip-button);
+  color: #2f5045;
+  cursor: pointer;
+}
+
+.refCityHint {
+  margin: 8px 0 0;
+  color: var(--reference-city-muted);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.refCityOverridePopover {
+  position: absolute;
+  z-index: 25;
+  top: calc(100% + 6px);
+  left: 0;
+  display: grid;
+  width: min(280px, calc(100vw - 48px));
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--reference-city-border);
+  border-radius: 9px;
+  background: #ffffff;
+  box-shadow: 0 14px 30px -14px rgba(40, 37, 32, 0.45);
+}
+
+.refCityOverrideHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--reference-city-text-soft);
+  font-size: 12px;
+}
+
+.properties-form .refCityOverridePopover label:not(.toolbar-check) {
+  display: grid;
+  gap: 4px;
+  color: var(--reference-city-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.refCityOverridePopover input[type="text"] {
+  width: 100%;
+}
+
+.refCityOverrideReset {
+  justify-self: start;
+  min-height: 30px;
+  padding: 4px 8px;
+  font-size: 11.5px;
+}
+
+.reference-cities-property-section > .reference-cities-field {
+  margin-top: 10px;
+}
+
+.project-city-picker-panel {
+  min-height: 250px;
+  padding: var(--space-8);
+}
+
+.project-city-picker-panel > .reference-cities-field {
+  width: min(100%, 560px);
+  margin: 0 auto;
+  padding-top: 0;
+  border-top: 0;
+}
+
 .startup-baselayer-option {
   min-width: 0;
   min-height: 120px;
@@ -9294,6 +9627,20 @@ body[data-workspace-view="regions"] #regionTable .region-status-input {
   display: none;
 }
 
+#projectTable:not([data-location-mode="cities"]) .city-col,
+#projectTable:not([data-location-mode="cities"]) .city-cell {
+  display: none;
+}
+
+#projectTable[data-location-mode="cities"] .region-col,
+#projectTable[data-location-mode="cities"] .region-cell,
+#projectTable[data-location-mode="cities"] .lon-col,
+#projectTable[data-location-mode="cities"] .lat-col,
+#projectTable[data-location-mode="cities"] .lon-cell,
+#projectTable[data-location-mode="cities"] .lat-cell {
+  display: none !important;
+}
+
 #projectTable[data-location-mode="regions"] .lon-col,
 #projectTable[data-location-mode="regions"] .lat-col,
 #projectTable[data-location-mode="regions"] .lon-cell,
@@ -9305,6 +9652,90 @@ body[data-workspace-view="projects"] #projectTable .region-col,
 body[data-workspace-view="projects"] #projectTable .region-cell {
   width: 260px;
   min-width: 260px;
+}
+
+body[data-workspace-view="projects"] #projectTable .city-col,
+body[data-workspace-view="projects"] #projectTable .city-cell {
+  width: 320px;
+  min-width: 320px;
+}
+
+body[data-workspace-view="projects"] #projectTable[data-location-mode="cities"] .name-col,
+body[data-workspace-view="projects"] #projectTable[data-location-mode="cities"] .name-cell {
+  width: 320px;
+  min-width: 320px;
+}
+
+body[data-workspace-view="projects"] #projectTable .city-cell {
+  overflow: visible;
+  padding: 0;
+}
+
+.city-location-field {
+  position: relative;
+  width: 100%;
+}
+
+.cityLocationCombobox {
+  position: relative;
+}
+
+.cityLocationCombobox .refCitySearchIcon {
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+body[data-workspace-view="projects"] #projectTable .city-location-field.is-compact input.cityLocationInput[type="text"] {
+  height: 42px;
+  min-height: 42px;
+  padding: 0 42px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: inherit;
+}
+
+body[data-workspace-view="projects"] #projectTable .city-location-field.is-compact input.cityLocationInput[type="text"]:focus {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.cityLocationClear {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  right: 7px;
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  transform: translateY(-50%);
+}
+
+.cityLocationClear:hover,
+.cityLocationClear:focus-visible {
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.city-location-field.is-compact .cityLocationResults {
+  top: calc(100% + 2px);
+  right: auto;
+  width: min(390px, calc(100vw - 48px));
+}
+
+.city-derived-fields {
+  margin-top: var(--space-3);
+}
+
+.city-derived-fields input[readonly] {
+  color: var(--muted);
+  background: var(--panel);
 }
 
 body[data-workspace-view="projects"] #projectTable .region-cell {

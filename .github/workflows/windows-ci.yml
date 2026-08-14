@@ -37,7 +37,9 @@ jobs:
         shell: pwsh
         run: |
           node --check app.js
+          node --check city-integration.js
           node --check config.js
+          node --check data/cities.js
           node --check feedback.js
           node --check geometry.js
           node --check icons.js
@@ -46,12 +48,17 @@ jobs:
           node --check project-io.js
           node --check project-file.js
           node --check properties.js
+          node --check reference-cities.js
+          node --check src/lib/city-search.js
+          node --check src/lib/city-search-runtime.js
           node --check tests/headless-smoke-runner.cjs
           node --check tests/run-unit-tests.cjs
           node --check tests/validate-performance-report.cjs
           node --check tests/validate-runtime-assets.cjs
           node --check tests/validate-workflows.cjs
           node --check tests/validate-config.cjs
+          node --check tools/build-reference-city-runtime.cjs
+          node --check tools/build-cities.js
           node --check workspace.js
 
       - name: Validate configuration
@@ -61,6 +68,14 @@ jobs:
       - name: Validate offline runtime assets
         shell: pwsh
         run: node tests/validate-runtime-assets.cjs
+
+      - name: Validate portable reference-city runtime
+        shell: pwsh
+        run: node tools/build-reference-city-runtime.cjs --check
+
+      - name: Run reference-city search self-test
+        shell: pwsh
+        run: node src/lib/city-search.js
 
       - name: Validate GitHub workflow syntax
         shell: pwsh

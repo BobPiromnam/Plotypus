@@ -197,6 +197,10 @@
     const t = translator(options);
     return `
       <div class="properties-form" data-property-kind="document">
+        <section class="document-property-section reference-cities-property-section">
+          <h3>${escapeHtml(t("properties.section.baselayer"))}</h3>
+          <div id="referenceCitiesPropertiesField" data-reference-cities-field-context="properties"></div>
+        </section>
         <section class="document-property-section">
           <h3>${escapeHtml(t("properties.section.mapStyle"))}</h3>
           <label class="properties-field-group">
@@ -309,7 +313,7 @@
     const safeLabelKey = escapeHtml(labelKey);
     const hasLabelMaxCharsOverride = row.labelMaxChars !== "" && row.labelMaxChars !== undefined;
     const effectiveLabelMaxChars = hasLabelMaxCharsOverride ? row.labelMaxChars : globalLabelMaxChars;
-    const anchor = projectLocationMode === "regions" ? "region" : "coord";
+    const anchor = projectLocationMode === "regions" ? "region" : projectLocationMode === "cities" ? "city" : "coord";
     const leaderLineWidth = row.leaderLineWidth === "" || row.leaderLineWidth === undefined || row.leaderLineWidth === null
       ? ""
       : String(row.leaderLineWidth);
@@ -452,12 +456,23 @@
           </select>
         </label>
         <section class="annotation-property-section">
-          <h3>${escapeHtml(t(anchor === "region" ? "properties.field.region" : "properties.field.coordinates"))}</h3>
+          <h3>${escapeHtml(t(anchor === "region" ? "properties.field.region" : anchor === "city" ? "properties.field.city" : "properties.field.coordinates"))}</h3>
           ${anchor === "region" ? `
             <label>
               ${propertyFieldLabel(options, t("properties.field.region"))}
               <select data-property-field="region">${regionSelectOptions}</select>
-            </label>` : `
+            </label>` : anchor === "city" ? `
+            <div id="projectCityPropertiesField"></div>
+            <div class="properties-inline-grid city-derived-fields">
+              <label>
+                ${propertyFieldLabel(options, t("properties.field.cityDerived"), "auto")}
+                <input type="text" data-city-derived="region" value="${escapeHtml(options.cityRegionLabel || "")}" readonly>
+              </label>
+              <label>
+                ${propertyFieldLabel(options, t("properties.field.cityCoordinates"), "auto")}
+                <input class="type-numeric-data" type="text" data-city-derived="coordinates" value="${escapeHtml(row.lon !== "" && row.lat !== "" ? `${row.lat}, ${row.lon}` : "")}" readonly>
+              </label>
+            </div>` : `
             <div class="properties-inline-grid">
               <label>
                 ${propertyFieldLabel(options, t("properties.field.longitude"))}

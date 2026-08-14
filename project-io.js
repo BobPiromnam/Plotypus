@@ -14,6 +14,7 @@
       version,
       generator,
       boundary,
+      baselayer,
       mapStyle,
       mapLanguage,
       projectLocationMode,
@@ -45,9 +46,10 @@
       },
       savedAt: new Date().toISOString(),
       boundary,
+      baselayer: baselayer ? JSON.parse(JSON.stringify(baselayer)) : undefined,
       mapStyle,
       mapLanguage,
-      projectLocationMode: projectLocationMode === "regions" ? "regions" : "coordinates",
+      projectLocationMode: projectLocationMode === "regions" ? "regions" : projectLocationMode === "cities" ? "cities" : "coordinates",
       settings,
       chromeTranslations,
       mapDetails: { ...(mapDetails || {}) },
@@ -76,6 +78,10 @@
         lat: row.lat,
         anchor: row.anchor || "coord",
         region: row.region || "",
+        cityId: row.cityId || "",
+        cityName: row.cityName || "",
+        cityNameFr: row.cityNameFr || "",
+        cityProvince: row.cityProvince || "",
         labelStyle: row.labelStyle || "compact",
         content: Array.isArray(row.content) ? row.content : [],
         labelBorder: Boolean(row.labelBorder),
@@ -130,11 +136,15 @@
       lon: row.lon,
       lat: row.lat,
       region: row.region || "",
+      city: [row.cityName || row.cityNameFr || "", row.cityProvince || ""].filter(Boolean).join(", "),
       hideLine: row.hideLine ? "yes" : ""
     }));
+    const usesCities = projectLocationMode === "cities" || (rows || []).some(row => row && row.anchor === "city");
     return {
       rows: exportRows,
-      columns: projectLocationMode === "regions" || (rows || []).some(row => row && row.anchor === "region")
+      columns: usesCities
+        ? ["name", "name_fr", "footnote", "type", "type_fr", "city", "hideLine"]
+        : projectLocationMode === "regions" || (rows || []).some(row => row && row.anchor === "region")
         ? ["name", "name_fr", "footnote", "type", "type_fr", "region", "hideLine"]
         : ["name", "name_fr", "footnote", "type", "type_fr", "lon", "lat", "hideLine"]
     };

@@ -77,7 +77,10 @@
       + Number(report.labelsNearEdge || 0)
       + Number(report.offCanvasPoints || 0)
       + (report.projectedProblems ? report.projectedProblems.length : 0)
-      + (report.hiddenRegionProblems ? report.hiddenRegionProblems.length : 0);
+      + (report.hiddenRegionProblems ? report.hiddenRegionProblems.length : 0)
+      + (report.referenceCityUnresolvedIds ? report.referenceCityUnresolvedIds.length : 0)
+      + (report.referenceCityExcludedRegionIds ? report.referenceCityExcludedRegionIds.length : 0)
+      + (report.referenceCityUnsupportedBoundaryIds ? report.referenceCityUnsupportedBoundaryIds.length : 0);
     return {
       value: issues
         ? (labels.issueCount
