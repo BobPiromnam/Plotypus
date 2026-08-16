@@ -874,7 +874,7 @@
         assert(checks, "Application heading tokens form a non-decreasing 18-40px hierarchy", typographyScale[0] === 18 && typographyScale.at(-1) === 40 && typographyScale.every((value, index) => index === 0 || value >= typographyScale[index - 1]), typographyScale.join(" / "));
         const iconScale = ["--icon-hint-size", "--icon-compact-size", "--icon-action-size"]
           .map(token => parseFloat(rootStyle.getPropertyValue(token)) || 0);
-        const commandActionIcons = ["#ribbonUndoBtn", "#mapDetailsBtn", "#feedbackBtn", "#applicationSettingsBtn"]
+        const commandActionIcons = ["#ribbonUndoBtn", "#propertiesToggleBtn", "#feedbackBtn", "#applicationSettingsBtn"]
           .map(selector => doc.querySelector(`${selector} > .button-icon`))
           .filter(Boolean);
         const commandActionIconWidths = commandActionIcons.map(icon => parseFloat(frame.contentWindow.getComputedStyle(icon).width) || 0);
@@ -885,7 +885,8 @@
         const inlineHintIcons = [doc.querySelector(".col-edit-hint"), doc.querySelector(".translation-column-edit-hint")].filter(Boolean);
         const inlineHintIconWidths = inlineHintIcons.map(icon => parseFloat(frame.contentWindow.getComputedStyle(icon).width) || 0);
         assert(checks, "Application icon tokens scale with the 18px typography baseline", iconScale.join(",") === "14,18,22" && iconScale[2] > typographyScale[0], `hint/compact/action=${iconScale.join("/")}; body=${typographyScale[0]}`);
-        assert(checks, "Command actions use the larger shared icon size", commandActionIcons.length === 4 && commandActionIconWidths.every(width => width === iconScale[2]), commandActionIconWidths.join(", "));
+        assert(checks, "Command actions use a consistent compact icon size", commandActionIcons.length === 4 && commandActionIconWidths.every(width => width === 20), commandActionIconWidths.join(", "));
+        assert(checks, "Map details is absent from the command bar", !doc.querySelector("#mapDetailsBtn") && !doc.querySelector("#frMetaWarning"));
         assert(checks, "Translated command labels preserve their action icons", translatedActionIcons.length === 4);
         const workspaceTabIconWidths = workspaceTabIcons.map(icon => parseFloat(frame.contentWindow.getComputedStyle(icon).width) || 0);
         assert(checks, "Every workspace tab preserves its action icon", workspaceTabIcons.length === 5 && workspaceTabIconWidths.every(width => width === iconScale[2]), `${workspaceTabIcons.length} icons: ${workspaceTabIconWidths.join(", ")}`);
@@ -1180,6 +1181,9 @@
           await waitFor(() => startupDialog.dataset.startupScreen === "setup", 2000);
           doc.querySelector("#startupCreateMapBtn")?.click();
           await waitFor(() => startupDialog.hidden === true, 10000);
+          const emptyCanvasActions = doc.querySelector("#canvasEmptyActions");
+          assert(checks, "Empty map canvas provides direct next-step actions", Boolean(emptyCanvasActions) && frame.contentWindow.getComputedStyle(emptyCanvasActions).display !== "none" && ["add-project", "import-csv", "load-sample"].every(action => emptyCanvasActions.querySelector(`[data-empty-action='${action}']`)), emptyCanvasActions?.textContent.trim() || "missing");
+          assert(checks, "Creating a new map exposes persistent unsaved feedback", doc.querySelector("#projectSaveState")?.dataset.state === "dirty" && /Unsaved changes|Modifications non enregistrées/.test(doc.querySelector("#projectSaveState")?.textContent || ""), doc.querySelector("#projectSaveState")?.textContent || "missing");
         }
 
         if (loadSample) {
@@ -1392,12 +1396,19 @@
             assert(checks, "Escape closes Send feedback and restores command-bar focus", dialog.hidden && trigger.getAttribute("aria-expanded") === "false" && doc.activeElement === trigger);
           }
           if (requestedDialog === "map-details") {
-            const trigger = doc.querySelector("#mapDetailsBtn");
-            trigger.focus();
-            trigger.click();
+            doc.querySelector("#qualityTableTab")?.click();
+            await waitFor(() => doc.body.dataset.workspaceView === "quality", 2000);
+            const openMapDetailsFromQuality = async () => {
+              const trigger = await waitFor(() => doc.querySelector("#qualityMetricsPanel [data-property-action='open-map-details']"), 2000);
+              trigger.focus();
+              trigger.click();
+              await waitFor(() => doc.querySelector(dialogSelector)?.hidden === false);
+              return trigger;
+            };
+            let trigger = await openMapDetailsFromQuality();
             await waitFor(() => doc.querySelector(dialogSelector)?.hidden === false);
             const dialog = doc.querySelector(dialogSelector);
-            assert(checks, "Map details dialog opens", !dialog.hidden);
+            assert(checks, "Map details opens from Quality remediation instead of the command bar", !dialog.hidden && !doc.querySelector("#mapDetailsBtn"));
             const mapDetailsSurfaceState = floatingSurfaceState(dialog.querySelector(".dialog-card"));
             assert(checks, "Map details dialog is fully visible and unobscured", mapDetailsSurfaceState.pass, mapDetailsSurfaceState.detail);
             assert(checks, "Map details exposes modal semantics", dialog.getAttribute("role") === "dialog" && dialog.getAttribute("aria-modal") === "true" && dialog.getAttribute("aria-labelledby") === "mapDetailsTitle");
@@ -1420,14 +1431,13 @@
             dialog.querySelector("#mapTextFrInput").value = "";
             dialog.querySelector("#mapDetailsForm").dispatchEvent(new frame.contentWindow.Event("submit", { bubbles: true, cancelable: true }));
             await waitFor(() => dialog.hidden === true);
-            assert(checks, "Map details can save while fields are still missing", dialog.hidden && doc.querySelector("#mapDetailsBtn")?.classList.contains("has-warning"));
-            trigger.click();
-            await waitFor(() => dialog.hidden === false);
+            const refreshedDetailsTrigger = await waitFor(() => doc.querySelector("#qualityMetricsPanel [data-property-action='open-map-details']"), 2000);
+            assert(checks, "Map details can save while fields are still missing", dialog.hidden && Boolean(refreshedDetailsTrigger));
+            trigger = await openMapDetailsFromQuality();
             dispatchKey(doc, "Escape");
             assert(checks, "Escape closes Map details", dialog.hidden);
             assert(checks, "Map details restores trigger focus", doc.activeElement === trigger);
-            trigger.click();
-            await waitFor(() => dialog.hidden === false);
+            trigger = await openMapDetailsFromQuality();
           }
           if (requestedDialog === "csv-map") {
             const input = doc.querySelector("#csvInput");
@@ -1786,6 +1796,12 @@
           assert(checks, "Properties panel has a contextual heading", Boolean(doc.querySelector("#propertiesTitle")?.textContent.trim()));
           assert(checks, "Properties guidance appears in the top heading", Boolean(doc.querySelector("#propertiesDescription")?.textContent.trim()));
           assert(checks, "Properties panel has no duplicate bottom selection copy", !doc.querySelector("[data-props-context='selection']"));
+          if (["projects", "translate", "quality"].includes(requestedWorkspace)) {
+            assert(checks, `${requestedWorkspace} starts with the duplicate Properties surface removed`, doc.body.classList.contains("properties-unavailable") && doc.querySelector("#propertiesPanel")?.inert && doc.querySelector("#propertiesPanel")?.getAttribute("aria-hidden") === "true" && doc.querySelector("#propertiesToggleBtn")?.hidden === true, doc.body.className);
+          }
+          if (requestedWorkspace === "regions") {
+            assert(checks, "Map baselayer starts with Properties collapsed until a row is selected", doc.body.classList.contains("properties-collapsed") && doc.querySelector("#propertiesToggleBtn")?.hidden === false, doc.body.className);
+          }
           if (projectRoundTrip) {
             if (!loadSample || requestedWorkspace !== "preview") throw new Error("projectRoundTrip=1 requires the populated preview workspace.");
             const roundTripFixtureRow = doc.querySelector("#projectTable tbody tr");
@@ -1893,6 +1909,7 @@
           const applicationSettingsClose = doc.querySelector("#applicationSettingsCloseBtn");
           const workspaceElement = doc.querySelector(".workspace");
           const appWidth = frame.contentWindow.innerWidth;
+          const propertiesAvailableAtWorkspaceStart = !doc.body.classList.contains("properties-unavailable");
           const summaryChips = Array.from(doc.querySelectorAll("#workspaceSummaryMetrics .workspace-summary-chip"));
           const visibleSummaryChips = summaryChips.filter(chip => frame.contentWindow.getComputedStyle(chip).display !== "none");
           const regionSummaryLabel = doc.querySelector("#workspaceSummaryMetrics [data-summary-key='regions'] span");
@@ -1905,7 +1922,7 @@
           assert(checks, "A top-right gear opens the general application settings", Boolean(applicationSettingsButton && applicationSettingsMenu && applicationSettingsClose) && applicationSettingsButton.dataset.icon === "settings" && applicationSettingsButton.getAttribute("aria-haspopup") === "dialog" && applicationSettingsButton.getAttribute("aria-controls") === "applicationSettingsMenu" && applicationSettingsButton.getAttribute("aria-expanded") === "false" && applicationSettingsMenu.hidden && settingsButtonRect.right <= headerRect.right + 1 && headerRect.right - settingsButtonRect.right <= 32, `trigger=${applicationSettingsButton?.outerHTML || "missing"}; right=${settingsButtonRect?.right || "missing"}/${headerRect?.right || "missing"}`);
           assert(checks, "Application settings are the single source for interface language and Properties position", applicationLanguageButtons.length === 2 && applicationLanguageButtons.every(button => applicationSettingsMenu.contains(button)) && propertiesPositionInputs.length === 2 && propertiesPositionInputs.every(input => applicationSettingsMenu.contains(input)) && !doc.querySelector("#applicationConfigurationSection") && !doc.querySelector("#propertiesPanel [data-ui-language], #propertiesPanel [data-properties-side-input]"), `languages=${applicationLanguageButtons.length}; positions=${propertiesPositionInputs.length}; duplicate=${doc.querySelector("#applicationConfigurationSection")?.outerHTML || "none"}`);
           assert(checks, "Properties defaults to the right with an accessible application setting", doc.body.dataset.propertiesSide === "right" && propertiesRightInput?.checked && propertiesRightInput?.closest("[role='radiogroup']")?.getAttribute("aria-labelledby") === "propertiesPositionLabel");
-          if (appWidth <= 1080) {
+          if (propertiesAvailableAtWorkspaceStart && appWidth <= 1080) {
             propertiesToggle?.click();
             await waitFor(() => doc.body.classList.contains("properties-open") && !propertiesPanel.inert, 2000);
           }
@@ -1916,7 +1933,7 @@
           const settingsLanguageGroup = applicationLanguageButtons[0]?.closest("[role='group']");
           assert(checks, "Application settings opens as an accessible non-modal dialog", applicationSettingsMenu?.getAttribute("role") === "dialog" && applicationSettingsMenu.getAttribute("aria-labelledby") === "applicationSettingsTitle" && applicationSettingsMenu.getAttribute("aria-describedby") === "applicationSettingsDescription" && applicationSettingsMenu.getAttribute("aria-modal") !== "true" && Boolean(doc.querySelector("#applicationSettingsTitle")?.textContent.trim()) && settingsLanguageGroup?.getAttribute("aria-labelledby") === "applicationLanguageLabel");
           assert(checks, "Application settings starts focus on the active interface language", doc.activeElement === applicationLanguageButtons[0] && applicationLanguageButtons[0].dataset.uiLanguage === "en" && applicationLanguageButtons[0].getAttribute("aria-pressed") === "true", doc.activeElement?.outerHTML || "none");
-          if (appWidth <= 1080) {
+          if (propertiesAvailableAtWorkspaceStart && appWidth <= 1080) {
             assert(checks, "Opening application settings closes the responsive Properties drawer", propertiesPanel.inert && !doc.body.classList.contains("properties-open") && propertiesToggle?.getAttribute("aria-expanded") === "false", `inert=${propertiesPanel.inert}; open=${doc.body.classList.contains("properties-open")}; expanded=${propertiesToggle?.getAttribute("aria-expanded")}`);
           }
           assert(checks, `${appWidth <= 1080 ? "1024px" : "Desktop"} application settings stays fully visible without horizontal overflow`, settingsSurfaceState.pass && applicationSettingsMenu.scrollWidth <= applicationSettingsMenu.clientWidth + 1 && applicationSettingsMenu.getBoundingClientRect().right <= appWidth + 1, `${settingsSurfaceState.detail}; scroll=${applicationSettingsMenu.scrollWidth}/${applicationSettingsMenu.clientWidth}`);
@@ -1935,16 +1952,19 @@
           applicationSettingsOutsideTarget?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true, cancelable: true }));
           await waitFor(() => applicationSettingsMenu?.hidden && applicationSettingsButton?.getAttribute("aria-expanded") === "false", 2000);
           assert(checks, "Clicking outside closes application settings", applicationSettingsMenu?.hidden && applicationSettingsButton?.getAttribute("aria-expanded") === "false");
-          if (appWidth > 1080) {
-            const initialPanelRect = propertiesPanel.getBoundingClientRect();
+          if (propertiesAvailableAtWorkspaceStart && appWidth > 1080) {
+            const collapsedPanelRect = propertiesPanel.getBoundingClientRect();
             const initialWorkspaceRect = workspaceElement.getBoundingClientRect();
-            assert(checks, "Right Properties is visually and structurally after the workspace", initialPanelRect.left >= initialWorkspaceRect.right - 1 && workspaceElement.nextElementSibling === propertiesPanel, `workspace=${initialWorkspaceRect.left}-${initialWorkspaceRect.right}, panel=${initialPanelRect.left}-${initialPanelRect.right}`);
+            assert(checks, "Right Properties is visually and structurally after the workspace", collapsedPanelRect.left >= initialWorkspaceRect.right - 1 && workspaceElement.nextElementSibling === propertiesPanel, `workspace=${initialWorkspaceRect.left}-${initialWorkspaceRect.right}, panel=${collapsedPanelRect.left}-${collapsedPanelRect.right}`);
+            assert(checks, "Properties defaults to a quiet 48px rail", doc.body.classList.contains("properties-collapsed") && Math.round(collapsedPanelRect.width) === 48 && propertiesToggle?.getAttribute("aria-expanded") === "false", `${collapsedPanelRect.width}`);
+            propertiesToggle?.click();
+            await waitFor(() => !doc.body.classList.contains("properties-collapsed") && Math.round(propertiesPanel.getBoundingClientRect().width) === 320, 2000);
             propertiesResizeHandle?.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true }));
-            await waitFor(() => Math.round(propertiesPanel.getBoundingClientRect().width) === (appWidth > 1280 ? 336 : 316), 2000);
+            await waitFor(() => Math.round(propertiesPanel.getBoundingClientRect().width) === 336, 2000);
             const savedRightResizePreference = JSON.parse(frame.contentWindow.localStorage.getItem("plotypus.propertiesPanel") || "{}");
-            assert(checks, "Right-side splitter grows inward", doc.body.dataset.propertiesSide === "right" && savedRightResizePreference.width === (appWidth > 1280 ? 336 : 316));
+            assert(checks, "Right-side splitter grows inward", doc.body.dataset.propertiesSide === "right" && savedRightResizePreference.width === 336);
             propertiesResizeHandle?.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }));
-            await waitFor(() => Math.round(propertiesPanel.getBoundingClientRect().width) === (appWidth > 1280 ? 320 : 300), 2000);
+            await waitFor(() => Math.round(propertiesPanel.getBoundingClientRect().width) === 320, 2000);
           }
           applicationSettingsButton?.click();
           await waitFor(() => applicationSettingsMenu?.hidden === false, 2000);
@@ -1952,7 +1972,7 @@
           await waitFor(() => doc.body.dataset.propertiesSide === "left" && propertiesLeftInput.checked, 2000);
           const savedLeftPropertiesPreference = JSON.parse(frame.contentWindow.localStorage.getItem("plotypus.propertiesPanel") || "{}");
           assert(checks, "Properties can move left and saves the application preference without closing settings", savedLeftPropertiesPreference.side === "left" && propertiesPanel.nextElementSibling === workspaceElement && applicationSettingsMenu?.hidden === false && applicationSettingsButton?.getAttribute("aria-expanded") === "true");
-          if (appWidth > 1080) {
+          if (propertiesAvailableAtWorkspaceStart && appWidth > 1080) {
             const leftPanelRect = propertiesPanel.getBoundingClientRect();
             const leftWorkspaceRect = workspaceElement.getBoundingClientRect();
             assert(checks, "Left Properties is visually before the workspace", leftPanelRect.right <= leftWorkspaceRect.left + 1, `panel=${leftPanelRect.left}-${leftPanelRect.right}, workspace=${leftWorkspaceRect.left}-${leftWorkspaceRect.right}`);
@@ -1988,7 +2008,7 @@
           uiFrenchButton?.click();
           await waitFor(() => doc.documentElement.lang === "fr" && doc.querySelector("#previewTableTab")?.textContent.trim() === "Carte", 2000);
           const savedFrenchUiPreference = JSON.parse(frame.contentWindow.localStorage.getItem("plotypus.uiLanguage") || "null");
-          assert(checks, "Application language switches app chrome to French and persists without closing settings", doc.documentElement.lang === "fr" && doc.querySelector("#mapDetailsBtn")?.textContent.includes("Détails de la carte") && doc.querySelector("#exportMenuBtn")?.textContent.trim() === "Exporter" && savedFrenchUiPreference === "fr" && uiFrenchButton?.getAttribute("aria-pressed") === "true" && applicationSettingsMenu?.hidden === false);
+          assert(checks, "Application language switches app chrome to French and persists without closing settings", doc.documentElement.lang === "fr" && doc.querySelector("#propertiesToggleBtn")?.textContent.includes("Propriétés") && doc.querySelector("#exportMenuBtn")?.textContent.trim() === "Exporter" && savedFrenchUiPreference === "fr" && uiFrenchButton?.getAttribute("aria-pressed") === "true" && applicationSettingsMenu?.hidden === false);
           assert(checks, "Application settings copy and accessible names switch to French", /Paramètres de l’application/.test(applicationSettingsMenu?.textContent || "") && /Langue de l’application/.test(applicationSettingsMenu?.textContent || "") && /Position du panneau Propriétés/.test(applicationSettingsMenu?.textContent || "") && /Fermer les paramètres de l’application/.test(applicationSettingsClose?.getAttribute("aria-label") || ""), `${applicationSettingsMenu?.textContent || ""} | ${applicationSettingsClose?.getAttribute("aria-label") || ""}`);
           assertNoRawUiKeys(checks, "Application settings does not show raw translation keys in French", applicationSettingsMenu);
           assertNoKnownEnglishUi(checks, "Application settings does not show known English UI phrases in French", [applicationSettingsMenu]);
@@ -2396,31 +2416,34 @@
           uiEnglishButton?.click();
           await waitFor(() => doc.documentElement.lang === "en" && doc.querySelector("#previewTableTab")?.textContent.trim() === "Map", 2000);
           const savedEnglishUiPreference = JSON.parse(frame.contentWindow.localStorage.getItem("plotypus.uiLanguage") || "null");
-          assert(checks, "Application settings switches app chrome back to English without changing map output", doc.documentElement.lang === "en" && doc.querySelector("#mapDetailsBtn")?.textContent.includes("Map details") && doc.querySelector("#exportMenuBtn")?.textContent.trim() === "Export" && doc.querySelector("#mapLanguageInput")?.value === initialMapLanguage && savedEnglishUiPreference === "en" && uiEnglishButton?.getAttribute("aria-pressed") === "true" && applicationSettingsMenu?.hidden === false);
+          assert(checks, "Application settings switches app chrome back to English without changing map output", doc.documentElement.lang === "en" && doc.querySelector("#propertiesToggleBtn")?.textContent.includes("Properties") && doc.querySelector("#exportMenuBtn")?.textContent.trim() === "Export" && doc.querySelector("#mapLanguageInput")?.value === initialMapLanguage && savedEnglishUiPreference === "en" && uiEnglishButton?.getAttribute("aria-pressed") === "true" && applicationSettingsMenu?.hidden === false);
           applicationSettingsClose?.click();
           await waitFor(() => applicationSettingsMenu?.hidden && applicationSettingsButton?.getAttribute("aria-expanded") === "false", 2000);
           assert(checks, "Application settings close button closes the dialog", applicationSettingsMenu?.hidden && applicationSettingsButton?.getAttribute("aria-expanded") === "false");
           const currentSummaryChips = Array.from(doc.querySelectorAll("#workspaceSummaryMetrics .workspace-summary-chip"));
           const currentVisibleSummaryChips = currentSummaryChips.filter(chip => chip.getBoundingClientRect().height > 0);
           const currentRegionSummaryLabel = doc.querySelector("#workspaceSummaryMetrics [data-summary-key='regions'] span");
-          if (appWidth > 1280) {
-            assert(checks, "Properties uses the 320px desktop dock", Math.round(parseFloat(propertiesStyle.width)) === 320, propertiesStyle.width);
+          const adaptivePropertiesAvailableNow = !doc.body.classList.contains("properties-unavailable");
+          if (!adaptivePropertiesAvailableNow) {
+            const workspaceRect = workspaceElement.getBoundingClientRect();
+            assert(checks, "Non-contextual workspace keeps Properties removed and gives content the full shell width", propertiesPanel.inert && propertiesPanel.getAttribute("aria-hidden") === "true" && propertiesToggle.hidden && workspaceRect.width >= doc.documentElement.clientWidth - 80, `workspace=${Math.round(workspaceRect.width)}; viewport=${doc.documentElement.clientWidth}; classes=${doc.body.className}`);
+            assert(checks, `${appWidth <= 1080 ? "Narrow" : "Desktop"} readiness keeps one Map quality shortcut`, currentVisibleSummaryChips.length === 1 && currentVisibleSummaryChips[0].dataset.summaryKey === "to-review", currentSummaryChips.map(chip => `${chip.dataset.summaryKey}:${frame.contentWindow.getComputedStyle(chip).display}`).join(", "));
+            assert(checks, `${appWidth <= 1080 ? "Icon-only" : "Desktop"} workspace tabs retain accessible tooltips`, workspaceTabs.every(tab => Boolean(tab.title)));
+          } else if (appWidth > 1280) {
+            assert(checks, "Desktop Properties remains open after contextual editing", !doc.body.classList.contains("properties-collapsed") && Math.round(propertiesPanel.getBoundingClientRect().width) === 320 && propertiesToggle?.getAttribute("aria-expanded") === "true", `${propertiesPanel.getBoundingClientRect().width}`);
             assert(checks, "Docked Properties remains available to assistive technology", !propertiesPanel.inert && !propertiesPanel.hasAttribute("aria-hidden"));
             propertiesCollapse?.click();
-            await waitFor(() => doc.body.classList.contains("properties-collapsed"));
-            assert(checks, "Desktop Properties collapses to a 48px rail", Math.round(propertiesPanel.getBoundingClientRect().width) === 48 && propertiesCollapse?.getAttribute("aria-expanded") === "false", `${propertiesPanel.getBoundingClientRect().width}`);
-            propertiesCollapse?.click();
-            await waitFor(() => !doc.body.classList.contains("properties-collapsed"));
-            propertiesResizeHandle?.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }));
-            await waitFor(() => Math.round(propertiesPanel.getBoundingClientRect().width) === 336);
-            assert(checks, "Desktop Properties can be resized from the splitter", Math.round(propertiesPanel.getBoundingClientRect().width) === 336);
-            assert(checks, "Desktop readiness shows every summary chip", currentVisibleSummaryChips.length === 4);
-            assert(checks, "Desktop workspace tabs show full labels", workspaceTabs.every(tab => frame.contentWindow.getComputedStyle(tab).fontSize !== "0px"));
+            await waitFor(() => doc.body.classList.contains("properties-collapsed") && Math.round(propertiesPanel.getBoundingClientRect().width) === 48, 2000);
+            assert(checks, "Desktop Properties can return to its quiet rail", propertiesToggle?.getAttribute("aria-expanded") === "false", `${propertiesPanel.getBoundingClientRect().width}`);
+            propertiesToggle?.click();
+            await waitFor(() => !doc.body.classList.contains("properties-collapsed") && Math.round(propertiesPanel.getBoundingClientRect().width) === 320, 2000);
+            assert(checks, "Desktop readiness uses one focused Map quality shortcut", currentVisibleSummaryChips.length === 1 && currentVisibleSummaryChips[0].dataset.summaryKey === "to-review");
+            assert(checks, "Desktop workspace rail uses accessible icon tooltips", workspaceTabs.every(tab => frame.contentWindow.getComputedStyle(tab).fontSize === "0px" && Boolean(tab.title)));
           } else if (appWidth > 1080) {
-            assert(checks, "Properties uses the 300px working-width dock", Math.round(parseFloat(propertiesStyle.width)) === 300);
+            assert(checks, "Working-width Properties remains open after contextual editing", !doc.body.classList.contains("properties-collapsed") && Math.round(propertiesPanel.getBoundingClientRect().width) === 320 && propertiesToggle?.getAttribute("aria-expanded") === "true", `${propertiesPanel.getBoundingClientRect().width}`);
             assert(checks, "Working-width Properties remains available to assistive technology", !propertiesPanel.inert && !propertiesPanel.hasAttribute("aria-hidden"));
-            assert(checks, "Working-width readiness retains every value", currentVisibleSummaryChips.length === 4 && frame.contentWindow.getComputedStyle(currentRegionSummaryLabel).display === "none", currentSummaryChips.map(chip => `${chip.dataset.summaryKey}:${frame.contentWindow.getComputedStyle(chip).display}`).join(", "));
-            assert(checks, "Working-width workspace tabs retain labels", workspaceTabs.every(tab => frame.contentWindow.getComputedStyle(tab).fontSize !== "0px"));
+            assert(checks, "Working-width readiness keeps one Map quality shortcut", currentVisibleSummaryChips.length === 1 && currentVisibleSummaryChips[0].dataset.summaryKey === "to-review", currentSummaryChips.map(chip => `${chip.dataset.summaryKey}:${frame.contentWindow.getComputedStyle(chip).display}`).join(", "));
+            assert(checks, "Working-width workspace rail uses accessible icon tooltips", workspaceTabs.every(tab => frame.contentWindow.getComputedStyle(tab).fontSize === "0px" && Boolean(tab.title)));
           } else {
             assert(checks, "Properties becomes a fixed slide-over on its saved side", propertiesStyle.position === "fixed" && propertiesStyle.left === "0px");
             assert(checks, "Narrow shell exposes the Properties trigger", frame.contentWindow.getComputedStyle(propertiesToggle).display !== "none");
@@ -2463,6 +2486,8 @@
             }, {});
             const legendCountsMatch = legendItems.every(item => Number(item.querySelector("[data-legend-count]")?.dataset.count) === (categoryUsageCounts[item.dataset.categoryId] || 0));
             assert(checks, "Map Document Properties contains one semantic Legend item list", legendPropertiesSection && propertiesPanel.contains(legendPropertiesSection) && legendList?.tagName === "UL" && legendItems.length > 0 && legendItems.every(item => item.tagName === "LI" && item.querySelector(".legend-item-select")?.tagName === "BUTTON"));
+            const openPropertyAccordions = Array.from(propertiesPanel.querySelectorAll("details[data-properties-accordion]")).filter(detail => !detail.hidden && detail.open);
+            assert(checks, "Map Properties uses progressive disclosure with one section open", openPropertyAccordions.length === 1 && openPropertyAccordions[0] === legendPropertiesSection, openPropertyAccordions.map(detail => detail.dataset.propertiesAccordion).join(", "));
             assert(checks, "Legend item order matches Project point category choices", legendCategoryIds.join("|") === projectCategoryOptions.join("|"), `${legendCategoryIds.join("|")} / ${projectCategoryOptions.join("|")}`);
             assert(checks, "Legend item usage counts match Project points", legendCountsMatch, legendItems.map(item => `${item.dataset.categoryId}:${item.querySelector("[data-legend-count]")?.dataset.count}`).join(", "));
             const legendListRect = legendList?.getBoundingClientRect();
@@ -2475,6 +2500,12 @@
             const firstLegendItem = legendItems[0];
             const firstLegendButton = firstLegendItem?.querySelector(".legend-item-select");
             const firstLegendId = firstLegendItem?.dataset.categoryId || "";
+            const firstLegendActionsButton = firstLegendItem?.querySelector(".legend-item-menu-button");
+            const firstLegendActionsMenu = firstLegendItem?.querySelector(".legend-item-menu");
+            firstLegendActionsButton?.click();
+            assert(checks, "Legend row actions are consolidated into an accessible overflow menu", firstLegendActionsButton?.getAttribute("aria-expanded") === "true" && firstLegendActionsMenu?.hidden === false && firstLegendActionsMenu?.querySelectorAll("[role='menuitem']").length === 3 && !firstLegendItem?.querySelector(".category-actions > .move-category-up-btn, .category-actions > .move-category-down-btn, .category-actions > .remove-category-btn"), firstLegendItem?.textContent.trim() || "missing");
+            dispatchKey(firstLegendActionsButton, "Escape");
+            assert(checks, "Escape closes a Legend row action menu and restores focus", firstLegendActionsMenu?.hidden === true && doc.activeElement === firstLegendActionsButton);
             const mapBeforeLegendDrillIn = doc.querySelector("#mapSvg")?.innerHTML || "";
             const renderSamplesBeforeLegendDrillIn = performanceApi?.snapshot().samples.length || 0;
             firstLegendButton?.click();
@@ -3776,11 +3807,29 @@
             await waitFor(() => doc.documentElement.lang === "en" && /Project name/.test(doc.querySelector("#projectTable .name-col")?.textContent || ""), 2000);
             firstNameInput = doc.querySelector("#projectTable .name-input");
             inputStyle = firstNameInput ? frame.contentWindow.getComputedStyle(firstNameInput) : null;
+            doc.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+            await waitFor(() => doc.body.classList.contains("properties-unavailable"), 2000);
+            const inactiveProjectControls = Array.from(doc.querySelectorAll("#projectTable tbody input:not([type='checkbox']):not([type='hidden']), #projectTable tbody select, #projectTable tbody textarea"));
+            assert(checks, "Project rows are read-only until selected and Properties stays out of the way", inactiveProjectControls.length > 0 && inactiveProjectControls.every(control => control.readOnly || control.tabIndex === -1) && propertiesToggle?.hidden === true, `controls=${inactiveProjectControls.length}; mode=${doc.body.dataset.propertiesMode || "missing"}`);
+            const projectSearchInput = doc.querySelector("#projectSearchInput");
+            const projectSearchTerm = String(firstNameInput?.value || "").trim().split(/\s+/).slice(0, 2).join(" ");
+            if (projectSearchInput && projectSearchTerm) {
+              projectSearchInput.value = projectSearchTerm;
+              projectSearchInput.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
+              await new Promise(resolve => frame.contentWindow.requestAnimationFrame(resolve));
+              const visibleSearchRows = Array.from(doc.querySelectorAll("#projectTable tbody tr[data-row-id]")).filter(row => !row.hidden);
+              assert(checks, "Project search filters rows without leaving the workspace", visibleSearchRows.length > 0 && visibleSearchRows.length < doc.querySelectorAll("#projectTable tbody tr[data-row-id]").length && visibleSearchRows.every(row => row.textContent.toLowerCase().includes(projectSearchTerm.toLowerCase())), `${visibleSearchRows.length} visible for ${projectSearchTerm}`);
+              projectSearchInput.value = "";
+              projectSearchInput.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
+            }
+            firstNameInput = doc.querySelector("#projectTable .name-input");
+            inputStyle = firstNameInput ? frame.contentWindow.getComputedStyle(firstNameInput) : null;
             if (appWidth <= 1080) {
               assert(checks, "Narrow Project filter remains a compact selector", frame.contentWindow.getComputedStyle(doc.querySelector("#projectFilterSelect")).display !== "none");
               assert(checks, "Project table preserves its 760px minimum", parseFloat(frame.contentWindow.getComputedStyle(doc.querySelector("#projectTablePane")).minWidth) >= 760);
             }
             assert(checks, "Project cells use quiet editing chrome", inputStyle?.borderTopColor === "rgba(0, 0, 0, 0)" || inputStyle?.borderTopColor === "transparent");
+            assert(checks, "Project table headers remain sticky while the data viewport scrolls", Array.from(doc.querySelectorAll("#projectTable thead th")).every(header => frame.contentWindow.getComputedStyle(header).position === "sticky"));
             const statusCell = doc.querySelector("#projectTable .status-cell");
             const statusBadge = doc.querySelector("#projectTable .row-status-badge:not([data-state='blank'])");
             assert(checks, "Project status cells are read-only and labelled", statusCell?.getAttribute("aria-readonly") === "true" && /^Status: /.test(statusBadge?.getAttribute("aria-label") || ""));
@@ -3790,6 +3839,7 @@
             assert(checks, "Project status badge is centered in the status column", Math.abs(statusCellCenter - statusBadgeCenter) <= 3, `cell=${Math.round(statusCellCenter)}, badge=${Math.round(statusBadgeCenter)}`);
             firstNameInput?.click();
             await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='row']"));
+            assert(checks, "Selecting a Project row opens contextual Properties and enables that row", !doc.body.classList.contains("properties-unavailable") && propertiesToggle?.hidden === false && firstNameInput?.readOnly === false && firstNameInput?.tabIndex !== -1);
             assert(checks, "Project selection actions appear contextually", selectionActions?.hidden === false);
             assert(checks, "Project toolbar does not create page-level horizontal overflow", doc.documentElement.scrollWidth <= doc.documentElement.clientWidth + 1, `${doc.documentElement.scrollWidth}/${doc.documentElement.clientWidth}`);
             assert(checks, "Selecting a project row opens row Properties", doc.querySelector("#propertiesTitle")?.textContent.trim() === "Project data" && doc.querySelector("#propertiesSubtitle")?.textContent.trim() === firstNameInput?.value.trim());
@@ -4107,7 +4157,7 @@
             const translateAddSection = doc.querySelector(".translate-add-section");
             assert(checks, "Translation filters and paste action remain available", doc.querySelectorAll("[data-translation-filter]").length === 2 && Boolean(doc.querySelector("#pasteTranslationColumnBtn")));
             assert(checks, "Translation import action is in the Add section", Boolean(translateAddSection?.querySelector("#importTranslationsBtn")) && /Add|Ajouter/.test(translateAddSection?.textContent || ""), translateAddSection?.textContent || "");
-            assert(checks, "Translate Properties show the summary without a repeated selected-string editor", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='translation']")) && !doc.querySelector("#propertiesSelectionControls [data-property-kind='translation-entry'], #propertiesSelectionControls [data-translation-property]"));
+            assert(checks, "Translate uses the full workspace without duplicating its summary in Properties", doc.body.classList.contains("properties-unavailable") && propertiesPanel?.inert && propertiesToggle?.hidden === true && !doc.querySelector("#propertiesSelectionControls [data-property-kind='translation-entry'], #propertiesSelectionControls [data-translation-property]"));
             assert(checks, "Translate column labels show editable and automatic hints", doc.querySelectorAll(".translation-column-labels [data-icon='pencil']").length === 2 && Boolean(doc.querySelector(".translation-column-labels .col-auto-chip [data-icon='wand']")));
             const translationLanguageHeadingNodes = Array.from(doc.querySelectorAll(".translation-column-labels > span")).slice(1, 3);
             assert(checks, "Translate language edit icons follow their column labels", translationLanguageHeadingNodes.length === 2 && translationLanguageHeadingNodes.every(node => node.lastElementChild?.matches(".translation-column-edit-hint[data-icon='pencil']")), translationLanguageHeadingNodes.map(node => node.innerHTML).join(" | "));
@@ -4245,7 +4295,7 @@
             assert(checks, "Quality summary exposes readiness state", ["ok", "review", "info"].includes(doc.querySelector("#qualitySummaryBanner")?.dataset.state));
             assert(checks, "Quality review banner omits the retired explanatory sentence", !/Actionable|Passive counts|Éléments à corriger|décomptes informatifs/.test(doc.querySelector("#qualitySummaryBanner")?.textContent || ""));
             assert(checks, "Detailed checklist remains available", Boolean(doc.querySelector(".quality-detail-checklist #statusBox")));
-            assert(checks, "Quality Properties are contextual", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='quality']")));
+            assert(checks, "Quality uses the full workspace without duplicating its checklist in Properties", doc.body.classList.contains("properties-unavailable") && propertiesPanel?.inert && propertiesToggle?.hidden === true);
             assert(checks, "Quality workspace shows render timing telemetry", doc.querySelectorAll("#performanceTelemetryMetrics .performance-metric").length === 5 && ["ok", "warning"].includes(doc.querySelector("#performanceTelemetryStatus")?.dataset.state));
             const overlapCountFromLabels = labelNodes => {
               const rects = labelNodes.map(node => {

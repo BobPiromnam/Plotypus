@@ -428,6 +428,15 @@ test("localized decimal formatting uses a comma in French", () => {
   assert.equal(api.formatLocalizedDecimal(1.25, "fr", 1), "1,3");
 });
 
+test("project coordinates use a consistent two-decimal precision", () => {
+  const api = loadApi();
+  assert.equal(api.formatProjectCoordinate(-124, "en"), "-124.00");
+  assert.equal(api.formatProjectCoordinate(-108.4, "en"), "-108.40");
+  assert.equal(api.formatProjectCoordinate(-128.654, "en"), "-128.65");
+  assert.equal(api.formatProjectCoordinate(54.05, "fr"), "54,05");
+  assert.equal(api.formatProjectCoordinate("", "en"), "");
+});
+
 test("project snapshots preserve unified annotation content and strip chart metadata", () => {
   const projectIo = loadProjectIo();
   const content = [

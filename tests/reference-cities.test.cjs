@@ -131,11 +131,13 @@ test("the field is mounted only in the two reviewed locations", () => {
   const indexSource = fs.readFileSync(path.join(repoRoot, "index.html"), "utf8");
   const propertiesSource = fs.readFileSync(path.join(repoRoot, "properties.js"), "utf8");
   const setupMounts = indexSource.match(/id="referenceCitiesField"/g) || [];
-  const propertiesMounts = propertiesSource.match(/id="referenceCitiesPropertiesField"/g) || [];
+  const baselayerMounts = indexSource.match(/id="referenceCitiesBaselayerField"/g) || [];
 
   assert.equal(setupMounts.length, 1);
-  assert.equal(propertiesMounts.length, 1);
+  assert.equal(baselayerMounts.length, 1);
+  assert.doesNotMatch(propertiesSource, /referenceCities(?:Properties|Baselayer)Field/);
   assert.match(indexSource, /startup-baselayer-grid[\s\S]*id="referenceCitiesField"[\s\S]*startup-canvas-section/);
+  assert.match(indexSource, /id="regionTablePane"[\s\S]*id="referenceCitiesBaselayerField"[\s\S]*id="regionTable"/);
 });
 
 test("reference-city runtime remains compatible with direct file use", () => {

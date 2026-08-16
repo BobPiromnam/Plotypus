@@ -164,7 +164,7 @@
         ${(detail || action) ? `
           <footer>
             <span>${escapeHtml(detail || "")}</span>
-            ${action ? `<button type="button" data-property-action="${escapeHtml(action.name)}">${escapeHtml(action.label)}</button>` : ""}
+            ${action ? `<button type="button" class="text-action" data-property-action="${escapeHtml(action.name)}">${escapeHtml(action.label)}</button>` : ""}
           </footer>
         ` : ""}
       </article>
@@ -197,21 +197,20 @@
     const t = translator(options);
     return `
       <div class="properties-form" data-property-kind="document">
-        <section class="document-property-section reference-cities-property-section">
-          <h3>${escapeHtml(t("properties.section.baselayer"))}</h3>
-          <div id="referenceCitiesPropertiesField" data-reference-cities-field-context="properties"></div>
-        </section>
-        <section class="document-property-section">
-          <h3>${escapeHtml(t("properties.section.mapStyle"))}</h3>
+        <details class="properties-accordion document-property-section" data-properties-accordion="map-style">
+          <summary><span>${escapeHtml(t("properties.section.mapStyle"))}</span></summary>
+          <div class="properties-accordion-body">
           <label class="properties-field-group">
             ${propertyFieldLabel(options, t("properties.field.mapStyle"))}
             <select data-map-proxy="mapStylePresetInput">
               ${selectOptions.mapStyle || ""}
             </select>
           </label>
-        </section>
-        <section class="document-property-section">
-          <h3>${escapeHtml(t("properties.section.mapSize"))}</h3>
+          </div>
+        </details>
+        <details class="properties-accordion document-property-section" data-properties-accordion="map-size">
+          <summary><span>${escapeHtml(t("properties.section.mapSize"))}</span></summary>
+          <div class="properties-accordion-body">
           <label class="properties-field-group">
             ${propertyFieldLabel(options, t("properties.field.pagePreset"))}
             <select data-layout-proxy="bookSizeInput">
@@ -236,9 +235,11 @@
             maximum: 20,
             appliedStatus: t("properties.markerSize.draftApplied")
           })}
-        </section>
-        <section class="document-property-section leader-line-property-section" data-leader-line-controls="global">
-          <h3>${escapeHtml(t("properties.section.leaderLines"))}</h3>
+          </div>
+        </details>
+        <details class="properties-accordion document-property-section leader-line-property-section" data-properties-accordion="leader-lines" data-leader-line-controls="global">
+          <summary><span>${escapeHtml(t("properties.section.leaderLines"))}</span></summary>
+          <div class="properties-accordion-body">
           <p class="properties-muted">${escapeHtml(t("properties.leaderLines.globalHelp"))}</p>
           <div class="properties-control-list leader-line-toggle-list">
             <label class="toolbar-check">
@@ -268,7 +269,8 @@
             </label>
           </div>
           <p class="properties-muted">${escapeHtml(t("properties.leaderLines.precedence"))}</p>
-        </section>
+          </div>
+        </details>
       </div>
     `;
   }

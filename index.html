@@ -9,7 +9,7 @@
   <link rel="preload" href="assets/fonts/lato/lato-4.woff2" as="font" type="font/woff2" />
   <link rel="stylesheet" href="assets/fonts/lato/lato.css?v=20260612-file-fonts" />
   <link rel="stylesheet" href="assets/fonts/ibm-plex-mono/ibm-plex-mono.css?v=20260622-offline-fonts" />
-  <link rel="stylesheet" href="style.css?v=20260812-send-feedback" />
+  <link rel="stylesheet" href="style.css?v=20260815-baselayer-workspace" />
   <link id="themeStylesheet" rel="stylesheet" href="themes/goc-green.css?v=20260612-map-only" />
 </head>
 <body data-properties-side="right">
@@ -26,24 +26,15 @@
         <div class="ribbon-actions">
           <button id="ribbonUndoBtn" class="ribbon-button ribbon-icon-only" type="button" data-icon="undo" disabled title="Undo last edit" data-i18n-title="action.undo.title"><span class="visually-hidden" data-i18n="action.undo">Undo</span></button>
           <button id="ribbonOpenProjectBtn" class="ribbon-button" type="button" data-icon="folder-open" title="Open project" data-i18n="action.open" data-i18n-title="action.open.title">Open</button>
-          <button id="ribbonSaveProjectBtn" class="ribbon-button" type="button" data-icon="save" title="Save project" data-i18n="action.save" data-i18n-title="action.save.title">Save</button>
-        </div>
-      </div>
-      <div class="ribbon-group command-compact ribbon-sample" aria-label="Sample data action" data-i18n-aria-label="aria.sampleDataAction">
-        <div class="ribbon-actions">
-          <button id="ribbonLoadSampleBtn" class="ribbon-button" type="button" data-icon="table" title="Load sample" data-i18n="action.sample" data-i18n-title="action.sample.title">Sample</button>
+          <span class="save-command">
+            <button id="ribbonSaveProjectBtn" class="ribbon-button" type="button" data-icon="save" title="Save project" data-i18n="action.save" data-i18n-title="action.save.title">Save</button>
+            <span id="projectSaveState" class="project-save-state" data-state="new" role="status" aria-live="polite" data-i18n="save.state.new">Not saved</span>
+          </span>
         </div>
       </div>
       <div class="ribbon-group ribbon-appearance" aria-label="Map appearance actions" data-i18n-aria-label="aria.mapAppearanceActions">
         <div class="ribbon-actions ribbon-field-actions">
-          <button id="mapDetailsBtn" class="ribbon-button map-details-button" type="button" data-icon="file-text"><span data-i18n="action.mapDetails">Map details</span> <span id="frMetaWarning" class="warning-badge">FR</span></button>
           <button id="propertiesToggleBtn" class="ribbon-button properties-toggle-button" type="button" data-icon="sliders" aria-expanded="false" aria-controls="propertiesPanel" data-i18n="action.properties">Properties</button>
-          <label class="ribbon-field map-style-ribbon-field">
-            <span data-i18n="properties.field.mapStyle">Map style</span>
-            <select id="mapStylePresetInput">
-              <option value="goc-green" data-i18n="properties.mapStyle.goc-green">GoC green</option>
-            </select>
-          </label>
           <select id="mapLanguageInput" class="visually-hidden" aria-hidden="true" tabindex="-1">
             <option value="en" data-i18n="dialog.mapDetails.english">English</option>
             <option value="fr" data-i18n="dialog.mapDetails.french">Français</option>
@@ -108,9 +99,25 @@
               </div>
               <p data-i18n="settings.propertiesPosition.hint">This preference is saved in this browser.</p>
             </section>
-            <section class="application-settings-section" aria-labelledby="cityDataAttributionLabel">
+            <section class="application-settings-section application-settings-city-data" aria-labelledby="cityDataAttributionLabel">
               <h3 id="cityDataAttributionLabel" data-i18n="settings.cityData.title">Offline city data</h3>
-              <p data-i18n="settings.cityData.attribution">Place names and coordinates: Natural Resources Canada, Canadian Geographical Names Database, with Statistics Canada GeoSuite representative points where needed. Population: Statistics Canada, 2021 Census. Plotypus uses the bundled copy and performs no online lookup.</p>
+              <div class="application-settings-citation" role="note" aria-labelledby="cityDataSourcesLabel">
+                <span id="cityDataSourcesLabel" class="application-settings-citation-label" data-i18n="settings.cityData.sourcesLabel">Data sources</span>
+                <dl class="application-settings-citation-list">
+                  <div>
+                    <dt data-i18n="settings.cityData.coordinatesLabel">Place names and coordinates</dt>
+                    <dd data-i18n="settings.cityData.coordinatesSource">Natural Resources Canada, Canadian Geographical Names Database; Statistics Canada GeoSuite representative points where needed.</dd>
+                  </div>
+                  <div>
+                    <dt data-i18n="settings.cityData.populationLabel">Population</dt>
+                    <dd data-i18n="settings.cityData.populationSource">Statistics Canada, 2021 Census.</dd>
+                  </div>
+                </dl>
+                <p class="application-settings-citation-note">
+                  <span class="application-settings-citation-icon" data-icon="database" aria-hidden="true"></span>
+                  <span data-i18n="settings.cityData.offlineNote">Bundled with Plotypus; no online lookup is performed.</span>
+                </p>
+              </div>
             </section>
           </div>
         </div>
@@ -118,9 +125,9 @@
     </div>
     <div class="workspace-nav-band">
       <nav class="table-tabs workspace-nav" role="tablist" aria-label="Plotypus workspaces" data-i18n-aria-label="aria.workspaces">
-        <button id="previewTableTab" class="table-tab is-active" type="button" role="tab" tabindex="0" aria-selected="true" aria-controls="previewTablePane" data-icon="map" title="Map" data-i18n="tab.map" data-i18n-title="tab.map">Map</button>
-        <button id="projectTableTab" class="table-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="projectTablePane" data-icon="table" title="Project points" data-i18n="tab.projects" data-i18n-title="tab.projects">Project points</button>
-        <button id="regionTableTab" class="table-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="regionTablePane" data-icon="regions" title="Map baselayer" data-i18n="tab.regions" data-i18n-title="tab.regions">Map baselayer</button>
+        <button id="previewTableTab" class="table-tab is-active" type="button" role="tab" tabindex="0" aria-selected="true" aria-controls="previewTablePane" data-icon="map-preview" title="Map" data-i18n="tab.map" data-i18n-title="tab.map">Map</button>
+        <button id="projectTableTab" class="table-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="projectTablePane" data-icon="map-pin" title="Project points" data-i18n="tab.projects" data-i18n-title="tab.projects">Project points</button>
+        <button id="regionTableTab" class="table-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="regionTablePane" data-icon="baselayer" title="Map baselayer" data-i18n="tab.regions" data-i18n-title="tab.regions">Map baselayer</button>
         <button id="translateTableTab" class="table-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="translateTablePane" data-icon="languages" title="Translate" data-i18n="tab.translate" data-i18n-title="tab.translate">Translate</button>
         <button id="qualityTableTab" class="table-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="qualityTablePane" data-icon="shield-check" title="Map quality" data-i18n="tab.quality" data-i18n-title="tab.quality">Map quality</button>
       </nav>
@@ -139,6 +146,9 @@
       <input id="csvInput" type="file" accept=".csv,.tsv,.txt,.xlsx,text/csv,text/tab-separated-values,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
       <input id="translationImportInput" type="file" accept=".csv,.tsv,.txt,.xlsx,text/csv,text/tab-separated-values,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
       <input id="projectInput" type="file" accept=".json,application/json" />
+        <select id="mapStylePresetInput">
+          <option value="goc-green" data-i18n="properties.mapStyle.goc-green">GoC green</option>
+        </select>
         <select id="fontFamilyInput">
           <option value="Lato, Segoe UI, Arial, sans-serif">Lato</option>
         </select>
@@ -171,7 +181,7 @@
           <div class="workspace-intro-copy">
             <span class="workspace-eyebrow" data-i18n="project.intro.eyebrow">Source data</span>
             <h2 data-i18n="project.intro.title">Project points</h2>
-            <p data-i18n="project.intro.body">Add or import projects, choose how they are located, and edit the fields that drive markers and labels.</p>
+            <p data-i18n="project.intro.body">Add or import projects, then edit the data used for markers and labels.</p>
           </div>
         </header>
         <div class="table-toolbar workspace-rail">
@@ -179,6 +189,11 @@
             <strong id="tablePanelTitle" data-i18n="tab.map">Map</strong>
           </div>
           <div class="button-row table-actions workspace-rail-actions" data-table-actions="projects">
+            <label id="projectSearchControl" class="project-search-control">
+              <span class="visually-hidden" data-i18n="toolbar.search.projects">Search project points</span>
+              <span class="project-search-icon" data-icon="search" aria-hidden="true"></span>
+              <input id="projectSearchInput" type="search" autocomplete="off" placeholder="Search projects" data-i18n-placeholder="toolbar.search.placeholder" aria-label="Search project points" data-i18n-aria-label="toolbar.search.projects" />
+            </label>
             <label id="projectFilterControl" class="project-filter-control">
               <span class="toolbar-group-label" data-i18n="toolbar.filters.show">Show</span>
               <select id="projectFilterSelect" aria-label="Filter project points" data-i18n-aria-label="toolbar.filters.projects">
@@ -205,7 +220,7 @@
             </div>
             <span class="project-toolbar-spacer" aria-hidden="true"></span>
             <div class="project-menu-wrap">
-              <button id="projectAddMenuBtn" class="project-toolbar-menu-button" type="button" data-icon="plus" aria-haspopup="menu" aria-expanded="false" aria-controls="projectAddMenu"><span data-i18n="toolbar.add.data">Add data</span></button>
+              <button id="projectAddMenuBtn" class="project-toolbar-menu-button primary-action" type="button" data-icon="plus" aria-haspopup="menu" aria-expanded="false" aria-controls="projectAddMenu"><span data-i18n="toolbar.add.data">Add data</span></button>
               <div id="projectAddMenu" class="project-toolbar-menu" role="menu" aria-labelledby="projectAddMenuBtn" hidden>
                 <button id="addProjectTypeBtn" class="project-toolbar-menu-item" type="button" role="menuitem" data-icon="legend" title="Add a project type and legend item" data-i18n-title="toolbar.add.projectType.title"><span data-i18n="toolbar.add.projectType">New type</span></button>
                 <button id="addRowBtn" class="project-toolbar-menu-item" type="button" role="menuitem" data-icon="plus"><span data-i18n="toolbar.add.blankRow">Blank row</span></button>
@@ -216,6 +231,20 @@
             <div class="project-menu-wrap">
               <button id="projectMoreMenuBtn" class="project-toolbar-menu-button project-toolbar-more-button" type="button" data-icon="more-horizontal" aria-haspopup="menu" aria-expanded="false" aria-controls="projectMoreMenu" aria-label="More project actions" data-i18n-aria-label="toolbar.more.aria"></button>
               <div id="projectMoreMenu" class="project-toolbar-menu project-toolbar-menu-right" role="menu" aria-labelledby="projectMoreMenuBtn" hidden>
+                <div class="project-responsive-menu-groups">
+                  <div class="project-responsive-menu-group" role="group" aria-label="Locate project points by" data-i18n-aria-label="toolbar.locationMode.aria">
+                    <span data-i18n="toolbar.locationMode.label">Locate by</span>
+                    <button type="button" role="menuitem" data-project-location-mode="coordinates" aria-pressed="true" data-i18n="toolbar.locationMode.coordinates">Coordinates</button>
+                    <button type="button" role="menuitem" data-project-location-mode="cities" aria-pressed="false" data-i18n="toolbar.locationMode.cities">City</button>
+                    <button type="button" role="menuitem" data-project-location-mode="regions" aria-pressed="false" data-i18n="toolbar.locationMode.regions">Province or territory</button>
+                  </div>
+                  <div class="project-responsive-menu-group" role="group" aria-label="Project title authoring language" data-i18n-aria-label="toolbar.authoring.aria">
+                    <span data-i18n="toolbar.authoring.label">Edit titles</span>
+                    <button type="button" role="menuitem" data-authoring-language="en" aria-pressed="true">EN</button>
+                    <button type="button" role="menuitem" data-authoring-language="fr" aria-pressed="false">FR</button>
+                  </div>
+                </div>
+                <button id="ribbonLoadSampleBtn" class="project-toolbar-menu-item" type="button" role="menuitem" data-icon="table" title="Load sample" data-i18n-title="action.sample.title"><span data-i18n="action.sample">Sample</span></button>
                 <button id="clearRowsBtn" class="project-toolbar-menu-item is-danger" type="button" role="menuitem" data-icon="eraser" title="Clear project table" data-i18n-title="toolbar.project.clearTable.title"><span data-i18n="toolbar.project.clearTable">Clear table</span></button>
               </div>
             </div>
@@ -256,7 +285,7 @@
             <div class="workspace-intro-copy">
               <span class="workspace-eyebrow" data-i18n="region.intro.eyebrow">Geographic coverage</span>
               <h2 data-i18n="region.intro.title">Map baselayer</h2>
-              <p data-i18n="region.intro.body">Choose the map boundary and included regions, then control status visibility, colour order, and fill.</p>
+              <p data-i18n="region.intro.body">Choose the boundary, included regions, visibility, and fills.</p>
             </div>
           </header>
           <div class="region-management-controls workspace-rail">
@@ -282,7 +311,7 @@
             <div class="region-management-buttons workspace-rail-actions">
               <button id="selectAllRegionsBtn" type="button" data-i18n="region.action.selectAll">Select all</button>
               <button id="clearRegionsBtn" type="button" data-i18n="region.action.clear">Clear</button>
-              <button id="selectProjectRegionsBtn" type="button" data-i18n="region.action.useProjectRegions">Use project regions</button>
+              <button id="selectProjectRegionsBtn" class="primary-action" type="button" data-i18n="region.action.useProjectRegions">Use project regions</button>
               <button id="applyRegionValueColoursBtn" type="button" data-icon="palette" data-i18n="region.action.applyColours">Apply colours</button>
               <button id="resetRegionValuesBtn" type="button" data-icon="reset" data-i18n="region.action.resetValues">Reset values</button>
             </div>
@@ -298,6 +327,15 @@
               <div id="regionSummary" class="mini-status"></div>
             </div>
           </div>
+          <details class="region-reference-cities-panel workspace-rail">
+            <summary>
+              <span class="region-reference-cities-title">
+                <span data-i18n="referenceCities.label">Reference cities</span>
+                <span data-i18n="referenceCities.optional">— optional</span>
+              </span>
+            </summary>
+            <div id="referenceCitiesBaselayerField" data-reference-cities-field-context="baselayer"></div>
+          </details>
           <div class="table-wrap">
             <table id="regionTable">
               <thead>
@@ -321,7 +359,7 @@
               <div class="workspace-intro-copy">
                 <span class="workspace-eyebrow" data-i18n="translate.intro.eyebrow">Bilingual content</span>
                 <h2 data-i18n="translate.intro.title">Translate</h2>
-                <p data-i18n="translate.intro.body">Review English and French map strings, filter missing translations, or import a completed translation column.</p>
+                <p data-i18n="translate.intro.body">Review bilingual content or import completed translations.</p>
               </div>
             </header>
             <div class="translate-header workspace-rail">
@@ -335,7 +373,7 @@
               </div>
               <div class="translate-add-section" aria-label="Add" data-i18n-aria-label="translate.add">
                 <span data-i18n="translate.add">Add</span>
-                <button id="importTranslationsBtn" type="button" data-icon="upload" data-i18n="translate.importFile">Import CSV/Excel</button>
+                <button id="importTranslationsBtn" class="primary-action" type="button" data-icon="upload" data-i18n="translate.importFile">Import CSV/Excel</button>
               </div>
               <div class="translation-column-labels" aria-hidden="true">
                 <span></span>
@@ -356,7 +394,7 @@
             <div class="workspace-intro-copy">
               <span class="workspace-eyebrow" data-i18n="preview.intro.eyebrow">Map preview</span>
               <h2 data-i18n="preview.intro.title">Map</h2>
-              <p data-i18n="preview.intro.body">Preview the map on a document page, zoom the canvas, and select labels or map elements for contextual editing.</p>
+              <p data-i18n="preview.intro.body">Preview, arrange, and select map elements for contextual editing.</p>
             </div>
             <div class="workspace-intro-actions">
               <div class="map-tab-language-control" role="group" aria-label="Map language" data-i18n-aria-label="aria.mapLanguage">
@@ -417,6 +455,16 @@
                         </div>
                       </div>
                       <svg id="mapSvg" role="group" aria-label="Map canvas" data-i18n-aria-label="aria.mapCanvas"></svg>
+                      <section id="canvasEmptyActions" class="canvas-empty-actions" aria-labelledby="canvasEmptyTitle" hidden>
+                        <span class="canvas-empty-icon" data-icon="map-pin" aria-hidden="true"></span>
+                        <strong id="canvasEmptyTitle" data-i18n="project.empty.title">No project points yet</strong>
+                        <span data-i18n="project.empty.canvasBody">Add a project point, import your data, or explore the sample.</span>
+                        <div class="empty-state-actions">
+                          <button type="button" class="primary-action" data-empty-action="add-project" data-icon="plus" data-i18n="project.empty.addPoint">Add project point</button>
+                          <button type="button" data-empty-action="import-csv" data-icon="upload" data-i18n="project.empty.importCsv">Import CSV</button>
+                          <button type="button" class="text-action" data-empty-action="load-sample" data-i18n="project.empty.loadSample">Load sample</button>
+                        </div>
+                      </section>
                     </div>
                     <div class="document-page-copy" aria-hidden="true">
                       <span></span>
@@ -452,7 +500,7 @@
               <div class="workspace-intro-copy">
                 <span class="workspace-eyebrow" data-i18n="quality.intro.eyebrow">Export readiness</span>
                 <h2 data-i18n="quality.intro.title">Map quality</h2>
-                <p data-i18n="quality.intro.body">Review layout, translation, and map-detail issues before exporting the final map.</p>
+                <p data-i18n="quality.intro.body">Resolve layout, translation, and metadata issues before export.</p>
               </div>
             </header>
             <div class="quality-workspace-content">
@@ -493,21 +541,21 @@
           <p id="propertiesSubtitle" data-i18n="properties.subtitle.document">Map display &amp; interaction</p>
           <p id="propertiesDescription" class="properties-description" data-i18n="properties.hint.document">Click the map, a label, legend, or callout for object-specific controls.</p>
         </div>
-        <section id="legendPropertiesSection" class="properties-section legend-properties-section" data-props-context="preview-legend" data-property-section="legend" aria-labelledby="legendPropertiesTitle">
-          <div class="legend-properties-heading">
-            <div>
-              <h3 id="legendPropertiesTitle" data-i18n="settings.legend">Legend</h3>
+        <details id="legendPropertiesSection" class="properties-section properties-accordion legend-properties-section" data-props-context="preview-legend" data-property-section="legend" data-properties-accordion="legend" open>
+          <summary><span id="legendPropertiesTitle" data-i18n="settings.legend">Legend</span></summary>
+          <div class="properties-accordion-body">
+            <div class="legend-properties-heading">
               <p data-i18n="categories.intro.body">Define the marker styles used by project points and the exported legend.</p>
+              <button id="addCategoryBtn" class="legend-add-button" type="button" data-icon="plus" data-property-action="add-legend-item" data-i18n="categories.action.addShort">Add item</button>
             </div>
-            <button id="addCategoryBtn" class="legend-add-button" type="button" data-icon="plus" data-property-action="add-legend-item" data-i18n="categories.action.addShort">Add item</button>
+            <ul id="categoryList" class="legend-item-list" data-legend-list aria-label="Legend items" data-i18n-aria-label="aria.legendItems"></ul>
           </div>
-          <ul id="categoryList" class="legend-item-list" data-legend-list aria-label="Legend items" data-i18n-aria-label="aria.legendItems"></ul>
-        </section>
+        </details>
         <div id="propertiesSelectionControls" class="properties-selection-controls"></div>
 
-        <div id="previewDisplayPropertiesSection" class="properties-section" data-props-context="preview-display">
-          <h3 data-i18n="properties.section.display">Boxes</h3>
-          <div class="properties-control-list" aria-label="Map box settings" data-i18n-aria-label="aria.mapDisplaySettings">
+        <details id="previewDisplayPropertiesSection" class="properties-section properties-accordion" data-props-context="preview-display" data-properties-accordion="display">
+          <summary><span data-i18n="properties.section.display">Boxes</span></summary>
+          <div class="properties-accordion-body properties-control-list" aria-label="Map box settings" data-i18n-aria-label="aria.mapDisplaySettings">
             <label class="toolbar-check">
               <input id="showLegendInput" type="checkbox" checked />
               <span class="setting-icon" data-setting-icon="legend" aria-hidden="true"></span>
@@ -524,11 +572,11 @@
               <span data-i18n="settings.compactBoxes">Compact boxes</span>
             </label>
           </div>
-        </div>
+        </details>
 
-        <div id="previewInteractionPropertiesSection" class="properties-section" data-props-context="preview-interaction">
-          <h3 data-i18n="properties.section.interaction">Interaction</h3>
-          <div class="properties-control-list">
+        <details id="previewInteractionPropertiesSection" class="properties-section properties-accordion" data-props-context="preview-interaction" data-properties-accordion="interaction">
+          <summary><span data-i18n="properties.section.interaction">Interaction</span></summary>
+          <div class="properties-accordion-body properties-control-list">
             <label class="toolbar-check">
               <input id="lockMarkerCoordinatesInput" type="checkbox" checked />
               <span class="setting-icon" data-setting-icon="lock" aria-hidden="true"></span>
@@ -540,7 +588,7 @@
               <span data-i18n="settings.distanceGuides">Distance guides</span>
             </label>
           </div>
-        </div>
+        </details>
 
       </div>
     </aside>
@@ -934,20 +982,20 @@
   <script src="assets/vendor/papaparse-5.4.1.min.js"></script>
   <script src="presets.js?v=20260714-bilingual-audit"></script>
   <script src="config.js?v=20260723-document-preview"></script>
-  <script src="icons.js?v=20260722-compact-project-toolbar"></script>
+  <script src="icons.js?v=20260815-composed-map-icons-v3"></script>
   <script src="project-file.js?v=20260727-status-visibility"></script>
   <script src="geometry.js?v=20260622-module-extraction"></script>
   <script src="label-layout.js?v=20260622-module-extraction"></script>
   <script src="project-io.js?v=20260727-status-visibility"></script>
   <script src="region-matching.js?v=20260712-location-mode"></script>
   <script src="workspace.js?v=20260723-off-canvas-points"></script>
-  <script src="properties.js?v=20260727-label-width"></script>
-  <script src="i18n.js?v=20260727-label-width-state"></script>
+  <script src="properties.js?v=20260815-baselayer-workspace"></script>
+  <script src="i18n.js?v=20260815-city-data-citation"></script>
   <script src="feedback.js?v=20260812-send-feedback"></script>
   <script src="data/cities.js?v=20260812-reference-cities"></script>
   <script src="src/lib/city-search-runtime.js?v=20260812-reference-cities"></script>
   <script src="reference-cities.js?v=20260812-reference-cities"></script>
   <script src="city-integration.js?v=20260812-city-integration"></script>
-  <script src="app.js?v=20260812-reference-cities"></script>
+  <script src="app.js?v=20260815-baselayer-workspace"></script>
 </body>
 </html>

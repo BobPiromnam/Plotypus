@@ -95,6 +95,10 @@
       '<circle cx="12" cy="12" r="1.5"/>',
       '<circle cx="19" cy="12" r="1.5"/>'
     ],
+    search: [
+      '<circle cx="11" cy="11" r="6.5"/>',
+      '<path d="m16 16 4.5 4.5"/>'
+    ],
     trash: [
       '<path d="M4 7h16"/>',
       '<path d="M10 11v6"/>',
@@ -176,6 +180,18 @@
       '<path d="M9 3v15"/>',
       '<path d="M15 6v15"/>'
     ],
+    "map-preview": [
+      '<path d="m3 9 6-3 6 3 6-3v13l-6 3-6-3-6 3Z"/>',
+      '<path d="M9 6v13"/>',
+      '<path d="M15 9v13"/>',
+      '<path d="M17 7c0 3.4-5 7.5-5 7.5S7 10.4 7 7a5 5 0 1 1 10 0Z" fill="currentColor" stroke="var(--panel)" stroke-width="1.5"/>',
+      '<circle cx="12" cy="7" r="1.5" fill="var(--panel)" stroke="none"/>'
+    ],
+    baselayer: [
+      '<path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3Z"/>',
+      '<path d="M9 3v15"/>',
+      '<path d="M15 6v15"/>'
+    ],
     layers: [
       '<path d="m12 3 9 5-9 5-9-5Z"/>',
       '<path d="m3 12 9 5 9-5"/>',
@@ -209,6 +225,12 @@
       '<path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/>',
       '<circle cx="12" cy="10" r="2.5"/>'
     ],
+    "geo-map": [
+      '<circle cx="12" cy="12" r="9"/>',
+      '<path d="M3 12h18"/>',
+      '<path d="M12 3c2.7 2.5 4.2 5.5 4.2 9s-1.5 6.5-4.2 9"/>',
+      '<path d="M12 3C9.3 5.5 7.8 8.5 7.8 12s1.5 6.5 4.2 9"/>'
+    ],
     star: [
       '<path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9Z"/>'
     ],
@@ -223,6 +245,9 @@
     ],
     "chevron-left": [
       '<path d="m15 19-7-7 7-7"/>'
+    ],
+    "chevron-right": [
+      '<path d="m9 5 7 7-7 7"/>'
     ],
     "external-link": [
       '<path d="M14 4h6v6"/>',

@@ -243,6 +243,7 @@
   const mapScaleRange = Object.freeze({ min: 45, max: 115 });
   const canvasViewZoomLevels = Object.freeze([25, 33, 50, 67, 75, 90, 100, 110, 125, 150, 175, 200]);
   const defaultCanvasViewZoom = 125;
+  const projectCoordinateFractionDigits = 2;
   const storageKeys = appConfig.storageKeys || {};
   const layoutPreferencesStorageKey = storageKeys.layoutPreferences || "plotypus.layoutPreferences";
   const propertiesPanelStorageKey = storageKeys.propertiesPanel || "plotypus.propertiesPanel";
@@ -299,6 +300,8 @@
     projectTable: document.querySelector("#projectTable"),
     projectTableSummary: document.querySelector("#projectTableSummary"),
     projectTableEmptyState: document.querySelector("#projectTableEmptyState"),
+    projectSearchControl: document.querySelector("#projectSearchControl"),
+    projectSearchInput: document.querySelector("#projectSearchInput"),
     projectFilterControl: document.querySelector("#projectFilterControl"),
     projectLocationModeButtons: Array.from(document.querySelectorAll("[data-project-location-mode]")),
     projectFilterSelect: document.querySelector("#projectFilterSelect"),
@@ -314,6 +317,7 @@
     qualityTableTab: document.querySelector("#qualityTableTab"),
     projectTablePane: document.querySelector("#projectTablePane"),
     regionTablePane: document.querySelector("#regionTablePane"),
+    baselayerReferenceCitiesField: document.querySelector("#referenceCitiesBaselayerField"),
     translateTablePane: document.querySelector("#translateTablePane"),
     previewTablePane: document.querySelector("#previewTablePane"),
     qualityTablePane: document.querySelector("#qualityTablePane"),
@@ -349,6 +353,7 @@
     ribbonUndoBtn: document.querySelector("#ribbonUndoBtn"),
     ribbonOpenProjectBtn: document.querySelector("#ribbonOpenProjectBtn"),
     ribbonSaveProjectBtn: document.querySelector("#ribbonSaveProjectBtn"),
+    projectSaveState: document.querySelector("#projectSaveState"),
     ribbonLoadSampleBtn: document.querySelector("#ribbonLoadSampleBtn"),
     ribbonImportCsvBtn: document.querySelector("#ribbonImportCsvBtn"),
     ribbonExportCsvBtn: document.querySelector("#ribbonExportCsvBtn"),
@@ -380,6 +385,7 @@
     documentPagePreview: document.querySelector("#documentPagePreview"),
     documentCanvasSlot: document.querySelector("#documentCanvasSlot"),
     canvasPlaceholder: document.querySelector("#canvasPlaceholder"),
+    canvasEmptyActions: document.querySelector("#canvasEmptyActions"),
     canvasToolbar: document.querySelector("#canvasToolbar"),
     canvasQualityPill: document.querySelector("#canvasQualityPill"),
     canvasZoomOutBtn: document.querySelector("#canvasZoomOutBtn"),
@@ -422,9 +428,7 @@
     qualityMetricsPanel: document.querySelector("#qualityMetricsPanel"),
     performanceTelemetryStatus: document.querySelector("#performanceTelemetryStatus"),
     performanceTelemetryMetrics: document.querySelector("#performanceTelemetryMetrics"),
-    mapDetailsBtn: document.querySelector("#mapDetailsBtn"),
     propertiesToggleBtn: document.querySelector("#propertiesToggleBtn"),
-    frMetaWarning: document.querySelector("#frMetaWarning"),
     feedbackDialog: document.querySelector("#feedbackDialog"),
     feedbackForm: document.querySelector("#feedbackForm"),
     feedbackTypeInputs: Array.from(document.querySelectorAll("[name='feedback-type']")),
@@ -515,7 +519,7 @@
     ? referenceCitySearch.indexDataset(window.PLOTYPUS_CITIES)
     : [];
   let startupReferenceCitiesController = null;
-  let propertiesReferenceCitiesController = null;
+  let baselayerReferenceCitiesController = null;
   let projectCitiesController = null;
   const projectRowCityControllers = new Map();
   let propertiesProjectCityController = null;
@@ -537,6 +541,7 @@
   let qualityLocateIndex = -1;
   let activeQualityLocateTarget = null;
   let activeProjectFilter = "all";
+  let activeProjectSearch = "";
   let activeProjectLocationMode = "coordinates";
   let cachedRegionLookupKey = "";
   let cachedRegionLookup = null;
@@ -545,6 +550,7 @@
   let activePointCatalogView = "presets";
   let startupDialogDismissed = false;
   let emptyBaselayerPreviewEnabled = false;
+  let projectSaveState = "new";
   const selectableProjectCellFields = ["name", "footnote", "type", "city", "region", "lon", "lat", "status", "hideLine"];
 
   function getSelectableProjectCellFields() {
@@ -1038,6 +1044,7 @@
     appUndoHistory.push(snapshot);
     if (appUndoHistory.length > appUndoHistoryLimit) appUndoHistory.shift();
     updateUndoButtonState();
+    setProjectSaveState("dirty");
     return true;
   }
 
@@ -1060,6 +1067,7 @@
       const boundaryChanged = snapshot.boundary && snapshot.boundary !== currentBoundary;
       currentBoundary = snapshot.boundary || currentBoundary;
       baselayer = normalizeBaselayerState(snapshot.baselayer, currentBoundary);
+      baselayerReferenceCitiesController?.setModel(baselayer.referenceCities);
       if (els.boundaryInput) els.boundaryInput.value = currentBoundary;
       applyMapStylePreset(snapshot.mapStyle || currentMapStylePreset, { applyMapColours: false, render: false });
       applySettings(snapshot.settings || {});
@@ -1670,6 +1678,7 @@
     els.categoryList.innerHTML = categorySettings.map((category, index) => {
       const categoryUiLabel = getCategoryLabel(category.id, currentUiLanguage);
       const isSelected = activePropertiesSelection?.kind === "category" && activePropertiesSelection.id === category.id;
+      const menuId = `legendItemMenu-${index}`;
       return `
       <li class="legend-item${isSelected ? " is-selected" : ""}" data-legend-item data-category-id="${escapeHtml(category.id)}">
         <button class="legend-item-select" type="button" data-property-action="edit-legend-item" data-category-id="${escapeHtml(category.id)}" aria-controls="categoryPropertiesEditor" aria-expanded="${String(isSelected)}"${isSelected ? " aria-current=\"true\"" : ""} aria-label="${escapeHtml(t("properties.category.editAria", { label: categoryUiLabel }))}">
@@ -1691,9 +1700,12 @@
                 <circle cx="15" cy="18" r="1.8"></circle>
               </svg>
             </span>
-            <button class="move-category-up-btn icon-button" type="button" data-category-id="${escapeHtml(category.id)}" aria-label="${escapeHtml(t("properties.category.moveUpAria", { label: categoryUiLabel }))}" title="${escapeHtml(t("properties.category.moveUp"))}"${index === 0 ? " disabled" : ""}>↑</button>
-            <button class="move-category-down-btn icon-button" type="button" data-category-id="${escapeHtml(category.id)}" aria-label="${escapeHtml(t("properties.category.moveDownAria", { label: categoryUiLabel }))}" title="${escapeHtml(t("properties.category.moveDown"))}"${index >= categorySettings.length - 1 ? " disabled" : ""}>↓</button>
-            <button class="remove-category-btn icon-button" type="button" data-category-id="${escapeHtml(category.id)}" aria-label="${escapeHtml(t("properties.category.removeAria", { label: categoryUiLabel }))}" title="${escapeHtml(t("properties.category.removeTitle"))}"${category.removable === false || categorySettings.length <= 1 ? " disabled" : ""}>×</button>
+            <button class="legend-item-menu-button icon-button" type="button" data-category-id="${escapeHtml(category.id)}" aria-haspopup="menu" aria-expanded="false" aria-controls="${menuId}" aria-label="${escapeHtml(t("properties.category.actionsAria", { label: categoryUiLabel }))}">${iconSvg("more-horizontal")}</button>
+            <div id="${menuId}" class="legend-item-menu" role="menu" hidden>
+              <button class="move-category-up-btn" type="button" role="menuitem" data-category-id="${escapeHtml(category.id)}"${index === 0 ? " disabled" : ""}>${escapeHtml(t("properties.category.moveUp"))}</button>
+              <button class="move-category-down-btn" type="button" role="menuitem" data-category-id="${escapeHtml(category.id)}"${index >= categorySettings.length - 1 ? " disabled" : ""}>${escapeHtml(t("properties.category.moveDown"))}</button>
+              <button class="remove-category-btn is-danger" type="button" role="menuitem" data-category-id="${escapeHtml(category.id)}"${category.removable === false || categorySettings.length <= 1 ? " disabled" : ""}>${escapeHtml(t("properties.category.removeTitle"))}</button>
+            </div>
         </div>
       </li>
     `;
@@ -1709,7 +1721,7 @@
   function formatProjectCoordinate(value, language = activeAuthoringLanguage) {
     const n = toNumber(value);
     if (n === "") return "";
-    const text = String(n);
+    const text = n.toFixed(projectCoordinateFractionDigits);
     return language === "fr" ? text.replace(".", ",") : text;
   }
 
@@ -2242,6 +2254,8 @@
     const tr = document.createElement("tr");
     const rowId = row.rowId ? String(row.rowId) : String(nextRowId);
     tr.dataset.rowId = rowId;
+    tr.tabIndex = 0;
+    tr.setAttribute("aria-selected", "false");
     tr.dataset.nameEn = row.name || "";
     tr.dataset.nameFr = row.nameFr || "";
     tr.dataset.labelMaxChars = normalizeLabelMaxCharsOverride(row.labelMaxChars);
@@ -2302,6 +2316,11 @@
       input.addEventListener("focus", () => primeInputUndo(input, "project row edit"));
       input.addEventListener("change", () => {
         if (input.classList.contains("region-input")) tr.dataset.region = input.value;
+        const coordinateField = input.classList.contains("lon-input") ? "Lon" : input.classList.contains("lat-input") ? "Lat" : "";
+        if (coordinateField) {
+          if (toNumber(input.value) !== "") input.value = formatProjectCoordinate(input.value);
+          tr.dataset[`coord${coordinateField}`] = input.value;
+        }
         handleRowEdit(input);
       });
       input.addEventListener("blur", () => clearInputUndoCapture(input));
@@ -2502,6 +2521,9 @@
       els.canvasPlaceholder.hidden = showMap;
       updateCanvasPlaceholderSize();
     }
+    if (els.canvasEmptyActions) {
+      els.canvasEmptyActions.hidden = hasRows;
+    }
     if (els.canvasToolbar) {
       els.canvasToolbar.hidden = false;
     }
@@ -2552,6 +2574,11 @@
     const action = button.dataset.emptyAction;
     if (action === "load-sample") {
       loadSampleData();
+      return;
+    }
+    if (action === "add-project") {
+      setActiveDataTab("projects");
+      els.addRowBtn?.click();
       return;
     }
     if (action === "import-csv") {
@@ -2650,7 +2677,16 @@
       tr.classList.toggle("is-row-mapped", state.isMapped);
       tr.classList.toggle("is-row-callout", state.isCallout);
       tr.classList.toggle("is-row-missing-coordinate", state.isMissingCoordinate);
-      tr.hidden = !rowMatchesProjectFilter(state);
+      const searchableText = normalizeComparableText([
+        state.row && state.row.name,
+        state.row && state.row.nameFr,
+        state.row && getCategoryLabel(state.row.type, currentUiLanguage),
+        state.row && state.row.cityName,
+        state.row && state.row.cityNameFr,
+        state.row && state.row.region
+      ].filter(Boolean).join(" "));
+      const matchesSearch = !activeProjectSearch || searchableText.includes(activeProjectSearch);
+      tr.hidden = !rowMatchesProjectFilter(state) || !matchesSearch;
       if (!tr.hidden) visibleRows += 1;
 
       const badge = tr.querySelector(".row-validation-badge");
@@ -2700,7 +2736,7 @@
     });
 
     if (els.projectTableSummary) {
-      const filterSuffix = activeProjectFilter === "all" ? "" : t("project.summary.shownSuffix", { count: visibleRows });
+      const filterSuffix = activeProjectFilter === "all" && !activeProjectSearch ? "" : t("project.summary.shownSuffix", { count: visibleRows });
       els.projectTableSummary.textContent = t("project.summary.table", {
         rows: dataRows,
         rowLabel: dataRows === 1 ? t("project.summary.rowSingular") : t("project.summary.rowPlural"),
@@ -2741,6 +2777,7 @@
       els.projectFilterSelect.value = activeProjectFilter;
     }
     if (els.projectFilterControl) els.projectFilterControl.hidden = rows.length === 0;
+    if (els.projectSearchControl) els.projectSearchControl.hidden = rows.length === 0;
     if (els.clearRowsBtn) els.clearRowsBtn.disabled = rows.length === 0;
     updateWorkspaceSummary();
     updateExportLanguageNotice();
@@ -2791,6 +2828,10 @@
   function updateProjectRowField(rowId, field, value, options = {}) {
     const tr = getRowElementById(rowId);
     if (!tr) return null;
+    if (field === "cityId") {
+      const city = getProjectCityById(value);
+      return applyProjectCitySelection(tr, city, { status: options.status, refreshProperties: options.refreshProperties });
+    }
     if (field === "name") {
       tr.dataset.nameEn = String(value || "").trim();
       if (activeAuthoringLanguage === "en") tr.querySelector(".name-input").value = String(value || "");
@@ -2963,7 +3004,14 @@
 
   function highlightActiveProjectRow(rowId) {
     getTableRows().forEach(tr => {
-      tr.classList.toggle("is-active-row", Boolean(rowId) && tr.dataset.rowId === String(rowId));
+      const isActive = Boolean(rowId) && tr.dataset.rowId === String(rowId);
+      tr.classList.toggle("is-active-row", isActive);
+      tr.setAttribute("aria-selected", String(isActive));
+      tr.querySelectorAll("input:not([type='hidden']):not(.row-select), select, textarea, .project-city-cell-field").forEach(control => {
+        control.setAttribute("aria-readonly", String(!isActive));
+        if (control.matches("input[type='text'], input[type='number'], textarea")) control.readOnly = !isActive;
+        if (control.matches("input, select, textarea")) control.tabIndex = isActive ? 0 : -1;
+      });
     });
   }
 
@@ -2978,6 +3026,11 @@
 
   function setProjectFilter(filter) {
     activeProjectFilter = workspace.normalizeProjectFilter(filter);
+    refreshProjectTableUx();
+  }
+
+  function setProjectSearch(value = "") {
+    activeProjectSearch = normalizeComparableText(value);
     refreshProjectTableUx();
   }
 
@@ -3069,7 +3122,7 @@
         qualityUnavailable ? qualitySummary.value : String(reviewCount),
         qualityUnavailable ? qualitySummary.state : reviewCount ? "warning" : "ok",
         qualityUnavailable ? "" : "quality",
-        t("summary.openQuality"),
+        qualityUnavailable ? t("summary.openQuality") : t("summary.openQualityCount", { count: reviewCount }),
         "workspaceReviewBtn"
       );
     els.workspaceSummaryMetrics.innerHTML = `<div class="workspace-summary-overview">${overviewChips.join("")}</div>${reviewChip}`;
@@ -3100,6 +3153,19 @@
     return translated === key ? fallback : translated;
   }
 
+  function setProjectSaveState(state = "dirty") {
+    projectSaveState = ["new", "dirty", "saved"].includes(state) ? state : "dirty";
+    if (!els.projectSaveState) return;
+    const label = t(`save.state.${projectSaveState}`);
+    els.projectSaveState.dataset.state = projectSaveState;
+    els.projectSaveState.textContent = label;
+    els.projectSaveState.title = label;
+    if (els.ribbonSaveProjectBtn) {
+      els.ribbonSaveProjectBtn.classList.toggle("has-unsaved-changes", projectSaveState === "dirty");
+      els.ribbonSaveProjectBtn.setAttribute("aria-describedby", "projectSaveState");
+    }
+  }
+
   const referenceCityProvinceNames = Object.freeze({
     en: Object.freeze({
       AB: "Alberta", BC: "British Columbia", MB: "Manitoba", NB: "New Brunswick",
@@ -3125,10 +3191,6 @@
     const projectFile = window.PlotypusProjectFile;
     if (projectFile && typeof projectFile.normalizeBaselayer === "function") {
       return projectFile.normalizeBaselayer(value, boundary, boundarySources);
-    }
-    if (field === "cityId") {
-      const city = getProjectCityById(value);
-      return applyProjectCitySelection(tr, city, { status: options.status, refreshProperties: options.refreshProperties });
     }
     return {
       id: boundary,
@@ -3326,11 +3388,10 @@
     });
   }
 
-  function mountPropertiesReferenceCitiesField() {
-    propertiesReferenceCitiesController?.destroy();
-    const root = els.propertiesSelectionControls && els.propertiesSelectionControls.querySelector("#referenceCitiesPropertiesField");
-    propertiesReferenceCitiesController = createReferenceCitiesController(root, baselayer.referenceCities, {
-      idPrefix: "propertiesRefCity",
+  function mountBaselayerReferenceCitiesField() {
+    baselayerReferenceCitiesController?.destroy();
+    baselayerReferenceCitiesController = createReferenceCitiesController(els.baselayerReferenceCitiesField, baselayer.referenceCities, {
+      idPrefix: "baselayerRefCity",
       allowOverrides: true,
       onBeforeChange() {
         pushAppUndoHistory("reference cities edit");
@@ -3368,7 +3429,7 @@
 
   function refreshReferenceCitiesFields() {
     startupReferenceCitiesController?.refresh();
-    propertiesReferenceCitiesController?.refresh();
+    baselayerReferenceCitiesController?.refresh();
     projectCitiesController?.refresh();
     projectRowCityControllers.forEach(controller => controller.refresh());
     propertiesProjectCityController?.refresh();
@@ -3463,6 +3524,7 @@
     renderStartupSetupSelectOptions();
     renderRegionPresetOptions();
     renderRegionStatusVisibilityControls();
+    renderCategoryEditors();
     updateCanvasToolbar();
     syncUiLanguageControls(nextLanguage);
     if (options.persist !== false) saveUiLanguagePreference(nextLanguage);
@@ -3481,6 +3543,7 @@
       renderConfirmationDialog();
     }
     refreshReferenceCitiesFields();
+    setProjectSaveState(projectSaveState);
   }
 
   function setAuthoringLanguage(language) {
@@ -5277,6 +5340,7 @@
 
   function setMapLanguage(value, options = {}) {
     const nextLanguage = normalizeMapLanguage(value);
+    const languageChanged = nextLanguage !== currentMapLanguage;
     const previousScale = els.mapScaleInput ? normalizeMapScale(els.mapScaleInput.value) : null;
     switchActiveLanguageLayout(nextLanguage, previousScale);
     syncMapLanguageControls(currentMapLanguage);
@@ -5287,6 +5351,7 @@
       const hasSavedLayout = Object.keys(manualLabelPositions).length > 0;
       requestPreviewRefresh(hasSavedLayout ? {} : languageFitRenderOptions());
     }
+    if (languageChanged && options.markDirty !== false) setProjectSaveState("dirty");
   }
 
   function getLabelText(row, language = currentMapLanguage) {
@@ -7539,7 +7604,7 @@
                 <tr>
                   <td class="csv-preview-name-cell">${escapeHtml(row.name || t("dialog.csv.previewBlank"))}</td>
                   <td class="csv-preview-type-cell">${escapeHtml(getCategoryLabel(row.type))}</td>
-                  ${useRegions ? `<td class="csv-preview-region-cell">${escapeHtml(row.region || "")}</td>` : useCities ? `<td class="csv-preview-region-cell">${escapeHtml(getProjectCityFallbackLabel(row))}</td>` : `<td class="csv-preview-coordinate-cell">${escapeHtml(row.lon === "" ? "" : String(row.lon))}</td><td class="csv-preview-coordinate-cell">${escapeHtml(row.lat === "" ? "" : String(row.lat))}</td>`}
+                  ${useRegions ? `<td class="csv-preview-region-cell">${escapeHtml(row.region || "")}</td>` : useCities ? `<td class="csv-preview-region-cell">${escapeHtml(getProjectCityFallbackLabel(row))}</td>` : `<td class="csv-preview-coordinate-cell">${escapeHtml(formatProjectCoordinate(row.lon))}</td><td class="csv-preview-coordinate-cell">${escapeHtml(formatProjectCoordinate(row.lat))}</td>`}
                   <td class="csv-preview-status-cell"><span class="csv-preview-badge" data-state="${escapeHtml(statusState)}">${escapeHtml(status)}</span></td>
                 </tr>
               `;
@@ -7610,7 +7675,6 @@
       els.propertiesDescription.hidden = !hint;
     }
     if (els.propertiesSelectionControls) els.propertiesSelectionControls.innerHTML = controlsHtml;
-    mountPropertiesReferenceCitiesField();
     mountPropertiesProjectCityField(selection && selection.rowId);
     syncPropertiesLabelHighlight(selection);
   }
@@ -7713,7 +7777,7 @@
     }
     const issues = getReviewIssueCount(report);
     return issues
-      ? `<strong>${escapeHtml(t("quality.banner.review.title", { count: t("summary.issueCount", { count: issues, label: issues === 1 ? t("summary.issueSingular") : t("summary.issuePlural") }) }))}</strong><button type="button" data-property-action="open-map">${escapeHtml(t("quality.action.locateFirst"))}</button>`
+      ? `<strong>${escapeHtml(t("quality.banner.review.title", { count: t("summary.issueCount", { count: issues, label: issues === 1 ? t("summary.issueSingular") : t("summary.issuePlural") }) }))}</strong><button type="button" class="primary-action" data-property-action="open-map">${escapeHtml(t("quality.action.locateFirst"))}</button>`
       : `<strong>${escapeHtml(t("quality.banner.ready.title"))}</strong><span>${escapeHtml(t("quality.banner.ready.body"))}</span>`;
   }
 
@@ -7879,7 +7943,7 @@
         ${metadataCard}
         ${qualityCard(t("quality.metric.offCanvasPoints"), String(report.offCanvasPoints || 0), report.offCanvasPoints ? "danger" : "ok", report.offCanvasPoints ? t("quality.metric.reviewOffCanvasPoints") : t("quality.metric.noOffCanvasPoints"), "", report.offCanvasPoints ? { name: "open-map", label: t("quality.action.locateFirst") } : null)}
         ${qualityCard(t("quality.metric.labelOverlaps"), String(report.overlaps), report.overlaps ? "review" : "ok", report.overlaps ? t("quality.metric.reviewTighten") : t("quality.metric.noOverlaps"), "", report.overlaps ? { name: "open-map", label: t("quality.action.locateFirst") } : null)}
-        ${qualityCard(t("quality.metric.leaderCrossings"), report.crossings ? String(report.crossings) : "0 /", report.crossings ? "review" : "ok", report.crossings ? t("quality.metric.reviewCrossings") : t("quality.metric.noCrossings"), "", report.crossings ? { name: "open-map", label: t("quality.action.locateFirst") } : null)}
+        ${qualityCard(t("quality.metric.leaderCrossings"), report.crossings ? String(report.crossings) : "0", report.crossings ? "review" : "ok", report.crossings ? t("quality.metric.reviewCrossings") : t("quality.metric.noCrossings"), "", report.crossings ? { name: "open-map", label: t("quality.action.locateFirst") } : null)}
         ${qualityCard(t("quality.metric.longestLeader"), longestLeader, report.longLines ? "review" : "ok", report.longLines ? t("quality.metric.reviewLongest") : t("quality.metric.withinLimit"), "", report.longLines ? { name: "open-map", label: t("quality.action.locateFirst") } : null)}
         ${qualityCard(t("quality.metric.labelsNearEdge"), String(report.labelsNearEdge || 0), report.labelsNearEdge ? "review" : "ok", report.labelsNearEdge ? t("quality.metric.reviewEdge") : t("quality.metric.noEdge"), "", report.labelsNearEdge ? { name: "open-map", label: t("quality.action.locateFirst") } : null)}
       </div>
@@ -8245,6 +8309,8 @@
     setPreviewPropertySectionsVisible(showPreviewGroups, showPreviewLegend);
     setPropertiesContext(context.title, context.subtitle, context.hint, context.controls, context.selection);
     if (showPreviewLegend) renderCategoryEditors();
+    syncPropertiesAccordions(context.selection);
+    applyAdaptivePropertiesState(context.selection);
     if (els.regionTableBody) {
       els.regionTableBody.querySelectorAll("tr[data-region-id]").forEach(row => {
         const isActive = context.selection.kind === "region" && row.dataset.regionId === context.selection.id;
@@ -9191,6 +9257,13 @@
 
   function syncResponsivePropertiesState() {
     if (!els.propertiesPanel || !els.propertiesToggleBtn) return;
+    if (document.body.classList.contains("properties-unavailable")) {
+      document.body.classList.remove("properties-open", "is-resizing-properties");
+      els.propertiesPanel.inert = true;
+      els.propertiesPanel.setAttribute("aria-hidden", "true");
+      els.propertiesToggleBtn.setAttribute("aria-expanded", "false");
+      return;
+    }
     const isDrawer = propertiesDrawerMedia.matches;
     const isOpen = isDrawer && document.body.classList.contains("properties-open");
     els.propertiesPanel.inert = isDrawer && !isOpen;
@@ -9323,6 +9396,7 @@
   }
 
   function togglePropertiesPanel() {
+    if (document.body.classList.contains("properties-unavailable")) return;
     if (propertiesDrawerMedia.matches) {
       setPropertiesDrawerOpen(!document.body.classList.contains("properties-open"));
     } else {
@@ -9335,7 +9409,7 @@
     setPropertiesPanelSide(saved.side, { persist: false });
     if (Number.isFinite(Number(saved.width))) setPropertiesPanelWidth(saved.width);
     else setPropertiesPanelWidth(readCssPixelVariable("--props-w", 320));
-    if (!propertiesDrawerMedia.matches && saved.collapsed) {
+    if (!propertiesDrawerMedia.matches && saved.collapsed !== false) {
       document.body.classList.add("properties-collapsed");
     }
     syncResponsivePropertiesState();
@@ -9390,7 +9464,80 @@
   function getDefaultPropertiesSelectionForWorkspace(workspaceName) {
     if (workspaceName === "preview") return { kind: "document" };
     if (workspaceName === "regions") return { kind: "map" };
-    return activePropertiesSelection;
+    if (workspaceName === "projects" && activePropertiesSelection && ["row", "category"].includes(activePropertiesSelection.kind)) {
+      return activePropertiesSelection;
+    }
+    return null;
+  }
+
+  function getAdaptivePropertiesMode(selection = activePropertiesSelection) {
+    if (activeDataTable === "preview") return "workspace";
+    if (activeDataTable === "projects") {
+      return selection && ["row", "category"].includes(selection.kind) ? "contextual" : "unavailable";
+    }
+    if (activeDataTable === "regions") return selection && selection.kind === "region" ? "contextual" : "collapsed";
+    return "unavailable";
+  }
+
+  function applyAdaptivePropertiesState(selection = activePropertiesSelection) {
+    if (!els.propertiesPanel || !els.propertiesToggleBtn) return;
+    const mode = getAdaptivePropertiesMode(selection);
+    const unavailable = mode === "unavailable";
+    document.body.dataset.propertiesMode = mode;
+    document.body.classList.toggle("properties-unavailable", unavailable);
+    els.propertiesToggleBtn.hidden = unavailable;
+    if (unavailable) {
+      document.body.classList.remove("properties-open", "is-resizing-properties");
+      els.propertiesPanel.inert = true;
+      els.propertiesPanel.setAttribute("aria-hidden", "true");
+      els.propertiesToggleBtn.setAttribute("aria-expanded", "false");
+      if (els.propertiesCollapseBtn) {
+        const isCollapsed = document.body.classList.contains("properties-collapsed");
+        els.propertiesCollapseBtn.setAttribute("aria-expanded", String(!isCollapsed));
+        els.propertiesCollapseBtn.setAttribute("aria-label", isCollapsed ? t("aria.expandProperties") : t("aria.collapseProperties"));
+        els.propertiesCollapseBtn.title = isCollapsed ? t("properties.title.expand") : t("properties.title.collapse");
+      }
+      return;
+    }
+
+    els.propertiesPanel.inert = false;
+    els.propertiesPanel.removeAttribute("aria-hidden");
+    if (propertiesDrawerMedia.matches) {
+      setPropertiesDrawerOpen(mode === "contextual");
+      return;
+    }
+    if (mode === "contextual") {
+      setPropertiesCollapsed(false, { persist: false });
+    } else if (mode === "collapsed") {
+      setPropertiesCollapsed(true, { persist: false });
+    } else {
+      const saved = getPropertiesPanelPreference();
+      setPropertiesCollapsed(saved.collapsed !== false, { persist: false });
+    }
+  }
+
+  function syncPropertiesAccordions(selection = activePropertiesSelection) {
+    if (!els.propertiesPanel || activeDataTable !== "preview") return;
+    const details = Array.from(els.propertiesPanel.querySelectorAll("details[data-properties-accordion]"))
+      .filter(detail => !detail.hidden);
+    if (!details.length) return;
+    const savedSection = getPropertiesPanelPreference().openSection;
+    const defaultSection = selection && selection.kind === "map" ? "display" : "legend";
+    const openSection = details.some(detail => detail.dataset.propertiesAccordion === savedSection)
+      ? savedSection
+      : defaultSection;
+    details.forEach(detail => {
+      detail.open = detail.dataset.propertiesAccordion === openSection;
+      if (detail.dataset.propertiesAccordionBound === "true") return;
+      detail.dataset.propertiesAccordionBound = "true";
+      detail.addEventListener("toggle", () => {
+        if (!detail.open) return;
+        Array.from(els.propertiesPanel.querySelectorAll("details[data-properties-accordion]")).forEach(other => {
+          if (other !== detail) other.open = false;
+        });
+        savePropertiesPanelPreference({ openSection: detail.dataset.propertiesAccordion });
+      });
+    });
   }
 
   function setActiveDataTab(tableName) {
@@ -11208,6 +11355,51 @@
     return true;
   }
 
+  function closeLegendItemMenus({ restoreFocus = false } = {}) {
+    if (!els.categoryList) return;
+    els.categoryList.querySelectorAll(".legend-item-menu-button").forEach(button => {
+      const menu = document.getElementById(button.getAttribute("aria-controls"));
+      const wasOpen = menu && !menu.hidden;
+      if (menu) menu.hidden = true;
+      button.closest(".legend-item")?.classList.remove("is-menu-open");
+      button.setAttribute("aria-expanded", "false");
+      if (restoreFocus && wasOpen) button.focus({ preventScroll: true });
+    });
+  }
+
+  function setLegendItemMenuOpen(button, open) {
+    if (!button) return;
+    const menu = document.getElementById(button.getAttribute("aria-controls"));
+    if (!menu) return;
+    closeLegendItemMenus();
+    menu.hidden = !open;
+    button.closest(".legend-item")?.classList.toggle("is-menu-open", open);
+    button.setAttribute("aria-expanded", String(open));
+    if (open) menu.querySelector("button:not([disabled])")?.focus({ preventScroll: true });
+  }
+
+  function handleLegendItemMenuKeydown(event) {
+    const menu = event.target.closest(".legend-item-menu");
+    if (!menu) return;
+    const items = Array.from(menu.querySelectorAll("button:not([disabled])"));
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeLegendItemMenus({ restoreFocus: true });
+      return;
+    }
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key) || !items.length) return;
+    event.preventDefault();
+    const currentIndex = items.indexOf(document.activeElement);
+    const nextIndex = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? items.length - 1
+        : event.key === "ArrowUp"
+          ? (currentIndex <= 0 ? items.length - 1 : currentIndex - 1)
+          : (currentIndex + 1) % items.length;
+    items[nextIndex].focus();
+  }
+
   function clearCategoryDropIndicators() {
     if (!els.categoryList) return;
     els.categoryList.querySelectorAll(".legend-item").forEach(editor => {
@@ -11960,7 +12152,7 @@
   function getCategorySwatchSvg(category) {
     const markerSize = normalizeMarkerSize(category.markerSize, layoutDefaults.markerSizeInput);
     const lineWidth = optionalNumber(category.lineWidth) || layoutDefaults.lineWidthInput;
-    const previewRadius = Math.max(2, Math.min(12, markerSize));
+    const previewRadius = Math.max(6, Math.min(12, markerSize));
     const previewLineWidth = Math.max(1, Math.min(4, lineWidth));
     const centre = 14;
     const svgAttributes = `class="category-marker-preview" viewBox="0 0 28 28" data-marker-size="${markerSize}" data-preview-radius="${previewRadius}" aria-hidden="true"`;
@@ -12279,6 +12471,7 @@
     });
 
     download("custom-map-project.json", JSON.stringify(project, null, 2), "application/json;charset=utf-8");
+    setProjectSaveState("saved");
     setStatusMessage(t("status.projectSaveStarted"), "ok");
   }
 
@@ -12297,7 +12490,7 @@
 
         currentBoundary = project.boundary;
         baselayer = normalizeBaselayerState(project.baselayer, currentBoundary);
-        propertiesReferenceCitiesController?.setModel(baselayer.referenceCities);
+        baselayerReferenceCitiesController?.setModel(baselayer.referenceCities);
         els.boundaryInput.value = currentBoundary;
         applyMapStylePreset(project.mapStyle || defaultMapStylePreset, { applyMapColours: false, render: false });
         applySettings(project.settings || {});
@@ -12330,6 +12523,7 @@
         syncAllProjectRegionInputs();
         renderRegionControls();
         requestPreviewRefresh();
+        setProjectSaveState("saved");
         setStatusMessage(t("status.projectLoaded", { count: project.rows.length }), "ok");
       } catch (error) {
         setStatusMessage(t("status.projectLoadGenericFailed", { message: translateErrorMessage(error) }), "danger");
@@ -12346,12 +12540,6 @@
   }
 
   function updateMapDetailsState() {
-    const missingFrench = ["titleFr", "textFr"].some(key => !String(mapDetails[key] || "").trim());
-    if (els.mapDetailsBtn) els.mapDetailsBtn.classList.toggle("has-warning", missingFrench);
-    if (els.frMetaWarning) {
-      els.frMetaWarning.hidden = !missingFrench;
-      els.frMetaWarning.textContent = missingFrench ? "FR" : "";
-    }
     updateWorkspaceSummary();
     refreshDocumentPropertiesIfActive();
     if (activeDataTable === "quality") {
@@ -12471,6 +12659,7 @@
     try {
       emptyBaselayerPreviewEnabled = true;
       baselayer.referenceCities = cloneReferenceCities(startupReferenceCities);
+      baselayerReferenceCitiesController?.setModel(baselayer.referenceCities);
       applyMapStylePreset(els.startupMapStyleInput.value, { render: false });
       applyImageSizePreset(els.startupBookSizeInput.value, els.startupImageSizeInput.value);
       const defaultMapScale = normalizeMapScale(layoutDefaults.mapScaleInput);
@@ -12484,6 +12673,7 @@
       applyRegionPreset(regionPreset);
       ensureCityRegionsIncluded(baselayer.referenceCities.ids);
       setActiveDataTab("preview");
+      setProjectSaveState("dirty");
       els.startupDialog._returnFocus = els.previewTableTab;
       setStatusMessage(t("status.startupNewProject"), "ok");
       closeStartupDialog();
@@ -12594,14 +12784,8 @@
     els.mapTextEnInput.value = mapDetails.textEn;
     els.mapTextFrInput.value = mapDetails.textFr;
     els.mapDetailsDialog._undoSnapshot = createAppUndoSnapshot("map details edit");
-    openDialog(els.mapDetailsDialog, els.mapDetailsBtn);
+    openDialog(els.mapDetailsDialog);
     els.mapTitleEnInput.focus();
-  }
-
-  function updateMapDetailsDraftState() {
-    const missingFrench = !els.mapTitleFrInput.value.trim() || !els.mapTextFrInput.value.trim();
-    els.mapDetailsBtn.classList.toggle("has-warning", missingFrench);
-    els.frMetaWarning.hidden = !missingFrench;
   }
 
   function saveMapDetails(event) {
@@ -13209,7 +13393,10 @@
   }
 
   function initEvents() {
-    on(els.ribbonLoadSampleBtn, "click", loadSampleData);
+    on(els.ribbonLoadSampleBtn, "click", () => {
+      closeProjectToolbarMenus();
+      loadSampleData();
+    });
     on(els.ribbonUndoBtn, "click", undoLastManualLayoutChange);
     on(els.ribbonOpenProjectBtn, "click", () => els.projectInput.click());
     on(els.ribbonSaveProjectBtn, "click", saveProject);
@@ -13238,6 +13425,7 @@
       exportPng();
     });
     on(els.previewEmptyState, "click", handlePreviewStateAction);
+    on(els.canvasEmptyActions, "click", handlePreviewStateAction);
     on(els.previewErrorState, "click", handlePreviewStateAction);
     on(els.projectTableEmptyState, "click", handleEmptyStateAction);
     on(els.canvasZoomOutBtn, "click", () => adjustCanvasZoom(-1));
@@ -13345,7 +13533,6 @@
     on(els.statusBox, "click", handleStatusAction);
     on(els.csvImportPreview, "click", handleStatusAction);
     on(els.workspaceSummaryMetrics, "click", handleWorkspaceSummaryClick);
-    on(els.mapDetailsBtn, "click", openMapDetailsDialog);
     on(els.propertiesToggleBtn, "click", togglePropertiesPanel);
     on(els.propertiesCollapseBtn, "click", togglePropertiesPanel);
     on(els.propertiesResizeHandle, "pointerdown", handlePropertiesResizeStart);
@@ -13365,7 +13552,6 @@
     on(els.startupBookSizeInput, "change", () => renderStartupImageSizeOptions());
     els.startupBaselayerOptions.forEach(option => on(option, "keydown", handleStartupBaselayerKeydown));
     on(els.mapDetailsForm, "submit", saveMapDetails);
-    on(els.mapDetailsForm, "input", updateMapDetailsDraftState);
     on(els.confirmCsvMapBtn, "click", confirmCsvMapping);
     els.csvLocationModeButtons.forEach(button => {
       on(button, "click", () => setCsvImportLocationMode(button.dataset.csvLocationMode));
@@ -13532,6 +13718,7 @@
       on(button, "click", () => applyUiLanguage(button.dataset.uiLanguage, { syncMap: false }));
     });
     on(els.projectFilterSelect, "change", event => setProjectFilter(event.target.value));
+    on(els.projectSearchInput, "input", event => setProjectSearch(event.target.value));
     els.projectLocationModeButtons.forEach(button => {
       on(button, "click", () => setProjectLocationMode(button.dataset.projectLocationMode));
     });
@@ -13579,6 +13766,9 @@
       if (getProjectToolbarMenus().some(item => !item.menu.hidden) && !event.target.closest(".project-menu-wrap")) {
         closeProjectToolbarMenus();
       }
+      if (els.categoryList?.querySelector(".legend-item-menu:not([hidden])") && !event.target.closest(".category-actions")) {
+        closeLegendItemMenus();
+      }
       if (mapScaleControlsVisible && els.mapHost && !els.mapHost.contains(event.target) && !eventOriginatedInPropertiesPanel(event)) {
         hideMapScaleControls();
       }
@@ -13610,6 +13800,12 @@
     ].forEach(el => on(el, "change", handleLayoutSettingsChange));
     on(els.addCategoryBtn, "click", addCategory);
     on(els.categoryList, "click", event => {
+      const menuButton = event.target.closest(".legend-item-menu-button");
+      if (menuButton) {
+        const menu = document.getElementById(menuButton.getAttribute("aria-controls"));
+        setLegendItemMenuOpen(menuButton, Boolean(menu && menu.hidden));
+        return;
+      }
       const selectButton = event.target.closest(".legend-item-select");
       if (selectButton) {
         activeCategoryId = selectButton.dataset.categoryId;
@@ -13626,19 +13822,20 @@
       }
       const moveButton = event.target.closest(".move-category-up-btn, .move-category-down-btn");
       if (moveButton) {
+        closeLegendItemMenus();
         const offset = moveButton.classList.contains("move-category-up-btn") ? -1 : 1;
         const categoryId = moveButton.dataset.categoryId;
         if (moveCategoryByOffset(categoryId, offset)) {
           setStatusMessage(t("status.legendOrderUpdated"), "ok");
           window.requestAnimationFrame(() => {
-            const className = offset < 0 ? ".move-category-down-btn" : ".move-category-up-btn";
-            els.categoryList?.querySelector(`${className}[data-category-id="${window.CSS && CSS.escape ? CSS.escape(categoryId) : categoryId}"]`)?.focus({ preventScroll: true });
+            els.categoryList?.querySelector(`[data-legend-item][data-category-id="${window.CSS && CSS.escape ? CSS.escape(categoryId) : categoryId}"] .legend-item-menu-button`)?.focus({ preventScroll: true });
           });
         }
         return;
       }
       const removeButton = event.target.closest(".remove-category-btn");
       if (removeButton) {
+        closeLegendItemMenus();
         const item = removeButton.closest(".legend-item");
         const focusCategoryId = item?.nextElementSibling?.dataset.categoryId || item?.previousElementSibling?.dataset.categoryId || "";
         if (removeCategory(removeButton.dataset.categoryId) && focusCategoryId) {
@@ -13648,6 +13845,7 @@
         }
       }
     });
+    on(els.categoryList, "keydown", handleLegendItemMenuKeydown);
     on(els.categoryList, "dragstart", handleCategoryDragStart);
     on(els.categoryList, "dragover", handleCategoryDragOver);
     on(els.categoryList, "drop", handleCategoryDrop);
@@ -13881,6 +14079,7 @@
   async function init() {
     renderRibbonIcons();
     mountStartupReferenceCitiesField();
+    mountBaselayerReferenceCitiesField();
     initializeFeedbackComposer();
     initEvents();
     initializePropertiesPanelState();
@@ -13955,6 +14154,7 @@
       normalizeHeader,
       toBoolean,
       cleanType,
+      formatProjectCoordinate,
       formatLocalizedDecimal,
       isPointOffCanvas,
       constrainMarkerToVisibleGutter,
