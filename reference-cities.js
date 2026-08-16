@@ -143,12 +143,12 @@
         <button type="button" id="${escapeHtml(idPrefix)}Result${index}" class="refCityResultRow${selected ? " is-selected" : ""}" role="option" aria-selected="${selected}" tabindex="-1" data-reference-city-result="${escapeHtml(city.id)}" data-reference-city-result-index="${index}">
           <span class="refCityResultDot" aria-hidden="true"></span>
           <span class="refCityResultMain">
-            <span class="refCityResultName">${escapeHtml(cityName(city))}</span>
-            <span class="refCityResultCoordinates">${escapeHtml(coordinates)}</span>
+          <span class="refCityResultName type-control-label">${escapeHtml(cityName(city))}</span>
+          <span class="refCityResultCoordinates type-caption">${escapeHtml(coordinates)}</span>
           </span>
           <span class="refCityResultMeta">
-            <span class="refCityResultProvince">${escapeHtml(getProvinceName(city, getLanguage()))}</span>
-            <span class="refCityResultPopulation">${escapeHtml(population)}</span>
+            <span class="refCityResultProvince type-caption">${escapeHtml(getProvinceName(city, getLanguage()))}</span>
+            <span class="refCityResultPopulation type-caption">${escapeHtml(population)}</span>
           </span>
         </button>`;
     }
@@ -199,16 +199,16 @@
       const activeDescendant = showResults && results[selectedIndex] ? `${idPrefix}Result${selectedIndex}` : "";
       rootElement.classList.add("reference-cities-field");
       rootElement.innerHTML = `
-        <label class="refCityLabel" for="${escapeHtml(idPrefix)}Input">${escapeHtml(translate(textKey("label", "referenceCities.label")))} <span>${escapeHtml(translate(textKey("optional", "referenceCities.optional")))}</span></label>
+        <label class="refCityLabel type-caption" for="${escapeHtml(idPrefix)}Input">${escapeHtml(translate(textKey("label", "referenceCities.label")))} <span>${escapeHtml(translate(textKey("optional", "referenceCities.optional")))}</span></label>
         <div class="refCityCombobox">
           <span class="refCitySearchIcon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 4 4"></path></svg></span>
-          <input id="${escapeHtml(idPrefix)}Input" class="refCityInput" type="text" value="${escapeHtml(query)}" placeholder="${escapeHtml(translate(textKey("placeholder", "referenceCities.placeholder")))}" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="${showResults}" aria-controls="${escapeHtml(idPrefix)}Results"${activeDescendant ? ` aria-activedescendant="${escapeHtml(activeDescendant)}"` : ""}>
+          <input id="${escapeHtml(idPrefix)}Input" class="refCityInput type-control" type="text" value="${escapeHtml(query)}" placeholder="${escapeHtml(translate(textKey("placeholder", "referenceCities.placeholder")))}" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="${showResults}" aria-controls="${escapeHtml(idPrefix)}Results"${activeDescendant ? ` aria-activedescendant="${escapeHtml(activeDescendant)}"` : ""}>
           <div id="${escapeHtml(idPrefix)}Results" class="refCityResults" role="listbox"${showResults ? "" : " hidden"}>
             ${results.length ? results.map(renderResult).join("") : `<div class="refCityNoMatch">${escapeHtml(translate(textKey("noMatchBefore", "referenceCities.noMatch.before")))} <span>cities.json</span>. ${escapeHtml(translate(textKey("noMatchAfter", "referenceCities.noMatch.after")))}</div>`}
           </div>
         </div>
         <div class="refCityChips">${model.ids.map(renderChip).join("")}</div>
-        <p class="refCityHint" aria-live="polite">${escapeHtml(hintText())}</p>`;
+        <p class="refCityHint type-caption" aria-live="polite">${escapeHtml(hintText())}</p>`;
       if (renderOptions.focusInput) {
         const input = rootElement.querySelector(".refCityInput");
         input?.focus({ preventScroll: true });

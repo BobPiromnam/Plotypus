@@ -103,7 +103,7 @@ test("Boxes and Interaction controls use the compact Properties type scale", () 
 });
 
 test("Properties accordion summaries retain heading hierarchy", () => {
-  assert.match(style, /\.properties-panel\s*\{[^}]*--properties-text-summary:\s*16px;[^}]*--properties-text-control:\s*15px;[^}]*--properties-text-supporting:\s*14px;[^}]*--properties-text-caption:\s*13px;/s);
+  assert.match(style, /\.properties-panel\s*\{[^}]*--properties-text-summary:\s*var\(--type-summary-size\);[^}]*--properties-text-control:\s*var\(--type-control-size\);[^}]*--properties-text-supporting:\s*var\(--type-supporting-size\);[^}]*--properties-text-caption:\s*var\(--type-caption-size\);/s);
   assert.match(style, /\.properties-accordion > summary\s*\{[^}]*min-height:\s*var\(--control-h-lg\);[^}]*color:\s*var\(--accent-dark\);[^}]*font-size:\s*var\(--properties-text-summary\);[^}]*font-weight:\s*700;[^}]*line-height:\s*var\(--line-ui\);/s);
 });
 
@@ -123,4 +123,67 @@ test("new compact surfaces retain WCAG AA text and non-text contrast", () => {
   assert.ok(contrastRatio("#84978e", white) >= 3, "search control boundary");
   assert.match(style, /\.properties-accordion > summary:focus-visible\s*\{[^}]*outline:\s*3px solid var\(--accent\)/s);
   assert.match(style, /#projectTable tbody tr:focus-visible\s*\{[^}]*outline:\s*3px solid var\(--accent\)/s);
+});
+
+test("Project points keeps both scroll axes inside the visible workspace", () => {
+  assert.match(style, /#projectTablePane\.is-active\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*0;[^}]*overflow:\s*hidden;/s);
+  assert.match(style, /#projectTablePane > \.table-wrap\s*\{[^}]*min-height:\s*0;/s);
+  assert.match(style, /body\[data-workspace-view\] \.app-shell\s*\{[^}]*height:\s*calc\(100vh - var\(--command-h\)\);[^}]*min-height:\s*0;/s);
+  assert.match(style, /body\[data-workspace-view\] \.table-panel\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*0;/s);
+  assert.match(style, /body\[data-workspace-view\]:not\(\[data-workspace-view="projects"\]\) \.table-panel\s*\{[^}]*grid-template-rows:\s*minmax\(0, 1fr\);/s);
+});
+
+test("Map baselayer keeps its table scrollbar in the visible workspace", () => {
+  assert.match(style, /body\[data-workspace-view\] \.app-shell\s*\{[^}]*height:\s*calc\(100vh - var\(--command-h\)\);/s);
+  assert.match(style, /\.region-management-panel\.is-active\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);[^}]*grid-template-rows:\s*auto auto auto minmax\(0, 1fr\);[^}]*overflow:\s*hidden;/s);
+  assert.match(style, /#regionTablePane > \.table-wrap\s*\{[^}]*min-height:\s*0;/s);
+  assert.match(style, /@media \(max-width: 840px\)\s*\{[\s\S]*body\[data-workspace-view="regions"\] \.region-management-controls\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);/s);
+});
+
+test("canvas viewing zoom is capped to the available workspace width", () => {
+  assert.match(app, /function getFittedCanvasViewZoom\(size = getImageSizePreset\(\), requestedValue = canvasViewZoom\)/);
+  assert.match(app, /els\.mapHost\.clientWidth[\s\S]*hostStyle\.paddingLeft[\s\S]*hostStyle\.paddingRight/);
+  assert.match(app, /return Math\.min\(requestedZoom, fittingZoom\)/);
+  assert.match(app, /value: formatCanvasViewZoom\(appliedCanvasViewZoom\)/);
+  assert.match(app, /on\(window, "resize", \(\) => \{[\s\S]*updateCanvasToolbar\(\)/);
+  assert.match(style, /@media \(max-width: 1080px\)\s*\{[\s\S]*--workspace-min:\s*0px;/);
+});
+
+test("tablet setup cards and status spine stay inside their columns", () => {
+  assert.match(style, /@media \(max-width: 840px\)\s*\{[\s\S]*\.startup-setup-body\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);/);
+  assert.match(style, /@media \(max-width: 840px\)\s*\{[\s\S]*\.startup-baselayer-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);/);
+  assert.match(style, /\.startup-baselayer-option small\s*\{[^}]*var\(--font-content\)/s);
+  assert.match(style, /\.status-spine #workspaceReviewBtn\s*\{[^}]*display:\s*grid !important;[^}]*overflow:\s*hidden;/s);
+});
+
+test("modal shortcuts do not open over another dialog", () => {
+  assert.match(app, /if \(event\.key !== "\?" \|\| isTypingShortcutTarget\(event\.target\)\) return;\s*if \(getOpenDialogElement\(\)\) return;/);
+});
+
+test("compact dialog and data typography avoid empty space and clipped line boxes", () => {
+  assert.match(style, /\.point-catalog-card \.catalog-body,[\s\S]*\.point-catalog-card \.project-city-picker-panel\s*\{[^}]*min-height:\s*0;/s);
+  assert.match(style, /\.canvas-placeholder-copy strong\s*\{[^}]*font-size:\s*var\(--text-title\);[^}]*line-height:\s*var\(--type-dialog-title-line\);/s);
+  assert.match(style, /#regionTable \.region-value-input\s*\{[^}]*font-size:\s*var\(--type-summary-size\);[^}]*line-height:\s*var\(--type-summary-line\);/s);
+  assert.match(style, /\.translation-column-labels > span:last-child \.col-auto-chip \[data-icon\]\s*\{[^}]*overflow:\s*hidden;[^}]*line-height:\s*0;/s);
+  assert.match(style, /\.translation-column-labels > span:last-child \.col-auto-chip svg\s*\{[^}]*flex:\s*0 0 var\(--icon-hint-size\) !important;/s);
+});
+
+test("Translation switches to a labelled single-column layout at tablet widths", () => {
+  assert.match(app, /class="translation-language-field"[\s\S]*class="translation-mobile-language">\$\{escapeHtml\(t\("translate\.column\.english"\)\)\}/);
+  assert.match(app, /class="translation-language-field"[\s\S]*class="translation-mobile-language">\$\{escapeHtml\(t\("translate\.column\.french"\)\)\}/);
+  assert.match(style, /@media \(max-width: 840px\)\s*\{[\s\S]*body\[data-workspace-view="translate"\] \.translate-header\.workspace-rail\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto;/s);
+  assert.match(style, /@media \(max-width: 840px\)\s*\{[\s\S]*body\[data-workspace-view="translate"\] \.translation-row\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);/s);
+  assert.match(style, /body\[data-workspace-view="translate"\] \.translation-mobile-language\s*\{[^}]*display:\s*block;/s);
+});
+
+test("long Quality metrics use a compact secondary value treatment", () => {
+  assert.match(properties, /String\(value \|\| ""\)\.length > 24 \? ' class="quality-card-value-long"'/);
+  assert.match(style, /\.quality-card header:has\(\.quality-card-value-long\)\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);/s);
+  assert.match(style, /\.quality-card header \.quality-card-value-long\s*\{[^}]*font-size:\s*var\(--type-caption-size\);[^}]*text-align:\s*left;/s);
+});
+
+test("CSV mapping controls stack before they can overflow a tablet dialog", () => {
+  assert.match(style, /@media \(max-width: 840px\)\s*\{[\s\S]*\.csv-import-controls\s*\{[^}]*align-items:\s*stretch;[^}]*flex-direction:\s*column;/s);
+  assert.match(style, /@media \(max-width: 840px\)\s*\{[\s\S]*\.csv-location-mode\s*\{[^}]*flex-wrap:\s*wrap;[^}]*white-space:\s*normal;/s);
+  assert.match(style, /@media \(max-width: 840px\)\s*\{[\s\S]*\.csv-map-row,[\s\S]*\.rich-label-composer\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);/s);
 });

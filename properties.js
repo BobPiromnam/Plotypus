@@ -144,7 +144,7 @@
       <div class="properties-metric" data-state="${escapeHtml(metricState)}">
         <span>
           <span class="metric-label">${escapeHtml(label)} ${propertyOriginIcon(options, "auto")}</span>
-          ${description ? `<small>${escapeHtml(description)}</small>` : ""}
+          ${description ? `<small class="type-caption">${escapeHtml(description)}</small>` : ""}
         </span>
         <strong>${escapeHtml(value)}</strong>
       </div>
@@ -153,11 +153,12 @@
 
   function qualityCard(label, value, state, description, detail, action, escapeHtml) {
     const safeState = state === "ok" ? "ok" : state === "danger" ? "danger" : "review";
+    const valueClass = String(value || "").length > 24 ? ' class="quality-card-value-long"' : "";
     return `
       <article class="quality-card" data-state="${safeState}">
         <header>
-          <h3>${escapeHtml(label)}</h3>
-          <strong>${escapeHtml(value)}</strong>
+          <h3 class="type-card-title">${escapeHtml(label)}</h3>
+          <strong${valueClass}>${escapeHtml(value)}</strong>
         </header>
         <div class="quality-card-rule" aria-hidden="true"><span></span></div>
         <p>${escapeHtml(description)}</p>
@@ -183,7 +184,7 @@
         <div class="properties-actions">
           <button type="button" data-property-action="reset-box" data-box-key="${escapeHtml(key)}">${escapeHtml(t("properties.button.resetPositionSize"))}</button>
         </div>
-        <p class="properties-muted">${escapeHtml(t("properties.helper.furniture"))}</p>
+        <p class="properties-muted type-supporting">${escapeHtml(t("properties.helper.furniture"))}</p>
       </div>
     `;
   }
@@ -198,7 +199,7 @@
     return `
       <div class="properties-form" data-property-kind="document">
         <details class="properties-accordion document-property-section" data-properties-accordion="map-style">
-          <summary><span>${escapeHtml(t("properties.section.mapStyle"))}</span></summary>
+          <summary class="type-summary-heading"><span>${escapeHtml(t("properties.section.mapStyle"))}</span></summary>
           <div class="properties-accordion-body">
           <label class="properties-field-group">
             ${propertyFieldLabel(options, t("properties.field.mapStyle"))}
@@ -209,7 +210,7 @@
           </div>
         </details>
         <details class="properties-accordion document-property-section" data-properties-accordion="map-size">
-          <summary><span>${escapeHtml(t("properties.section.mapSize"))}</span></summary>
+          <summary class="type-summary-heading"><span>${escapeHtml(t("properties.section.mapSize"))}</span></summary>
           <div class="properties-accordion-body">
           <label class="properties-field-group">
             ${propertyFieldLabel(options, t("properties.field.pagePreset"))}
@@ -238,9 +239,9 @@
           </div>
         </details>
         <details class="properties-accordion document-property-section leader-line-property-section" data-properties-accordion="leader-lines" data-leader-line-controls="global">
-          <summary><span>${escapeHtml(t("properties.section.leaderLines"))}</span></summary>
+          <summary class="type-summary-heading"><span>${escapeHtml(t("properties.section.leaderLines"))}</span></summary>
           <div class="properties-accordion-body">
-          <p class="properties-muted">${escapeHtml(t("properties.leaderLines.globalHelp"))}</p>
+          <p class="properties-muted type-supporting">${escapeHtml(t("properties.leaderLines.globalHelp"))}</p>
           <div class="properties-control-list leader-line-toggle-list">
             <label class="toolbar-check">
               <input type="checkbox" data-layout-proxy="hideLeaderLinesInput"${values.hideLeaderLines ? " checked" : ""}>
@@ -268,7 +269,7 @@
               <input type="color" data-layout-proxy="leaderColourInput" value="${escapeHtml(values.leaderColour || "#333333")}">
             </label>
           </div>
-          <p class="properties-muted">${escapeHtml(t("properties.leaderLines.precedence"))}</p>
+          <p class="properties-muted type-supporting">${escapeHtml(t("properties.leaderLines.precedence"))}</p>
           </div>
         </details>
       </div>
@@ -371,7 +372,7 @@
                   ${blockControls(index)}
                 </div>
                 <textarea rows="2" data-property-field="contentElementValue" data-block-index="${index}" placeholder="${escapeHtml(typeLabel)}">${escapeHtml(localText(block))}</textarea>
-                ${template ? `<small class="annotation-template-source">${escapeHtml(t("properties.annotation.importTemplate", { template }))}</small>` : ""}
+                ${template ? `<small class="annotation-template-source type-caption">${escapeHtml(t("properties.annotation.importTemplate", { template }))}</small>` : ""}
               </div>`;
           }
           if (type === "bullets") {
@@ -420,7 +421,7 @@
                     <input class="type-numeric-data property-numeric-input" type="number" min="24" max="300" step="4" inputmode="numeric" data-property-field="contentImageSize" data-block-index="${index}" aria-describedby="${escapeHtml(sizeHintId)}" value="${displaySize}">
                     <span aria-hidden="true">pt</span>
                   </span>
-                  <small id="${escapeHtml(sizeHintId)}">${escapeHtml(t("properties.annotation.imageSizeHint"))}</small>
+                  <small id="${escapeHtml(sizeHintId)}" class="type-caption">${escapeHtml(t("properties.annotation.imageSizeHint"))}</small>
                 </label>
                 <label>
                   ${propertyFieldLabel(options, t("properties.annotation.caption"))}
@@ -458,7 +459,7 @@
           </select>
         </label>
         <section class="annotation-property-section">
-          <h3>${escapeHtml(t(anchor === "region" ? "properties.field.region" : anchor === "city" ? "properties.field.city" : "properties.field.coordinates"))}</h3>
+          <h3 class="type-eyebrow">${escapeHtml(t(anchor === "region" ? "properties.field.region" : anchor === "city" ? "properties.field.city" : "properties.field.coordinates"))}</h3>
           ${anchor === "region" ? `
             <label>
               ${propertyFieldLabel(options, t("properties.field.region"))}
@@ -487,7 +488,7 @@
             </div>`}
         </section>
         <section class="annotation-property-section">
-          <h3>${escapeHtml(t("properties.field.labelStyle"))}</h3>
+          <h3 class="type-eyebrow">${escapeHtml(t("properties.field.labelStyle"))}</h3>
           ${segmented("labelStyle", labelStyle, [{ value: "compact", label: t("properties.annotation.compact") }, { value: "rich", label: t("properties.annotation.rich") }])}
           ${labelStyle === "rich" ? `<label class="toolbar-check annotation-label-border-option">
             <input type="checkbox" data-property-field="labelBorder"${row.labelBorder ? " checked" : ""}>
@@ -497,8 +498,8 @@
         </section>
 
         <section class="annotation-property-section leader-line-property-section" data-leader-line-controls="point">
-          <h3>${escapeHtml(t("properties.section.leaderLines"))}</h3>
-          <p class="properties-muted">${escapeHtml(t("properties.leaderLines.pointHelp"))}</p>
+          <h3 class="type-eyebrow">${escapeHtml(t("properties.section.leaderLines"))}</h3>
+          <p class="properties-muted type-supporting">${escapeHtml(t("properties.leaderLines.pointHelp"))}</p>
           <div class="properties-control-list leader-line-toggle-list">
             <label class="toolbar-check">
               <input type="checkbox" data-property-field="hideLine"${row.hideLine ? " checked" : ""}>
@@ -533,10 +534,10 @@
                 : t("properties.leaderLines.pointColourInherited", { value: inheritedLeaderLineColour }))}</span>
             </label>
           </div>
-          <p class="properties-muted properties-dot-note">${escapeHtml(t("properties.leaderLines.pointPrecedence"))}</p>
+          <p class="properties-muted properties-dot-note type-supporting">${escapeHtml(t("properties.leaderLines.pointPrecedence"))}</p>
         </section>
         <details${advancedOpen ? " open" : ""}>
-          <summary>${escapeHtml(t("properties.field.advanced"))}</summary>
+          <summary class="type-control-label">${escapeHtml(t("properties.field.advanced"))}</summary>
           <div class="properties-form">
             <label>
               ${propertyFieldLabel(options, t("properties.field.footnote"))}
@@ -603,9 +604,9 @@
           : t("quality.property.noOverlapsFound");
     return `
       <div class="properties-form" data-property-kind="quality">
-        <h3>${escapeHtml(t("quality.property.threshold"))}</h3>
+        <h3 class="type-eyebrow">${escapeHtml(t("quality.property.threshold"))}</h3>
         <label>${propertyFieldLabel(options, t("quality.property.warnAbove"), "auto")}<input type="text" value="${escapeHtml(t("quality.property.overlapLimit"))}" readonly></label>
-        <p class="properties-muted">${escapeHtml(t("quality.property.help"))}</p>
+        <p class="properties-muted type-supporting">${escapeHtml(t("quality.property.help"))}</p>
         <p class="quality-properties-verdict" data-state="${escapeHtml(qualityError ? "review" : qualityPending ? "info" : verdictState)}">${escapeHtml(qualityVerdict)}</p>
         <div class="properties-actions">
           <button type="button" class="primary-action" data-property-action="open-map"${qualityUnavailable ? " disabled" : ""}>${escapeHtml(overlapCount ? t("quality.action.locateFirstOverlap") : t("quality.action.openMap"))}</button>
@@ -626,7 +627,7 @@
     const state = summary.missing ? "review" : "ok";
     return `
       <div class="properties-form" data-property-kind="translation">
-        <p class="properties-muted">${escapeHtml(t("properties.translation.help"))}</p>
+        <p class="properties-muted type-supporting">${escapeHtml(t("properties.translation.help"))}</p>
         <div class="properties-metric-list">
           ${metricItem(t("properties.translation.complete"), `${summary.complete} / ${summary.total}`, state, t("properties.translation.completeHelp"))}
           ${metricItem(t("properties.translation.missing"), String(summary.missing), state, t("properties.translation.missingHelp"))}
@@ -642,7 +643,7 @@
   function renderCategoryPropertyControls(options) {
     const { category, markerShapes = [], colourPresets = [], escapeHtml, iconSvg, markerShapeIcon, backLabel = "" } = options || {};
     const t = translator(options);
-    if (!category) return `<p class="properties-muted">${escapeHtml(t("properties.category.empty"))}</p>`;
+    if (!category) return `<p class="properties-muted type-supporting">${escapeHtml(t("properties.category.empty"))}</p>`;
     const customIcon = category.customIcon || null;
     const customIconName = customIcon && customIcon.name && customIcon.name !== "custom-marker"
       ? customIcon.name
@@ -667,11 +668,11 @@
           ${typeof iconSvg === "function" ? iconSvg("chevron-left", "button-icon") : ""}
           <span>${escapeHtml(backLabel || t("properties.category.backToDocument"))}</span>
         </button>
-        <h3>${escapeHtml(t("properties.category.legendLabel"))}</h3>
+        <h3 class="type-eyebrow">${escapeHtml(t("properties.category.legendLabel"))}</h3>
         <label>${propertyFieldLabel(options, t("properties.category.english"))}<input data-category-field="label" type="text" value="${escapeHtml(category.label)}"></label>
         <label>${propertyFieldLabel(options, t("properties.category.french"))}<input data-category-field="labelFr" type="text" value="${escapeHtml(category.labelFr || "")}"></label>
-        <p class="properties-muted properties-dot-note">${escapeHtml(t("properties.category.languageNote"))}</p>
-        <h3>${escapeHtml(t("properties.category.markerShape"))}</h3>
+        <p class="properties-muted properties-dot-note type-supporting">${escapeHtml(t("properties.category.languageNote"))}</p>
+        <h3 class="type-eyebrow">${escapeHtml(t("properties.category.markerShape"))}</h3>
         <div class="category-shape-grid">${shapeOptions}</div>
         ${colourPresetOptions ? `<label>${propertyFieldLabel(options, t("properties.category.colourPreset"))}<select data-category-colour-preset>${colourPresetOptions}</select></label>` : ""}
         <label>${propertyFieldLabel(options, t("properties.category.markerColour"))}<input data-category-field="colour" type="color" value="${escapeHtml(category.colour)}"></label>
@@ -692,7 +693,7 @@
           </div>
           <span class="custom-icon-note">${escapeHtml(t("properties.category.iconNote"))}</span>
         </div>
-        <h3>${escapeHtml(t("properties.category.size"))}</h3>
+        <h3 class="type-eyebrow">${escapeHtml(t("properties.category.size"))}</h3>
         <div class="category-size-controls">
           ${renderMarkerSizeEditor(options, {
             scope: "category",
@@ -722,24 +723,24 @@
     const statusSelect = statusOptions.map(option => `<option value="${escapeHtml(option.value)}"${option.value === region.status ? " selected" : ""}>${escapeHtml(option.label)}</option>`).join("");
     return `
       <div class="properties-form" data-property-kind="region" data-region-id="${escapeHtml(region.id)}">
-        <h3>${escapeHtml(t("properties.region.inclusion"))}</h3>
+        <h3 class="type-eyebrow">${escapeHtml(t("properties.region.inclusion"))}</h3>
         <label class="toolbar-check region-property-switch">
           <span>
             <strong>${escapeHtml(t("properties.region.includeInMap"))}</strong>
-            <small>${escapeHtml(t("properties.region.pointsFallHere", { count: region.count, points: pointLabel }))}</small>
+            <small class="type-caption">${escapeHtml(t("properties.region.pointsFallHere", { count: region.count, points: pointLabel }))}</small>
             ${propertyOriginIcon(options, "edit")}
           </span>
           <input type="checkbox" data-region-property="included"${region.included ? " checked" : ""}>
         </label>
-        <h3>${escapeHtml(t("properties.region.status"))}</h3>
+        <h3 class="type-eyebrow">${escapeHtml(t("properties.region.status"))}</h3>
         <label>${propertyFieldLabel(options, t("properties.region.status"))}<select data-region-property="status">${statusSelect}</select></label>
-        <h3>${escapeHtml(t("properties.region.colour"))}</h3>
+        <h3 class="type-eyebrow">${escapeHtml(t("properties.region.colour"))}</h3>
         <div class="properties-inline-grid">
           <label>${propertyFieldLabel(options, t("properties.region.order"))}<input type="number" step="any" data-region-property="value" value="${escapeHtml(region.value === "" ? "" : String(region.value))}"></label>
           <label>${propertyFieldLabel(options, t("properties.region.preset"), "auto")}<input type="text" value="${escapeHtml(presetLabel)}" readonly></label>
         </div>
         <label>${propertyFieldLabel(options, t("properties.region.fillColour"))}<input data-region-property="colour" type="color" value="${escapeHtml(region.colour)}"></label>
-        <p class="properties-muted">${escapeHtml(t("properties.region.valueColour", { valueSource: region.valueSourceLabel, colourSource: region.colourSourceLabel }))}</p>
+        <p class="properties-muted type-supporting">${escapeHtml(t("properties.region.valueColour", { valueSource: region.valueSourceLabel, colourSource: region.colourSourceLabel }))}</p>
       </div>
     `;
   }

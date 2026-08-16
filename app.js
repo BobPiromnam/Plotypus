@@ -533,6 +533,8 @@
   };
   let renderOutputMode = "web";
   let canvasViewZoom = defaultCanvasViewZoom;
+  let appliedCanvasViewZoom = defaultCanvasViewZoom;
+  let canvasResizeFrame = 0;
   let mapScaleControlsVisible = false;
   let draggedCategoryId = null;
   let activeCategoryDropEditor = null;
@@ -767,14 +769,14 @@
 
   function performanceMetric(label, sample, budgetMs) {
     if (!sample) {
-      return `<div class="performance-metric" data-state="neutral"><span>${escapeHtml(label)}</span><strong>${escapeHtml(t("performance.notRun"))}</strong><small>${escapeHtml(t("performance.budget", { value: Math.round(budgetMs) }))}</small></div>`;
+      return `<div class="performance-metric" data-state="neutral"><span class="type-caption">${escapeHtml(label)}</span><strong class="type-data">${escapeHtml(t("performance.notRun"))}</strong><small class="type-caption">${escapeHtml(t("performance.budget", { value: Math.round(budgetMs) }))}</small></div>`;
     }
     const queuedPrefix = sample.queueMs ? t("performance.renderQueued", { render: Math.round(sample.durationMs), queued: Math.round(sample.queueMs) }) : "";
     return `
       <div class="performance-metric" data-state="${sample.overBudget ? "warning" : "ok"}">
-        <span>${escapeHtml(label)}</span>
-        <strong>${Math.round(sample.totalMs)} ms</strong>
-        <small>${escapeHtml(queuedPrefix)}${escapeHtml(t("performance.budget", { value: Math.round(sample.budgetMs) }))}</small>
+        <span class="type-caption">${escapeHtml(label)}</span>
+        <strong class="type-data">${Math.round(sample.totalMs)} ms</strong>
+        <small class="type-caption">${escapeHtml(queuedPrefix)}${escapeHtml(t("performance.budget", { value: Math.round(sample.budgetMs) }))}</small>
       </div>`;
   }
 
@@ -788,8 +790,8 @@
       ${performanceMetric(t("performance.latestRender"), snapshot.latestByKind.render, renderPerformanceBudgets.renderMs)}
       ${performanceMetric(t("performance.latestAutoPlace"), snapshot.latestByKind.autoPlace, renderPerformanceBudgets.autoPlaceMs)}
       ${performanceMetric(t("performance.latestExportRender"), snapshot.latestByKind.export, renderPerformanceBudgets.exportMs)}
-      <div class="performance-metric" data-state="${p95State}"><span>${escapeHtml(t("performance.rollingP95"))}</span><strong>${escapeHtml(p95Value)}</strong><small>${escapeHtml(t("performance.samples", { count: snapshot.samples.length, total: renderPerformanceBudgets.sampleWindow }))}</small></div>
-      <div class="performance-metric" data-state="${snapshot.overBudgetCount ? "warning" : snapshot.samples.length ? "ok" : "neutral"}"><span>${escapeHtml(t("performance.budgetWarnings"))}</span><strong>${snapshot.overBudgetCount}</strong><small>${escapeHtml(t("performance.currentWindow"))}</small></div>`;
+      <div class="performance-metric" data-state="${p95State}"><span class="type-caption">${escapeHtml(t("performance.rollingP95"))}</span><strong class="type-data">${escapeHtml(p95Value)}</strong><small class="type-caption">${escapeHtml(t("performance.samples", { count: snapshot.samples.length, total: renderPerformanceBudgets.sampleWindow }))}</small></div>
+      <div class="performance-metric" data-state="${snapshot.overBudgetCount ? "warning" : snapshot.samples.length ? "ok" : "neutral"}"><span class="type-caption">${escapeHtml(t("performance.budgetWarnings"))}</span><strong class="type-data">${snapshot.overBudgetCount}</strong><small class="type-caption">${escapeHtml(t("performance.currentWindow"))}</small></div>`;
     els.performanceTelemetryStatus.textContent = snapshot.overBudgetCount ? t("performance.overBudget", { count: snapshot.overBudgetCount }) : snapshot.samples.length ? t("performance.withinBudgets") : t("quality.performance.none");
     els.performanceTelemetryStatus.dataset.state = snapshot.overBudgetCount ? "warning" : snapshot.samples.length ? "ok" : "neutral";
   }
@@ -1684,8 +1686,8 @@
         <button class="legend-item-select" type="button" data-property-action="edit-legend-item" data-category-id="${escapeHtml(category.id)}" aria-controls="categoryPropertiesEditor" aria-expanded="${String(isSelected)}"${isSelected ? " aria-current=\"true\"" : ""} aria-label="${escapeHtml(t("properties.category.editAria", { label: categoryUiLabel }))}">
           <span class="category-swatch" data-legend-preview aria-hidden="true">${getCategorySwatchSvg(category)}</span>
           <span class="legend-item-copy">
-            <strong data-legend-name>${escapeHtml(categoryUiLabel)}</strong>
-            <small data-legend-count data-count="${categoryCounts[category.id] || 0}">${categoryCounts[category.id] || 0} ${escapeHtml((categoryCounts[category.id] || 0) === 1 ? t("properties.category.point") : t("properties.category.points"))} · ${escapeHtml(category.customIcon ? t("properties.category.customIcon") : getMarkerShapeLabel(category.shape))}</small>
+            <strong class="type-control-label" data-legend-name>${escapeHtml(categoryUiLabel)}</strong>
+            <small class="type-caption" data-legend-count data-count="${categoryCounts[category.id] || 0}">${categoryCounts[category.id] || 0} ${escapeHtml((categoryCounts[category.id] || 0) === 1 ? t("properties.category.point") : t("properties.category.points"))} · ${escapeHtml(category.customIcon ? t("properties.category.customIcon") : getMarkerShapeLabel(category.shape))}</small>
           </span>
           <span class="legend-item-chevron" aria-hidden="true">›</span>
         </button>
@@ -3832,7 +3834,7 @@
         : group.entries;
       return `
         <section class="translation-group" data-translation-group="${escapeHtml(group.group)}">
-          <h3>${escapeHtml(group.label)}</h3>
+          <h3 class="type-summary-heading">${escapeHtml(group.label)}</h3>
           ${visibleEntries.length ? `
             ${visibleEntries.map((entry, entryIndex) => {
               const status = getTranslationStatus(entry);
@@ -3840,13 +3842,19 @@
               return `
                 <div class="translation-row${status.state === "done" ? "" : " is-missing"}${status.state === "missing-en" ? " is-missing-en" : ""}${status.state === "missing-fr" ? " is-missing-fr" : ""}${entry.id === activeTranslationEntryId ? " is-active" : ""}" data-entry-id="${escapeHtml(entry.id)}" data-translation-group="${escapeHtml(group.group)}" tabindex="0">
                   <span class="translation-index" aria-hidden="true">${entryIndex + 1}</span>
-                  <textarea class="translation-input translation-en-input${status.state === "missing-en" ? " is-missing-value" : ""}" rows="1" data-entry-id="${escapeHtml(entry.id)}" data-entry-lang="en" data-edit-language="en" data-translation-group="${escapeHtml(group.group)}" aria-label="${escapeHtml(t("translate.aria.enString", { label: labelBase }))}" placeholder="${escapeHtml(t("translate.placeholder.en"))}">${escapeHtml(entry.ref)}</textarea>
-                  <textarea class="translation-input translation-fr-input${status.state === "missing-fr" ? " is-missing-value" : ""}" rows="1" data-entry-id="${escapeHtml(entry.id)}" data-entry-lang="fr" data-edit-language="fr" data-translation-group="${escapeHtml(group.group)}" aria-label="${escapeHtml(t("translate.aria.frString", { label: labelBase }))}" placeholder="${escapeHtml(t("translate.placeholder.fr"))}">${escapeHtml(entry.fr)}</textarea>
+                  <label class="translation-language-field">
+                    <span class="translation-mobile-language">${escapeHtml(t("translate.column.english"))}</span>
+                    <textarea class="translation-input translation-en-input${status.state === "missing-en" ? " is-missing-value" : ""}" rows="1" data-entry-id="${escapeHtml(entry.id)}" data-entry-lang="en" data-edit-language="en" data-translation-group="${escapeHtml(group.group)}" aria-label="${escapeHtml(t("translate.aria.enString", { label: labelBase }))}" placeholder="${escapeHtml(t("translate.placeholder.en"))}">${escapeHtml(entry.ref)}</textarea>
+                  </label>
+                  <label class="translation-language-field">
+                    <span class="translation-mobile-language">${escapeHtml(t("translate.column.french"))}</span>
+                    <textarea class="translation-input translation-fr-input${status.state === "missing-fr" ? " is-missing-value" : ""}" rows="1" data-entry-id="${escapeHtml(entry.id)}" data-entry-lang="fr" data-edit-language="fr" data-translation-group="${escapeHtml(group.group)}" aria-label="${escapeHtml(t("translate.aria.frString", { label: labelBase }))}" placeholder="${escapeHtml(t("translate.placeholder.fr"))}">${escapeHtml(entry.fr)}</textarea>
+                  </label>
                   <span class="translation-status" data-state="${escapeHtml(status.state)}">${escapeHtml(status.label)}</span>
                 </div>
               `;
             }).join("")}
-          ` : `<p class="translation-empty">${escapeHtml(t("translate.empty"))}</p>`}
+          ` : `<p class="translation-empty type-supporting">${escapeHtml(t("translate.empty"))}</p>`}
         </section>
       `;
     }).join("");
@@ -4532,12 +4540,43 @@
     return `${Math.round(normalizeCanvasViewZoom(value))}%`;
   }
 
+  function getFittedCanvasViewZoom(size = getImageSizePreset(), requestedValue = canvasViewZoom) {
+    const requestedZoom = normalizeCanvasViewZoom(requestedValue);
+    if (!size || !els.mapHost || !els.mapHost.clientWidth) return requestedZoom;
+    const width = Number(size.width);
+    if (!Number.isFinite(width) || width <= 0) return requestedZoom;
+
+    const book = getBookSizePreset();
+    const documentPage = book.documentPage || (
+      els.bookSizeInput.value === "compact"
+        ? { widthIn: 6.5, heightIn: 9.75, marginIn: 0.75 }
+        : { widthIn: 8.5, heightIn: 11, marginIn: 1 }
+    );
+    const pageWidthIn = Math.max(1, Number(documentPage.widthIn) || 8.5);
+    const marginIn = Math.max(0, Math.min(Number(documentPage.marginIn) || 0, pageWidthIn / 2 - 0.1));
+    const contentWidthIn = Math.max(0.2, pageWidthIn - marginIn * 2);
+    const pageWidthAt100 = pageWidthIn * (width / contentWidthIn);
+    const hostStyle = window.getComputedStyle(els.mapHost);
+    const availableWidth = Math.max(0,
+      els.mapHost.clientWidth
+      - (parseFloat(hostStyle.paddingLeft) || 0)
+      - (parseFloat(hostStyle.paddingRight) || 0)
+    );
+    if (!availableWidth || pageWidthAt100 <= 0) return requestedZoom;
+
+    const fittingZoom = canvasViewZoomLevels
+      .filter(level => pageWidthAt100 * level / 100 <= availableWidth)
+      .pop() || canvasViewZoomLevels[0];
+    return Math.min(requestedZoom, fittingZoom);
+  }
+
   function applyCanvasViewZoomDimensions(size = getImageSizePreset()) {
     if (!size) return;
     const width = Number(size.width);
     const height = Number(size.height);
     if (!Number.isFinite(width) || !Number.isFinite(height)) return;
-    const scale = normalizeCanvasViewZoom(canvasViewZoom) / 100;
+    appliedCanvasViewZoom = getFittedCanvasViewZoom(size);
+    const scale = appliedCanvasViewZoom / 100;
     const displayWidth = Math.round(width * scale);
     const displayHeight = Math.round(height * scale);
     const book = getBookSizePreset();
@@ -4578,26 +4617,29 @@
       els.documentPagePreview.style.setProperty("--document-canvas-bleed", `${documentCanvasBleed}px`);
       els.documentPagePreview.dataset.bleedIn = "0.125";
     }
-    if (els.mapHost) els.mapHost.dataset.canvasZoom = String(Math.round(normalizeCanvasViewZoom(canvasViewZoom)));
+    if (els.mapHost) els.mapHost.dataset.canvasZoom = String(Math.round(appliedCanvasViewZoom));
   }
 
   function updateCanvasToolbar() {
     canvasViewZoom = normalizeCanvasViewZoom(canvasViewZoom);
-    const zoomText = t("canvas.zoomReadout", { value: formatCanvasViewZoom() });
+    applyCanvasViewZoomDimensions();
+    const zoomText = t("canvas.zoomReadout", { value: formatCanvasViewZoom(appliedCanvasViewZoom) });
     if (els.canvasZoomReadout) {
       els.canvasZoomReadout.value = zoomText;
       els.canvasZoomReadout.textContent = zoomText;
     }
-    if (els.canvasZoomOutBtn) els.canvasZoomOutBtn.disabled = canvasViewZoom <= canvasViewZoomLevels[0];
-    if (els.canvasZoomInBtn) els.canvasZoomInBtn.disabled = canvasViewZoom >= canvasViewZoomLevels[canvasViewZoomLevels.length - 1];
-    applyCanvasViewZoomDimensions();
+    if (els.canvasZoomOutBtn) els.canvasZoomOutBtn.disabled = appliedCanvasViewZoom <= canvasViewZoomLevels[0];
+    if (els.canvasZoomInBtn) {
+      const nextZoom = canvasViewZoomLevels.find(level => level > appliedCanvasViewZoom);
+      els.canvasZoomInBtn.disabled = nextZoom === undefined || nextZoom > getFittedCanvasViewZoom(getImageSizePreset(), nextZoom);
+    }
     if (els.canvasToolbar) {
       els.canvasToolbar.hidden = false;
     }
   }
 
   function adjustCanvasZoom(direction) {
-    const current = normalizeCanvasViewZoom(canvasViewZoom);
+    const current = normalizeCanvasViewZoom(appliedCanvasViewZoom);
     const next = direction < 0
       ? canvasViewZoomLevels.slice().reverse().find(level => level < current)
       : canvasViewZoomLevels.find(level => level > current);
@@ -7636,8 +7678,8 @@
       <div class="import-preview">
         <div class="import-preview-heading">
           <div>
-            <strong>${escapeHtml(t("dialog.csv.previewTitle"))}</strong>
-            <span>${escapeHtml(report.fileName || t("dialog.csv.selectedCsv"))}</span>
+            <strong class="type-card-title">${escapeHtml(t("dialog.csv.previewTitle"))}</strong>
+            <span class="type-caption">${escapeHtml(report.fileName || t("dialog.csv.selectedCsv"))}</span>
           </div>
           <div class="status-actions">
             <button type="button" data-status-action="confirm-csv-import"${importDisabled}>${escapeHtml(t("dialog.csv.importRowsShort"))}</button>
@@ -7645,12 +7687,12 @@
           </div>
         </div>
         <div class="csv-preview-metrics">
-          <div><strong>${rows.length}</strong><span>${escapeHtml(t("summary.rows"))}</span></div>
-          <div><strong>${summary.mappedCount}</strong><span>${escapeHtml(t("summary.mapped"))}</span></div>
-          <div><strong>${summary.calloutCount}</strong><span>${escapeHtml(t("properties.metric.callouts"))}</span></div>
-          <div><strong>${summary.missingCoordinateCount}</strong><span>${escapeHtml(t("properties.metric.coordinateIssues"))}</span></div>
+          <div><strong class="type-data">${rows.length}</strong><span class="type-caption">${escapeHtml(t("summary.rows"))}</span></div>
+          <div><strong class="type-data">${summary.mappedCount}</strong><span class="type-caption">${escapeHtml(t("summary.mapped"))}</span></div>
+          <div><strong class="type-data">${summary.calloutCount}</strong><span class="type-caption">${escapeHtml(t("properties.metric.callouts"))}</span></div>
+          <div><strong class="type-data">${summary.missingCoordinateCount}</strong><span class="type-caption">${escapeHtml(t("properties.metric.coordinateIssues"))}</span></div>
         </div>
-        <div class="csv-preview-meta">
+        <div class="csv-preview-meta type-caption">
           <span><strong>${escapeHtml(t("dialog.csv.columns"))}</strong> ${escapeHtml(columns)}</span>
           <span><strong>${escapeHtml(t("dialog.csv.categories"))}</strong> ${escapeHtml(summary.categoryNames.join(", ") || t("dialog.csv.none"))}</span>
         </div>
@@ -11152,6 +11194,7 @@
       return;
     }
     if (event.key !== "?" || isTypingShortcutTarget(event.target)) return;
+    if (getOpenDialogElement()) return;
     event.preventDefault();
     if (els.shortcutsOverlay && !els.shortcutsOverlay.hidden) closeShortcutsOverlay();
     else openShortcutsOverlay();
@@ -13465,6 +13508,11 @@
     on(window, "resize", () => {
       getProjectToolbarMenus().forEach(({ button, menu }) => {
         if (!menu.hidden) positionProjectToolbarMenu(button, menu);
+      });
+      if (canvasResizeFrame) window.cancelAnimationFrame(canvasResizeFrame);
+      canvasResizeFrame = window.requestAnimationFrame(() => {
+        canvasResizeFrame = 0;
+        updateCanvasToolbar();
       });
     });
     document.querySelectorAll("[data-authoring-language]").forEach(button => {

@@ -9,7 +9,7 @@
   <link rel="preload" href="assets/fonts/lato/lato-4.woff2" as="font" type="font/woff2" />
   <link rel="stylesheet" href="assets/fonts/lato/lato.css?v=20260612-file-fonts" />
   <link rel="stylesheet" href="assets/fonts/ibm-plex-mono/ibm-plex-mono.css?v=20260622-offline-fonts" />
-  <link rel="stylesheet" href="style.css?v=20260815-baselayer-workspace" />
+  <link rel="stylesheet" href="style.css?v=20260815-layout-audit-v6" />
   <link id="themeStylesheet" rel="stylesheet" href="themes/goc-green.css?v=20260612-map-only" />
 </head>
 <body data-properties-side="right">
@@ -18,8 +18,8 @@
       <div class="app-brand" aria-label="Application identity" data-i18n-aria-label="aria.applicationIdentity">
         <img class="app-logo" src="assets/plotypus-pin.png" alt="" aria-hidden="true" width="32" height="32" />
         <div>
-          <h1>Plotypus</h1>
-          <p data-i18n="app.strapline">CSV &rarr; STATIC MAP</p>
+          <h1 class="type-dialog-title">Plotypus</h1>
+          <p class="type-eyebrow" data-i18n="app.strapline">CSV &rarr; STATIC MAP</p>
         </div>
       </div>
       <div class="ribbon-group command-compact" aria-label="Project file actions" data-i18n-aria-label="aria.projectFileActions">
@@ -72,21 +72,21 @@
           <div id="applicationSettingsMenu" class="application-settings-menu" role="dialog" aria-labelledby="applicationSettingsTitle" aria-describedby="applicationSettingsDescription" hidden>
             <header class="application-settings-header">
               <div>
-                <h2 id="applicationSettingsTitle" data-i18n="settings.application.title">Application settings</h2>
-                <p id="applicationSettingsDescription" data-i18n="settings.application.description">Preferences for Plotypus on this browser.</p>
+                <h2 id="applicationSettingsTitle" class="type-panel-title" data-i18n="settings.application.title">Application settings</h2>
+                <p id="applicationSettingsDescription" class="type-supporting" data-i18n="settings.application.description">Preferences for Plotypus on this browser.</p>
               </div>
               <button id="applicationSettingsCloseBtn" class="icon-button application-settings-close" type="button" data-icon="x" aria-label="Close application settings" data-i18n-aria-label="settings.application.close"></button>
             </header>
             <section class="application-settings-section" aria-labelledby="applicationLanguageLabel">
-              <h3 id="applicationLanguageLabel" data-i18n="settings.application.language">Application language</h3>
+              <h3 id="applicationLanguageLabel" class="type-summary-heading" data-i18n="settings.application.language">Application language</h3>
               <div class="application-language-toggle" role="group" aria-labelledby="applicationLanguageLabel">
                 <button type="button" class="is-active" data-ui-language="en" aria-pressed="true" lang="en" data-i18n="language.en">EN</button>
                 <button type="button" data-ui-language="fr" aria-pressed="false" lang="fr" data-i18n="language.fr">FR</button>
               </div>
-              <p data-i18n="settings.application.language.hint">Changes the Plotypus interface. Choose the map-output language separately on the Map tab.</p>
+              <p class="type-supporting" data-i18n="settings.application.language.hint">Changes the Plotypus interface. Choose the map-output language separately on the Map tab.</p>
             </section>
             <section class="application-settings-section" aria-labelledby="propertiesPositionLabel">
-              <h3 id="propertiesPositionLabel" data-i18n="settings.propertiesPosition">Properties panel position</h3>
+              <h3 id="propertiesPositionLabel" class="type-summary-heading" data-i18n="settings.propertiesPosition">Properties panel position</h3>
               <div class="properties-position-options" role="radiogroup" aria-labelledby="propertiesPositionLabel">
                 <label>
                   <input type="radio" name="propertiesPanelSide" value="left" data-properties-side-input />
@@ -97,10 +97,10 @@
                   <span data-i18n="settings.position.right">Right</span>
                 </label>
               </div>
-              <p data-i18n="settings.propertiesPosition.hint">This preference is saved in this browser.</p>
+              <p class="type-supporting" data-i18n="settings.propertiesPosition.hint">This preference is saved in this browser.</p>
             </section>
             <section class="application-settings-section application-settings-city-data" aria-labelledby="cityDataAttributionLabel">
-              <h3 id="cityDataAttributionLabel" data-i18n="settings.cityData.title">Offline city data</h3>
+              <h3 id="cityDataAttributionLabel" class="type-summary-heading" data-i18n="settings.cityData.title">Offline city data</h3>
               <div class="application-settings-citation" role="note" aria-labelledby="cityDataSourcesLabel">
                 <span id="cityDataSourcesLabel" class="application-settings-citation-label" data-i18n="settings.cityData.sourcesLabel">Data sources</span>
                 <dl class="application-settings-citation-list">
@@ -179,9 +179,9 @@
       <div class="table-panel">
         <header class="workspace-intro project-workspace-intro">
           <div class="workspace-intro-copy">
-            <span class="workspace-eyebrow" data-i18n="project.intro.eyebrow">Source data</span>
-            <h2 data-i18n="project.intro.title">Project points</h2>
-            <p data-i18n="project.intro.body">Add or import projects, then edit the data used for markers and labels.</p>
+            <span class="workspace-eyebrow type-eyebrow" data-i18n="project.intro.eyebrow">Source data</span>
+            <h2 class="type-page-title" data-i18n="project.intro.title">Project points</h2>
+            <p class="type-supporting" data-i18n="project.intro.body">Add or import projects, then edit the data used for markers and labels.</p>
           </div>
         </header>
         <div class="table-toolbar workspace-rail">
@@ -283,9 +283,9 @@
         <div id="regionTablePane" class="table-pane region-management-panel" role="tabpanel" aria-labelledby="regionTableTab" data-workspace="regions">
           <header class="workspace-intro">
             <div class="workspace-intro-copy">
-              <span class="workspace-eyebrow" data-i18n="region.intro.eyebrow">Geographic coverage</span>
-              <h2 data-i18n="region.intro.title">Map baselayer</h2>
-              <p data-i18n="region.intro.body">Choose the boundary, included regions, visibility, and fills.</p>
+              <span class="workspace-eyebrow type-eyebrow" data-i18n="region.intro.eyebrow">Geographic coverage</span>
+              <h2 class="type-page-title" data-i18n="region.intro.title">Map baselayer</h2>
+              <p class="type-supporting" data-i18n="region.intro.body">Choose the boundary, included regions, visibility, and fills.</p>
             </div>
           </header>
           <div class="region-management-controls workspace-rail">
@@ -357,9 +357,9 @@
           <div class="translate-workbench">
             <header class="workspace-intro">
               <div class="workspace-intro-copy">
-                <span class="workspace-eyebrow" data-i18n="translate.intro.eyebrow">Bilingual content</span>
-                <h2 data-i18n="translate.intro.title">Translate</h2>
-                <p data-i18n="translate.intro.body">Review bilingual content or import completed translations.</p>
+                <span class="workspace-eyebrow type-eyebrow" data-i18n="translate.intro.eyebrow">Bilingual content</span>
+                <h2 class="type-page-title" data-i18n="translate.intro.title">Translate</h2>
+                <p class="type-supporting" data-i18n="translate.intro.body">Review bilingual content or import completed translations.</p>
               </div>
             </header>
             <div class="translate-header workspace-rail">
@@ -392,9 +392,9 @@
         <div id="previewTablePane" class="table-pane preview-table-pane is-active" role="tabpanel" aria-labelledby="previewTableTab" data-workspace="preview">
           <header class="workspace-intro">
             <div class="workspace-intro-copy">
-              <span class="workspace-eyebrow" data-i18n="preview.intro.eyebrow">Map preview</span>
-              <h2 data-i18n="preview.intro.title">Map</h2>
-              <p data-i18n="preview.intro.body">Preview, arrange, and select map elements for contextual editing.</p>
+                <span class="workspace-eyebrow type-eyebrow" data-i18n="preview.intro.eyebrow">Map preview</span>
+                <h2 class="type-page-title" data-i18n="preview.intro.title">Map</h2>
+                <p class="type-supporting" data-i18n="preview.intro.body">Preview, arrange, and select map elements for contextual editing.</p>
             </div>
             <div class="workspace-intro-actions">
               <div class="map-tab-language-control" role="group" aria-label="Map language" data-i18n-aria-label="aria.mapLanguage">
@@ -498,9 +498,9 @@
           <div class="quality-review">
             <header class="workspace-intro">
               <div class="workspace-intro-copy">
-                <span class="workspace-eyebrow" data-i18n="quality.intro.eyebrow">Export readiness</span>
-                <h2 data-i18n="quality.intro.title">Map quality</h2>
-                <p data-i18n="quality.intro.body">Resolve layout, translation, and metadata issues before export.</p>
+                <span class="workspace-eyebrow type-eyebrow" data-i18n="quality.intro.eyebrow">Export readiness</span>
+                <h2 class="type-page-title" data-i18n="quality.intro.title">Map quality</h2>
+                <p class="type-supporting" data-i18n="quality.intro.body">Resolve layout, translation, and metadata issues before export.</p>
               </div>
             </header>
             <div class="quality-workspace-content">
@@ -509,8 +509,8 @@
               <section class="performance-telemetry" aria-labelledby="performanceTelemetryTitle" hidden>
                 <header>
                   <div>
-                    <span class="workspace-eyebrow" data-i18n="quality.performance.runtime">Runtime</span>
-                    <h3 id="performanceTelemetryTitle" data-i18n="quality.performance.title">Render performance</h3>
+                    <span class="workspace-eyebrow type-eyebrow" data-i18n="quality.performance.runtime">Runtime</span>
+                    <h3 id="performanceTelemetryTitle" class="type-summary-heading" data-i18n="quality.performance.title">Render performance</h3>
                   </div>
                   <span id="performanceTelemetryStatus" class="performance-telemetry-status" data-state="neutral" data-i18n="quality.performance.none">No timings yet</span>
                 </header>
@@ -530,22 +530,22 @@
       <div id="propertiesResizeHandle" class="properties-resize-handle" role="separator" aria-orientation="vertical" aria-label="Resize Properties panel" data-i18n-aria-label="aria.resizeProperties" aria-valuemin="280" aria-valuemax="460" aria-valuenow="320" tabindex="0"></div>
       <div class="properties-card">
         <div class="properties-panel-top">
-          <span class="properties-eyebrow" data-i18n="aria.properties">Properties</span>
+          <span class="properties-eyebrow type-eyebrow" data-i18n="aria.properties">Properties</span>
           <button id="propertiesCollapseBtn" class="properties-collapse-button" type="button" aria-label="Collapse Properties panel" data-i18n-aria-label="aria.collapseProperties" aria-expanded="true" aria-controls="propertiesPanel">
             <span class="properties-collapse-glyph" aria-hidden="true">›</span>
           </button>
         </div>
         <div class="properties-heading">
           <span id="propertiesIcon" class="properties-entity-icon" aria-hidden="true"></span>
-          <h2 id="propertiesTitle" data-i18n="properties.title.document">Document</h2>
-          <p id="propertiesSubtitle" data-i18n="properties.subtitle.document">Map display &amp; interaction</p>
-          <p id="propertiesDescription" class="properties-description" data-i18n="properties.hint.document">Click the map, a label, legend, or callout for object-specific controls.</p>
+          <h2 id="propertiesTitle" class="type-panel-title" data-i18n="properties.title.document">Document</h2>
+          <p id="propertiesSubtitle" class="type-supporting" data-i18n="properties.subtitle.document">Map display &amp; interaction</p>
+          <p id="propertiesDescription" class="properties-description type-supporting" data-i18n="properties.hint.document">Click the map, a label, legend, or callout for object-specific controls.</p>
         </div>
         <details id="legendPropertiesSection" class="properties-section properties-accordion legend-properties-section" data-props-context="preview-legend" data-property-section="legend" data-properties-accordion="legend" open>
-          <summary><span id="legendPropertiesTitle" data-i18n="settings.legend">Legend</span></summary>
+          <summary class="type-summary-heading"><span id="legendPropertiesTitle" data-i18n="settings.legend">Legend</span></summary>
           <div class="properties-accordion-body">
             <div class="legend-properties-heading">
-              <p data-i18n="categories.intro.body">Define the marker styles used by project points and the exported legend.</p>
+              <p class="type-supporting" data-i18n="categories.intro.body">Define the marker styles used by project points and the exported legend.</p>
               <button id="addCategoryBtn" class="legend-add-button" type="button" data-icon="plus" data-property-action="add-legend-item" data-i18n="categories.action.addShort">Add item</button>
             </div>
             <ul id="categoryList" class="legend-item-list" data-legend-list aria-label="Legend items" data-i18n-aria-label="aria.legendItems"></ul>
@@ -554,7 +554,7 @@
         <div id="propertiesSelectionControls" class="properties-selection-controls"></div>
 
         <details id="previewDisplayPropertiesSection" class="properties-section properties-accordion" data-props-context="preview-display" data-properties-accordion="display">
-          <summary><span data-i18n="properties.section.display">Boxes</span></summary>
+          <summary class="type-summary-heading"><span data-i18n="properties.section.display">Boxes</span></summary>
           <div class="properties-accordion-body properties-control-list" aria-label="Map box settings" data-i18n-aria-label="aria.mapDisplaySettings">
             <label class="toolbar-check">
               <input id="showLegendInput" type="checkbox" checked />
@@ -575,7 +575,7 @@
         </details>
 
         <details id="previewInteractionPropertiesSection" class="properties-section properties-accordion" data-props-context="preview-interaction" data-properties-accordion="interaction">
-          <summary><span data-i18n="properties.section.interaction">Interaction</span></summary>
+          <summary class="type-summary-heading"><span data-i18n="properties.section.interaction">Interaction</span></summary>
           <div class="properties-accordion-body properties-control-list">
             <label class="toolbar-check">
               <input id="lockMarkerCoordinatesInput" type="checkbox" checked />
@@ -602,8 +602,8 @@
           <div class="dialog-title-row">
             <span class="dialog-title-icon" data-icon="map" aria-hidden="true"></span>
             <div>
-              <h2 id="startupTitle" data-i18n="dialog.startup.title">Start a Plotypus map</h2>
-              <p id="startupSubtitle" data-i18n="dialog.startup.subtitle">Pick a starting point. You can change everything later.</p>
+              <h2 id="startupTitle" class="type-display" data-i18n="dialog.startup.title">Start a Plotypus map</h2>
+              <p id="startupSubtitle" class="type-supporting" data-i18n="dialog.startup.subtitle">Pick a starting point. You can change everything later.</p>
             </div>
           </div>
           <button type="button" class="icon-button dialog-close" data-dialog-close="startup" aria-label="Close startup options" data-i18n-aria-label="dialog.startup.close" data-icon="x"></button>
@@ -611,12 +611,12 @@
         <div class="dialog-body startup-dialog-body">
           <div class="startup-choice-groups">
             <section class="startup-choice-section" aria-labelledby="startupNewGroupTitle">
-              <h3 id="startupNewGroupTitle" class="startup-section-label" data-i18n="dialog.startup.newGroupTitle">New map</h3>
+              <h3 id="startupNewGroupTitle" class="startup-section-label type-eyebrow" data-i18n="dialog.startup.newGroupTitle">New map</h3>
               <div class="startup-options">
                 <button id="startupStartNewBtn" type="button" class="startup-option" data-startup-action="new" data-default="true" data-icon="plus" data-dialog-initial-focus>
                   <span class="startup-option-copy">
                     <span class="startup-option-title-row">
-                      <strong data-i18n="dialog.startup.newTitle">Start from scratch</strong>
+                      <strong class="type-card-title" data-i18n="dialog.startup.newTitle">Start from scratch</strong>
                       <span class="startup-default-chip" data-i18n="dialog.startup.default">Default</span>
                     </span>
                     <span class="startup-option-body" data-i18n="dialog.startup.newBody">Choose a baselayer and canvas, then add points.</span>
@@ -624,24 +624,24 @@
                 </button>
                 <button id="startupImportCsvBtn" type="button" class="startup-option" data-startup-action="csv" data-icon="upload">
                   <span class="startup-option-copy">
-                    <strong data-i18n="dialog.startup.csvTitle">Import a data file</strong>
+                    <strong class="type-card-title" data-i18n="dialog.startup.csvTitle">Import a data file</strong>
                     <span class="startup-option-body" data-i18n="dialog.startup.csvBody">CSV, TSV, or text. Map columns and compose labels on import.</span>
                   </span>
                 </button>
               </div>
             </section>
             <section class="startup-choice-section" aria-labelledby="startupExistingGroupTitle">
-              <h3 id="startupExistingGroupTitle" class="startup-section-label" data-i18n="dialog.startup.existingGroupTitle">Open existing</h3>
+              <h3 id="startupExistingGroupTitle" class="startup-section-label type-eyebrow" data-i18n="dialog.startup.existingGroupTitle">Open existing</h3>
               <div class="startup-options">
                 <button id="startupOpenProjectBtn" type="button" class="startup-option" data-startup-action="open" data-icon="folder-open">
                   <span class="startup-option-copy">
-                    <strong data-i18n="dialog.startup.openTitle">Open a saved project</strong>
+                    <strong class="type-card-title" data-i18n="dialog.startup.openTitle">Open a saved project</strong>
                     <span class="startup-option-body" data-i18n="dialog.startup.openBody">Continue from a Plotypus .json file.</span>
                   </span>
                 </button>
                 <button id="startupLoadSampleBtn" type="button" class="startup-option" data-startup-action="sample" data-icon="table">
                   <span class="startup-option-copy">
-                    <strong data-i18n="dialog.startup.sampleTitle">Explore the sample</strong>
+                    <strong class="type-card-title" data-i18n="dialog.startup.sampleTitle">Explore the sample</strong>
                     <span class="startup-option-body" data-i18n="dialog.startup.sampleBody">A finished Canada infrastructure map to learn from.</span>
                   </span>
                 </button>
@@ -660,16 +660,16 @@
           <div class="dialog-title-row">
             <button type="button" class="icon-button startup-back-icon" data-startup-back aria-label="Back to start" data-i18n-aria-label="dialog.startup.setupBack" data-icon="chevron-left"></button>
             <div>
-              <h2 id="startupSetupTitle" data-i18n="dialog.startup.setupTitle">Set up your map</h2>
-              <p id="startupSetupSubtitle" data-i18n="dialog.startup.setupSubtitle">Pick where it is centred and how it prints. You can edit all of this later in Document properties.</p>
+              <h2 id="startupSetupTitle" class="type-dialog-title" data-i18n="dialog.startup.setupTitle">Set up your map</h2>
+              <p id="startupSetupSubtitle" class="type-supporting" data-i18n="dialog.startup.setupSubtitle">Pick where it is centred and how it prints. You can edit all of this later in Document properties.</p>
             </div>
           </div>
           <span class="startup-step-label" data-i18n="dialog.startup.setupStep">Step 2 of 2</span>
         </header>
         <div class="dialog-body startup-setup-body">
           <section class="startup-setup-section startup-baselayer-section" aria-labelledby="startupBaselayerHeading">
-            <h3 id="startupBaselayerHeading" class="startup-section-label" data-i18n="dialog.startup.baselayerHeading">Baselayer</h3>
-            <p class="startup-section-help" data-i18n="dialog.startup.baselayerBody">Choose the boundaries your project points will sit on.</p>
+            <h3 id="startupBaselayerHeading" class="startup-section-label type-eyebrow" data-i18n="dialog.startup.baselayerHeading">Baselayer</h3>
+            <p class="startup-section-help type-supporting" data-i18n="dialog.startup.baselayerBody">Choose the boundaries your project points will sit on.</p>
             <div class="startup-baselayer-grid" role="radiogroup" aria-labelledby="startupBaselayerHeading">
               <button type="button" class="startup-baselayer-option" role="radio" aria-checked="true" data-selected="true" data-startup-baselayer data-boundary="canada" data-region-preset="all">
                 <span class="startup-baselayer-preview" data-baselayer-visual="canada"><svg class="startup-baselayer-map" viewBox="0 0 180 72" preserveAspectRatio="xMidYMid meet" aria-hidden="true"></svg></span>
@@ -707,7 +707,7 @@
 
           <section class="startup-setup-section startup-canvas-section" aria-labelledby="startupCanvasHeading">
             <div>
-              <h3 id="startupCanvasHeading" class="startup-section-label" data-i18n="dialog.startup.canvasHeading">Canvas</h3>
+              <h3 id="startupCanvasHeading" class="startup-section-label type-eyebrow" data-i18n="dialog.startup.canvasHeading">Canvas</h3>
               <div class="startup-setup-fields">
                 <label>
                   <span data-i18n="dialog.startup.mapStyle">Map style</span>
@@ -746,8 +746,8 @@
         <div class="dialog-title-row">
           <span class="dialog-title-icon" data-icon="file-text" aria-hidden="true"></span>
           <div>
-            <h2 id="mapDetailsTitle" data-i18n="dialog.mapDetails.title">Map details</h2>
-            <p data-i18n="dialog.mapDetails.subtitle">Title and text version - English and French - for web and Word</p>
+            <h2 id="mapDetailsTitle" class="type-dialog-title" data-i18n="dialog.mapDetails.title">Map details</h2>
+            <p class="type-supporting" data-i18n="dialog.mapDetails.subtitle">Title and text version - English and French - for web and Word</p>
           </div>
         </div>
         <button type="button" class="icon-button dialog-close" data-dialog-close="map-details" aria-label="Close Map details" data-i18n-aria-label="dialog.mapDetails.close" data-icon="x"></button>
@@ -758,14 +758,14 @@
           <span data-i18n="dialog.mapDetails.noteBody">Map details support bilingual publishing and accessible non-visual alternatives. They are not drawn in SVG or PNG exports.</span>
         </div>
         <section class="dialog-field-group">
-          <h3 data-i18n="dialog.mapDetails.mapTitle">Map title</h3>
+          <h3 class="type-caption" data-i18n="dialog.mapDetails.mapTitle">Map title</h3>
           <div class="bilingual-field-grid">
             <label><span><span class="language-code">EN</span> <span data-i18n="dialog.mapDetails.english">English</span></span><input id="mapTitleEnInput" name="titleEn" type="text" data-dialog-initial-focus /></label>
             <label><span><span class="language-code">FR</span> <span data-i18n="dialog.mapDetails.french">Français</span></span><input id="mapTitleFrInput" name="titleFr" type="text" /></label>
           </div>
         </section>
         <section class="dialog-field-group">
-          <h3 data-i18n="dialog.mapDetails.textVersion">Text version - long description</h3>
+          <h3 class="type-caption" data-i18n="dialog.mapDetails.textVersion">Text version - long description</h3>
           <div class="bilingual-field-grid">
             <label><span><span class="language-code">EN</span> <span data-i18n="dialog.mapDetails.english">English</span></span><textarea id="mapTextEnInput" name="textEn" rows="7"></textarea></label>
             <label><span><span class="language-code">FR</span> <span data-i18n="dialog.mapDetails.french">Français</span></span><textarea id="mapTextFrInput" name="textFr" rows="7"></textarea></label>
@@ -785,7 +785,7 @@
       <header class="dialog-header">
         <div class="dialog-title-row">
           <span class="dialog-title-icon" data-icon="map-pin" aria-hidden="true"></span>
-          <div><h2 id="pointCatalogTitle" data-i18n="dialog.pointCatalog.title">Create points at cities</h2><p data-i18n="dialog.pointCatalog.subtitle">Choose cities to create blank Project-point rows at their precise locations.</p></div>
+          <div><h2 id="pointCatalogTitle" class="type-dialog-title" data-i18n="dialog.pointCatalog.title">Create points at cities</h2><p class="type-supporting" data-i18n="dialog.pointCatalog.subtitle">Choose cities to create blank Project-point rows at their precise locations.</p></div>
         </div>
         <button type="button" class="icon-button dialog-close" data-dialog-close="point-catalog" aria-label="Close point catalog" data-i18n-aria-label="dialog.pointCatalog.close" data-icon="x"></button>
       </header>
@@ -825,8 +825,8 @@
         <div class="dialog-title-row">
           <span class="dialog-title-icon" data-icon="mail" aria-hidden="true"></span>
           <div>
-            <h2 id="feedbackDialogTitle" data-i18n="feedback.title">Send feedback</h2>
-            <p id="feedbackDialogSubtitle" data-i18n="feedback.subtitle">Enter the essentials here, then review and send through GitHub or email.</p>
+            <h2 id="feedbackDialogTitle" class="type-dialog-title" data-i18n="feedback.title">Send feedback</h2>
+            <p id="feedbackDialogSubtitle" class="type-supporting" data-i18n="feedback.subtitle">Enter the essentials here, then review and send through GitHub or email.</p>
           </div>
         </div>
         <button type="button" class="icon-button dialog-close" data-dialog-close="feedback" aria-label="Close feedback" data-i18n-aria-label="feedback.close" data-icon="x"></button>
@@ -886,7 +886,7 @@
       <header class="dialog-header">
         <div class="dialog-title-row">
           <span class="dialog-title-icon" data-icon="table" aria-hidden="true"></span>
-          <div><h2 id="csvMapTitle" data-i18n="dialog.csv.title">Map CSV columns</h2><p id="csvMapFileMeta" data-i18n="dialog.csv.subtitle">Confirm how source columns match Plotypus fields before importing.</p></div>
+          <div><h2 id="csvMapTitle" class="type-dialog-title" data-i18n="dialog.csv.title">Map CSV columns</h2><p id="csvMapFileMeta" class="type-supporting" data-i18n="dialog.csv.subtitle">Confirm how source columns match Plotypus fields before importing.</p></div>
         </div>
         <button type="button" class="icon-button dialog-close" data-dialog-close="csv-map" aria-label="Close CSV mapping" data-i18n-aria-label="dialog.csv.close" data-icon="x"></button>
       </header>
@@ -912,8 +912,8 @@
         <section id="importComposerPanel" class="import-composer-panel" aria-labelledby="importComposerTitle">
           <div class="import-composer-heading">
             <div>
-              <h3 id="importComposerTitle" data-i18n="dialog.csv.composer.title">Format a rich label</h3>
-              <p data-i18n="dialog.csv.composer.body">The mapped project title is always the heading. Add ordered text or bullet elements from any source columns.</p>
+              <h3 id="importComposerTitle" class="type-card-title" data-i18n="dialog.csv.composer.title">Format a rich label</h3>
+              <p class="type-supporting" data-i18n="dialog.csv.composer.body">The mapped project title is always the heading. Add ordered text or bullet elements from any source columns.</p>
             </div>
             <label class="toolbar-check"><input id="csvRichLabelEnabled" type="checkbox"><span data-i18n="dialog.csv.composer.enable">Compose a rich label</span></label>
           </div>
@@ -945,8 +945,8 @@
         <div class="dialog-title-row">
           <span class="dialog-title-icon confirmation-dialog-icon" data-icon="trash" aria-hidden="true"></span>
           <div>
-            <h2 id="confirmationTitle" data-i18n="dialog.confirm.clearTitle">Clear Project points?</h2>
-            <p data-i18n="dialog.confirm.subtitle">This action can be restored with Undo.</p>
+            <h2 id="confirmationTitle" class="type-dialog-title" data-i18n="dialog.confirm.clearTitle">Clear Project points?</h2>
+            <p class="type-supporting" data-i18n="dialog.confirm.subtitle">This action can be restored with Undo.</p>
           </div>
         </div>
         <button type="button" class="icon-button dialog-close" data-confirmation-action="cancel" aria-label="Close confirmation" data-i18n-aria-label="dialog.confirm.close" data-icon="x"></button>
@@ -965,7 +965,7 @@
     <div class="shortcuts-card">
       <div class="shortcuts-heading">
         <span data-i18n="keyboard.eyebrow">Keyboard</span>
-        <h2 id="shortcutsTitle" data-i18n="keyboard.title">Shortcuts</h2>
+        <h2 id="shortcutsTitle" class="type-dialog-title" data-i18n="keyboard.title">Shortcuts</h2>
       </div>
       <dl class="shortcuts-list">
         <div><dt data-i18n="keyboard.toggle">?</dt><dd data-i18n="keyboard.toggleHelp">Show or hide this shortcut list</dd></div>
@@ -989,13 +989,13 @@
   <script src="project-io.js?v=20260727-status-visibility"></script>
   <script src="region-matching.js?v=20260712-location-mode"></script>
   <script src="workspace.js?v=20260723-off-canvas-points"></script>
-  <script src="properties.js?v=20260815-baselayer-workspace"></script>
+  <script src="properties.js?v=20260815-layout-audit-v6"></script>
   <script src="i18n.js?v=20260815-city-data-citation"></script>
   <script src="feedback.js?v=20260812-send-feedback"></script>
   <script src="data/cities.js?v=20260812-reference-cities"></script>
   <script src="src/lib/city-search-runtime.js?v=20260812-reference-cities"></script>
-  <script src="reference-cities.js?v=20260812-reference-cities"></script>
+  <script src="reference-cities.js?v=20260815-typography-system-v5"></script>
   <script src="city-integration.js?v=20260812-city-integration"></script>
-  <script src="app.js?v=20260815-baselayer-workspace"></script>
+  <script src="app.js?v=20260815-layout-audit-v6"></script>
 </body>
 </html>
