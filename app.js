@@ -44,6 +44,13 @@
     return;
   }
 
+  if (!window.PLOTYPUS_MARKER_COLOUR) {
+    const message = startupT("startup.error.module", { module: "marker-colour.js" });
+    const statusBox = document.querySelector("#statusBox");
+    if (statusBox) statusBox.innerHTML = `<div class="status-danger">${message}</div>`;
+    return;
+  }
+
   if (!window.PLOTYPUS_LABEL_LAYOUT) {
     const message = startupT("startup.error.module", { module: "label-layout.js" });
     const statusBox = document.querySelector("#statusBox");
@@ -98,6 +105,7 @@
     segmentIntersectsRect,
     segmentsCross
   } = window.PLOTYPUS_GEOMETRY;
+  const markerColour = window.PLOTYPUS_MARKER_COLOUR;
   const projectIo = window.PLOTYPUS_PROJECT_IO;
   const workspace = window.PLOTYPUS_WORKSPACE;
   const regionMatching = window.PLOTYPUS_REGION_MATCHING;
@@ -294,6 +302,7 @@
     if (!category.defaultLabel) category.defaultLabel = category.label;
     category.customIcon = normalizeCustomMarkerIcon(category.customIcon);
   });
+  const categoryIconValidationErrors = new Map();
 
   const els = {
     tableBody: document.querySelector("#projectTable tbody"),
@@ -1573,14 +1582,52 @@
     if (width < customMarkerIconRules.minDimension || height < customMarkerIconRules.minDimension) return null;
     if (width > customMarkerIconRules.maxDimension || height > customMarkerIconRules.maxDimension) return null;
     if (!Number.isFinite(size) || size < 1 || size > customMarkerIconRules.maxBytes) return null;
+    const leaderColour = normalizeHexColour(icon.leaderColour, "");
     return {
       dataUrl,
       mimeType,
       name: String(icon.name || "").slice(0, 120),
       width,
       height,
-      size
+      size,
+      leaderColour,
+      matchLeaderLines: icon.matchLeaderLines === true && Boolean(leaderColour)
     };
+  }
+
+  function readCustomMarkerIconMetadata(dataUrl) {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => {
+        const width = image.naturalWidth || image.width;
+        const height = image.naturalHeight || image.height;
+        let leaderColour = "";
+        if (
+          width < customMarkerIconRules.minDimension ||
+          height < customMarkerIconRules.minDimension ||
+          width > customMarkerIconRules.maxDimension ||
+          height > customMarkerIconRules.maxDimension
+        ) {
+          resolve({ width, height, leaderColour });
+          return;
+        }
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const context = canvas.getContext("2d", { willReadFrequently: true });
+          if (context) {
+            context.drawImage(image, 0, 0, width, height);
+            leaderColour = markerColour.detectDominantColour(context.getImageData(0, 0, width, height));
+          }
+        } catch (_error) {
+          leaderColour = "";
+        }
+        resolve({ width, height, leaderColour });
+      };
+      image.onerror = () => reject(new Error(t("status.iconDecodeFailed")));
+      image.src = dataUrl;
+    });
   }
 
   function readImageDimensions(dataUrl, decodeFailedKey = "status.iconDecodeFailed") {
@@ -1650,7 +1697,7 @@
     if (!isSafeCustomIconDataUrl(dataUrl)) {
       throw new Error(t("status.iconInvalidDataUrl"));
     }
-    const dimensions = await readImageDimensions(dataUrl);
+    const dimensions = await readCustomMarkerIconMetadata(dataUrl);
     if (
       dimensions.width < customMarkerIconRules.minDimension ||
       dimensions.height < customMarkerIconRules.minDimension ||
@@ -1665,7 +1712,9 @@
       name: file.name || "custom-marker",
       width: dimensions.width,
       height: dimensions.height,
-      size: file.size
+      size: file.size,
+      leaderColour: dimensions.leaderColour,
+      matchLeaderLines: Boolean(dimensions.leaderColour)
     });
   }
 
@@ -4900,9 +4949,9 @@
   }
 
   function getLeaderLineColour(row, settings = getSettings()) {
-    const override = normalizeHexColour(row && row.leaderLineColour, "");
-    if (override) return override;
-    return normalizeHexColour(settings && settings.leaderColour, layoutDefaults.leaderColourInput || "#333333");
+    const category = row ? getCategory(row.type) : null;
+    const fallback = normalizeHexColour(settings && settings.leaderColour, layoutDefaults.leaderColourInput || "#333333");
+    return markerColour.resolveLeaderLineColour(row, category, fallback);
   }
 
   function getRegionColourPresetLabel(index, total) {
@@ -7786,9 +7835,9 @@
     renderPropertiesForActiveState({ kind: "document" });
   }
 
-  function focusCategoryEditor(selector = ".properties-back-button") {
+  function focusCategoryEditor(selector = ".properties-back-button", { preventScroll = true } = {}) {
     window.requestAnimationFrame(() => {
-      els.propertiesSelectionControls?.querySelector(selector)?.focus({ preventScroll: true });
+      els.propertiesSelectionControls?.querySelector(selector)?.focus({ preventScroll });
     });
   }
 
@@ -8161,6 +8210,7 @@
     const category = categorySettings.find(item => item.id === activeCategoryId) || categorySettings[0];
     return properties.renderCategoryPropertyControls({
       category,
+      iconValidationMessage: category ? categoryIconValidationErrors.get(category.id) || "" : "",
       markerShapes: markerShapes.map(shape => ({ ...shape, label: getMarkerShapeLabel(shape) })),
       colourPresets: colourPresets.map(preset => ({
         value: preset.value,
@@ -8184,13 +8234,13 @@
     return properties.renderRegionPropertyControls({ region, statusOptions: regionStatusOptions, pluralize, escapeHtml, iconSvg, t });
   }
 
-  function setCategoryPropertiesContext({ focus = false, focusSelector = ".properties-back-button" } = {}) {
+  function setCategoryPropertiesContext({ focus = false, focusSelector = ".properties-back-button", preventScroll = true } = {}) {
     renderPropertiesForActiveState({
       kind: "category",
       id: activeCategoryId,
       ...(activeDataTable === "projects" ? { workspace: "projects" } : {})
     });
-    if (focus) focusCategoryEditor(focusSelector);
+    if (focus) focusCategoryEditor(focusSelector, { preventScroll });
   }
 
   function setMapPropertiesContext() {
@@ -8497,6 +8547,7 @@
       try {
         const icon = await validateCustomMarkerIconFile(file);
         pushAppUndoHistory("category icon upload");
+        categoryIconValidationErrors.delete(category.id);
         category.customIcon = icon;
         activeCategoryId = category.id;
         renderCategoryEditors();
@@ -8505,10 +8556,40 @@
         setCategoryPropertiesContext({ focus: true, focusSelector: "[data-property-action='remove-category-icon']" });
         setStatusMessage(t("status.categoryCustomIcon", { label: getCategoryLabel(category.id, currentUiLanguage) }), "ok");
       } catch (error) {
-        setStatusMessage(t("status.customIconLoadFailedGeneric", { message: translateErrorMessage(error) }), "danger");
+        const message = translateErrorMessage(error);
+        categoryIconValidationErrors.set(category.id, message);
+        activeCategoryId = category.id;
+        setCategoryPropertiesContext({ focus: true, focusSelector: "[data-category-icon-error]", preventScroll: false });
+        setStatusMessage(t("status.customIconLoadFailedGeneric", { message }), "danger");
       } finally {
         event.target.value = "";
       }
+      return;
+    }
+
+    if (event.target.matches("[data-category-icon-match-leaders], [data-category-icon-leader-colour]")) {
+      const form = event.target.closest("[data-category-id]");
+      const category = form && categorySettings.find(item => item.id === form.dataset.categoryId);
+      if (!category || !category.customIcon) return;
+      pushAppUndoHistory("category icon leader colour");
+      if (event.target.matches("[data-category-icon-match-leaders]")) {
+        category.customIcon.leaderColour = normalizeHexColour(
+          category.customIcon.leaderColour,
+          normalizeHexColour(category.colour, "#333333")
+        );
+        category.customIcon.matchLeaderLines = event.target.checked;
+      } else {
+        category.customIcon.leaderColour = normalizeHexColour(event.target.value, category.customIcon.leaderColour || "#333333");
+      }
+      activeCategoryId = category.id;
+      renderCategoryEditors();
+      updateWorkspaceSummary();
+      requestPreviewRefresh();
+      const focusSelector = event.target.matches("[data-category-icon-match-leaders]")
+        ? "[data-category-icon-match-leaders]"
+        : "[data-category-icon-leader-colour]";
+      setCategoryPropertiesContext({ focus: true, focusSelector });
+      setStatusMessage(t("status.categoryIconLeaderColour", { label: getCategoryLabel(category.id, currentUiLanguage) }), "ok");
       return;
     }
 
@@ -8992,6 +9073,7 @@
       const category = form && categorySettings.find(item => item.id === form.dataset.categoryId);
       if (!category || !category.customIcon) return;
       pushAppUndoHistory("category icon remove");
+      categoryIconValidationErrors.delete(category.id);
       category.customIcon = null;
       activeCategoryId = category.id;
       renderCategoryEditors();
@@ -11206,6 +11288,7 @@
   }
 
   function applyCategorySettings(categories = []) {
+    categoryIconValidationErrors.clear();
     if (!categories.length) {
       renderCategoryEditors();
       updateTypeOptions();
@@ -11389,6 +11472,7 @@
     Array.from(els.tableBody.querySelectorAll(".type-input")).forEach(select => {
       if (select.value === categoryId) select.value = replacementCategory.id;
     });
+    categoryIconValidationErrors.delete(categoryId);
     categorySettings.splice(categorySettings.indexOf(category), 1);
     if (activeCategoryId === categoryId) activeCategoryId = replacementCategory.id;
     renderCategoryEditors();

@@ -7,6 +7,7 @@ const vm = require("node:vm");
 function loadApi() {
   const appSource = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
   const geometrySource = fs.readFileSync(path.join(__dirname, "..", "geometry.js"), "utf8");
+  const markerColourSource = fs.readFileSync(path.join(__dirname, "..", "marker-colour.js"), "utf8");
   const labelLayoutSource = fs.readFileSync(path.join(__dirname, "..", "label-layout.js"), "utf8");
   const projectIoSource = fs.readFileSync(path.join(__dirname, "..", "project-io.js"), "utf8");
   const regionMatchingSource = fs.readFileSync(path.join(__dirname, "..", "region-matching.js"), "utf8");
@@ -51,6 +52,8 @@ function loadApi() {
   };
 
   vm.runInNewContext(geometrySource, context, { filename: "geometry.js" });
+  vm.runInNewContext(markerColourSource, context, { filename: "marker-colour.js" });
+  windowStub.PLOTYPUS_MARKER_COLOUR = context.PLOTYPUS_MARKER_COLOUR;
   vm.runInNewContext(labelLayoutSource, context, { filename: "label-layout.js" });
   vm.runInNewContext(projectIoSource, context, { filename: "project-io.js" });
   vm.runInNewContext(regionMatchingSource, context, { filename: "region-matching.js" });
@@ -534,7 +537,9 @@ test("project snapshots round-trip portable assets, leader settings, metadata, a
     name: "infrastructure-marker.png",
     width: 24,
     height: 20,
-    size: 128
+    size: 128,
+    leaderColour: "#1268d5",
+    matchLeaderLines: true
   };
   const languageLayouts = {
     en: {
@@ -1127,6 +1132,25 @@ test("project validation migrates legacy files and rejects unsupported versions"
       }]
     }),
     /custom icon must be a PNG or WebP image/
+  );
+  assert.throws(
+    () => api.validateAndNormalizeProject({
+      version: 5,
+      rows: [],
+      categories: [{
+        id: "bad-icon-leader-setting",
+        customIcon: {
+          dataUrl: "data:image/png;base64,iVBORw0KGgo=",
+          mimeType: "image/png",
+          width: 24,
+          height: 24,
+          size: 128,
+          leaderColour: "#1268d5",
+          matchLeaderLines: "yes"
+        }
+      }]
+    }),
+    /matchLeaderLines setting must be true or false/
   );
   assert.throws(
     () => api.validateAndNormalizeProject({ version: 5, rows: [], regionFills: { canada: "not-a-colour" } }),

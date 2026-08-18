@@ -10,7 +10,8 @@
   <a href="#setup">Setup</a> ·
   <a href="#what-plotypus-does">Features</a> ·
   <a href="#prepare-your-data">Data format</a> ·
-  <a href="#configure-a-deployment">Server and configuration</a>
+  <a href="#configure-a-deployment">Server and configuration</a> ·
+  <a href="CHANGELOG.md">Changelog</a>
 </p>
 
 <p align="center">
@@ -141,7 +142,15 @@ Critical Minerals Strategy,Stratégie sur les minéraux critiques,Transformative
 
 When both coordinates are blank, the row is displayed as a no-coordinate callout. Accepted `hideLine` values include `yes`, `true`, `hide`, `hidden`, `no line`, and `no leader line`.
 
-See [`sample-projects.csv`](sample-projects.csv) for a complete example.
+Three fictional datasets exercise each import location mode:
+
+| Sample | Select during import | Location column |
+| --- | --- | --- |
+| [`sample-projects.csv`](sample-projects.csv) | Coordinates | `lon`, `lat` |
+| [`sample-projects-cities.csv`](sample-projects-cities.csv) | City | `city` |
+| [`sample-projects-provinces.csv`](sample-projects-provinces.csv) | Province or territory | `region` |
+
+The location choice in the mapping dialog applies to the complete import and replaces the current Project-point table. Switching an existing coordinate table to **Province or territory** derives containing regions where possible and keeps the original coordinates for switching back. Switching to **City** does not guess a nearest city; rows need an exact city selection from the offline catalogue. A selected city retains its exact catalogue coordinates and containing province when modes are changed. Province-only rows have no hidden point coordinates, so switching them to Coordinates leaves them as unlocated callouts until coordinates are supplied.
 
 ## Save, share, and export
 

@@ -641,10 +641,13 @@
   }
 
   function renderCategoryPropertyControls(options) {
-    const { category, markerShapes = [], colourPresets = [], escapeHtml, iconSvg, markerShapeIcon, backLabel = "" } = options || {};
+    const { category, markerShapes = [], colourPresets = [], escapeHtml, iconSvg, markerShapeIcon, backLabel = "", iconValidationMessage = "" } = options || {};
     const t = translator(options);
     if (!category) return `<p class="properties-muted type-supporting">${escapeHtml(t("properties.category.empty"))}</p>`;
     const customIcon = category.customIcon || null;
+    const customIconLeaderColour = customIcon && /^#[0-9a-f]{6}$/i.test(customIcon.leaderColour || "")
+      ? customIcon.leaderColour
+      : /^#[0-9a-f]{6}$/i.test(category.colour || "") ? category.colour : "#333333";
     const customIconName = customIcon && customIcon.name && customIcon.name !== "custom-marker"
       ? customIcon.name
       : t("properties.category.customMarkerFallback");
@@ -676,7 +679,7 @@
         <div class="category-shape-grid">${shapeOptions}</div>
         ${colourPresetOptions ? `<label>${propertyFieldLabel(options, t("properties.category.colourPreset"))}<select data-category-colour-preset>${colourPresetOptions}</select></label>` : ""}
         <label>${propertyFieldLabel(options, t("properties.category.markerColour"))}<input data-category-field="colour" type="color" value="${escapeHtml(category.colour)}"></label>
-        <div class="custom-icon-dropzone${customIcon ? " is-active" : ""}">
+        <div class="custom-icon-dropzone${customIcon ? " is-active" : ""}${iconValidationMessage ? " has-error" : ""}">
           <input data-category-icon-upload type="file" accept="image/png,image/webp" hidden>
           <div class="custom-icon-summary">
             <span class="custom-icon-preview" aria-hidden="true">
@@ -691,6 +694,25 @@
             <button type="button" class="ghost-button" data-property-action="upload-category-icon">${escapeHtml(customIcon ? t("properties.category.replaceIcon") : t("properties.category.uploadIcon"))}</button>
             ${customIcon ? `<button type="button" class="ghost-button" data-property-action="remove-category-icon">${escapeHtml(t("properties.category.removeIcon"))}</button>` : ""}
           </div>
+          ${iconValidationMessage ? `
+          <div class="custom-icon-validation-error" role="alert" tabindex="-1" data-category-icon-error>
+            <strong>${escapeHtml(t("properties.category.iconUploadError"))}</strong>
+            <span>${escapeHtml(iconValidationMessage)}</span>
+          </div>` : ""}
+          ${customIcon ? `
+          <div class="custom-icon-leader-controls">
+            <label class="toolbar-check custom-icon-leader-toggle">
+              <span>
+                <strong>${escapeHtml(t("properties.category.matchLeaderLines"))}</strong>
+                <small class="type-caption">${escapeHtml(t("properties.category.matchLeaderLinesHelp"))}</small>
+              </span>
+              <input type="checkbox" data-category-icon-match-leaders${customIcon.matchLeaderLines === true ? " checked" : ""}>
+            </label>
+            <label class="custom-icon-leader-colour">
+              ${propertyFieldLabel(options, t("properties.category.matchedLeaderColour"))}
+              <input type="color" data-category-icon-leader-colour value="${escapeHtml(customIconLeaderColour)}"${customIcon.matchLeaderLines === true ? "" : " disabled"}>
+            </label>
+          </div>` : ""}
           <span class="custom-icon-note">${escapeHtml(t("properties.category.iconNote"))}</span>
         </div>
         <h3 class="type-eyebrow">${escapeHtml(t("properties.category.size"))}</h3>

@@ -12,6 +12,7 @@ param(
   [string]$CatalogOrigin = "projects",
   [switch]$LoadSample,
   [switch]$TableLayoutOnly,
+  [switch]$CustomMarkerIcon,
   [switch]$MeasurePerformance,
   [switch]$StrictDiagnostics,
   [switch]$AccessibilityAudit,
@@ -38,6 +39,10 @@ if ($TableLayoutOnly -and -not $LoadSample) {
 
 if ($TableLayoutOnly -and $Workspace -notin @("projects", "regions", "translate")) {
   throw "-TableLayoutOnly requires -Workspace projects, regions, or translate."
+}
+
+if ($CustomMarkerIcon -and (-not $LoadSample -or $Workspace -ne "preview")) {
+  throw "-CustomMarkerIcon requires -LoadSample and -Workspace preview."
 }
 
 if ($ProjectRoundTrip -and (-not $LoadSample -or $Workspace -ne "preview")) {
@@ -74,7 +79,7 @@ $repoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $outputRoot = Join-Path $repoRoot "tests\smoke-output"
 $headlessRunner = Join-Path $repoRoot "tests\headless-smoke-runner.cjs"
 $axeScript = Join-Path $repoRoot "node_modules\axe-core\axe.min.js"
-$runLabel = if ($TableLayoutOnly) { "table-layout-$Workspace" } elseif ($Dialog) { "dialog-$Dialog" } elseif ($Workspace) { "workspace-$Workspace" } else { "shell" }
+$runLabel = if ($CustomMarkerIcon) { "custom-marker-icon" } elseif ($TableLayoutOnly) { "table-layout-$Workspace" } elseif ($Dialog) { "dialog-$Dialog" } elseif ($Workspace) { "workspace-$Workspace" } else { "shell" }
 $runId = "$runLabel-$($Width)x$($Height)-$(Get-Date -Format 'yyyyMMdd-HHmmss-fff')"
 $runDir = Join-Path $outputRoot $runId
 $profileDir = Join-Path $runDir "browser-profile"
@@ -107,6 +112,7 @@ try {
   if ($Dialog -eq "point-catalog") { $query += "origin=$CatalogOrigin" }
   if ($LoadSample) { $query += "sample=1" }
   if ($TableLayoutOnly) { $query += "tableLayout=1" }
+  if ($CustomMarkerIcon) { $query += "customMarkerIcon=1" }
   if ($MeasurePerformance) { $query += "performance=1" }
   if ($PropertiesSide) { $query += "propertiesSide=$PropertiesSide" }
   if ($ProjectRoundTrip) { $query += "projectRoundTrip=1" }

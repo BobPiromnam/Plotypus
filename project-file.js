@@ -64,6 +64,12 @@
     if (!Number.isFinite(width) || width < 8 || width > 512) throw validationError(`${labelText} width must be 8-512 pixels.`, "project.error.customIconWidth", labelParams);
     if (!Number.isFinite(height) || height < 8 || height > 512) throw validationError(`${labelText} height must be 8-512 pixels.`, "project.error.customIconHeight", labelParams);
     if (!Number.isFinite(size) || size < 1 || size > 256 * 1024) throw validationError(`${labelText} must be 256 KB or smaller.`, "project.error.customIconSize", labelParams);
+    if (icon.leaderColour !== undefined && icon.leaderColour !== "") {
+      validateColour(icon.leaderColour, `${labelText} leader line colour`);
+    }
+    if (icon.matchLeaderLines !== undefined && typeof icon.matchLeaderLines !== "boolean") {
+      throw validationError(`${labelText} matchLeaderLines setting must be true or false.`, "project.error.customIconLeaderMatch", labelParams);
+    }
   }
 
   function normalizeReferenceCities(value) {

@@ -24,6 +24,7 @@
     const requestedDialog = params.get("dialog") || "";
     const loadSample = params.get("sample") === "1";
     const tableLayoutOnly = params.get("tableLayout") === "1";
+    const customMarkerIconOnly = params.get("customMarkerIcon") === "1";
     const measurePerformance = params.get("performance") === "1";
     const visualCapture = params.get("visual") === "1";
     const propertiesSide = ["left", "right"].includes(params.get("propertiesSide")) ? params.get("propertiesSide") : "";
@@ -865,6 +866,141 @@
           }, null, 2);
           return;
         }
+        if (customMarkerIconOnly) {
+          if (!loadSample || requestedWorkspace !== "preview") {
+            throw new Error("customMarkerIcon=1 requires sample=1 and workspace=preview");
+          }
+          const startupDialog = await waitFor(() => {
+            const dialog = doc.querySelector("#startupDialog");
+            return dialog && dialog.hidden === false ? dialog : null;
+          }, 4000);
+          startupDialog.querySelector("#startupLoadSampleBtn")?.click();
+          await waitFor(() => startupDialog.hidden === true, 2000);
+          await waitFor(() => doc.querySelectorAll("#projectTable tbody tr[data-row-id]").length > 0, 12000);
+          await waitFor(() => doc.querySelectorAll("#mapSvg .leader-line").length > 0, 12000);
+          if (doc.body.classList.contains("properties-collapsed")) {
+            doc.querySelector("#propertiesToggleBtn")?.click();
+            await waitFor(() => !doc.body.classList.contains("properties-collapsed"), 2000);
+          }
+
+          const legendItem = Array.from(doc.querySelectorAll("#categoryList [data-legend-item]"))
+            .find(item => Number(item.querySelector("[data-legend-count]")?.dataset.count || 0) > 0);
+          const categoryId = legendItem?.dataset.categoryId || "";
+          legendItem?.querySelector(".legend-item-select")?.click();
+          const categoryForm = await waitFor(() => doc.querySelector(`#categoryPropertiesEditor[data-category-id="${frame.contentWindow.CSS.escape(categoryId)}"]`), 2000);
+          const oversizedCanvas = doc.createElement("canvas");
+          oversizedCanvas.width = 600;
+          oversizedCanvas.height = 600;
+          const oversizedContext = oversizedCanvas.getContext("2d");
+          oversizedContext.fillStyle = "#d71920";
+          oversizedContext.fillRect(0, 0, oversizedCanvas.width, oversizedCanvas.height);
+          const oversizedBlob = await new Promise(resolve => oversizedCanvas.toBlob(resolve, "image/png"));
+          const oversizedFile = new frame.contentWindow.File([oversizedBlob], "oversized-red-pin.png", { type: "image/png" });
+          const oversizedTransfer = new frame.contentWindow.DataTransfer();
+          oversizedTransfer.items.add(oversizedFile);
+          const oversizedInput = categoryForm.querySelector("[data-category-icon-upload]");
+          oversizedInput.files = oversizedTransfer.files;
+          oversizedInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+          const validationAlert = await waitFor(() => {
+            const alert = doc.querySelector("[data-category-icon-error][role='alert']");
+            return alert && /8-512px wide and tall/i.test(alert.textContent || "") ? alert : null;
+          }, 4000);
+          await waitFor(() => doc.activeElement === validationAlert, 2000);
+          const validationRect = validationAlert.getBoundingClientRect();
+          const validationPanelRect = doc.querySelector("#propertiesPanel")?.getBoundingClientRect();
+          assert(checks, "Rejected custom marker dimensions appear as a focused inline alert", validationRect.width > 0 && validationRect.height > 0 && doc.activeElement === validationAlert && validationPanelRect && validationRect.top >= validationPanelRect.top - 1 && validationRect.bottom <= validationPanelRect.bottom + 1, `${validationAlert.textContent.trim()} at ${validationRect.top}-${validationRect.bottom} in ${validationPanelRect?.top || 0}-${validationPanelRect?.bottom || 0}`);
+          assert(checks, "Rejected custom marker does not replace the category marker", !Array.from(doc.querySelectorAll("#mapSvg image.marker-custom-icon")).some(marker => String(marker.__data__?.type || "") === categoryId));
+
+          const uploadInput = doc.querySelector("#categoryPropertiesEditor [data-category-icon-upload]");
+          const canvas = doc.createElement("canvas");
+          canvas.width = 16;
+          canvas.height = 16;
+          const canvasContext = canvas.getContext("2d");
+          canvasContext.fillStyle = "#1268d5";
+          canvasContext.fillRect(0, 0, canvas.width, canvas.height);
+          const iconBlob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+          const iconFile = new frame.contentWindow.File([iconBlob], "solid-blue-house.png", { type: "image/png" });
+          const transfer = new frame.contentWindow.DataTransfer();
+          transfer.items.add(iconFile);
+          uploadInput.files = transfer.files;
+          uploadInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+
+          const matchingControls = await waitFor(() => {
+            const toggle = doc.querySelector("[data-category-icon-match-leaders]");
+            const colour = doc.querySelector("[data-category-icon-leader-colour]");
+            return toggle?.checked && colour?.value.toLowerCase() === "#1268d5" && !colour.disabled
+              ? { toggle, colour }
+              : null;
+          }, 4000);
+          assert(checks, "A valid custom marker clears the inline validation alert", !doc.querySelector("[data-category-icon-error]"));
+          const categoryLeaderLines = () => Array.from(doc.querySelectorAll("#mapSvg .leader-line"))
+            .filter(line => String(line.__data__?.type || "") === categoryId);
+          await waitFor(() => {
+            const lines = categoryLeaderLines();
+            return lines.length > 0 && lines.every(line => (line.getAttribute("stroke") || "").toLowerCase() === "#1268d5");
+          }, 12000);
+          assert(checks, "Solid custom marker upload detects and enables its dominant colour", matchingControls.toggle.checked && matchingControls.colour.value.toLowerCase() === "#1268d5");
+          const activeCategoryForm = doc.querySelector("#categoryPropertiesEditor");
+          const matchingControlRect = activeCategoryForm?.querySelector(".custom-icon-leader-controls")?.getBoundingClientRect();
+          assert(checks, "Custom icon leader controls are visible without horizontal overflow", Boolean(matchingControlRect?.width && matchingControlRect?.height) && activeCategoryForm.scrollWidth <= activeCategoryForm.clientWidth + 1, `${matchingControlRect?.width || 0} x ${matchingControlRect?.height || 0}; ${activeCategoryForm?.scrollWidth || 0}/${activeCategoryForm?.clientWidth || 0}`);
+          assert(checks, "Uploaded custom marker renders as an embedded map image", Array.from(doc.querySelectorAll("#mapSvg image.marker-custom-icon")).some(marker => String(marker.__data__?.type || "") === categoryId));
+          assert(checks, "Category leader lines use the detected custom marker colour", categoryLeaderLines().every(line => (line.getAttribute("stroke") || "").toLowerCase() === "#1268d5"), `${categoryId}: ${categoryLeaderLines().map(line => line.getAttribute("stroke")).join(", ")}`);
+          assert(checks, "Custom icon colour guidance covers multicolour and opaque-background icons", /multicolour icons or opaque backgrounds/i.test(doc.querySelector(".custom-icon-leader-controls")?.textContent || ""));
+
+          matchingControls.colour.value = "#20a060";
+          matchingControls.colour.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+          await waitFor(() => {
+            const lines = categoryLeaderLines();
+            return lines.length > 0 && lines.every(line => (line.getAttribute("stroke") || "").toLowerCase() === "#20a060");
+          }, 12000);
+          assert(checks, "Editing the matched colour updates every leader line in the category", categoryLeaderLines().every(line => (line.getAttribute("stroke") || "").toLowerCase() === "#20a060"));
+
+          const globalLeaderColour = (doc.querySelector("#leaderColourInput")?.value || "#333333").toLowerCase();
+          doc.querySelector("[data-category-icon-match-leaders]")?.click();
+          await waitFor(() => {
+            const lines = categoryLeaderLines();
+            return lines.length > 0 && lines.every(line => (line.getAttribute("stroke") || "").toLowerCase() === globalLeaderColour);
+          }, 12000);
+          assert(checks, "Disabling icon matching restores the document leader-line colour", categoryLeaderLines().every(line => (line.getAttribute("stroke") || "").toLowerCase() === globalLeaderColour), globalLeaderColour);
+          doc.querySelector("[data-category-icon-match-leaders]")?.click();
+          await waitFor(() => categoryLeaderLines().every(line => (line.getAttribute("stroke") || "").toLowerCase() === "#20a060"), 12000);
+
+          const NativeBlob = frame.contentWindow.Blob;
+          const nativeAnchorClick = frame.contentWindow.HTMLAnchorElement.prototype.click;
+          let exportedSvgSource = "";
+          function CapturingBlob(parts, options) {
+            if (/image\/svg\+xml/i.test(options?.type || "")) exportedSvgSource = parts.map(part => String(part)).join("");
+            return new NativeBlob(parts, options);
+          }
+          CapturingBlob.prototype = NativeBlob.prototype;
+          frame.contentWindow.Blob = CapturingBlob;
+          frame.contentWindow.HTMLAnchorElement.prototype.click = function () {};
+          try {
+            doc.querySelector("#ribbonExportSvgBtn")?.click();
+          } finally {
+            frame.contentWindow.Blob = NativeBlob;
+            frame.contentWindow.HTMLAnchorElement.prototype.click = nativeAnchorClick;
+          }
+          const exportedSvgDocument = new frame.contentWindow.DOMParser().parseFromString(exportedSvgSource, "image/svg+xml");
+          assert(checks, "SVG export preserves the category icon leader-line colour", Array.from(exportedSvgDocument.querySelectorAll(".leader-line")).some(line => (line.getAttribute("stroke") || "").toLowerCase() === "#20a060"));
+          const finalMatchingControls = doc.querySelector(".custom-icon-leader-controls");
+          finalMatchingControls?.scrollIntoView({ block: "center" });
+          await new Promise(resolve => frame.contentWindow.requestAnimationFrame(resolve));
+          const finalMatchingRect = finalMatchingControls?.getBoundingClientRect();
+          const propertiesPanelRect = doc.querySelector("#propertiesPanel")?.getBoundingClientRect();
+          assert(checks, "Custom icon leader controls fit inside the visible Properties viewport", Boolean(finalMatchingRect && propertiesPanelRect) && finalMatchingRect.top >= propertiesPanelRect.top - 1 && finalMatchingRect.bottom <= propertiesPanelRect.bottom + 1, `${finalMatchingRect?.top || 0}-${finalMatchingRect?.bottom || 0} in ${propertiesPanelRect?.top || 0}-${propertiesPanelRect?.bottom || 0}`);
+
+          const failed = checks.filter(check => !check.pass);
+          result.textContent = JSON.stringify({
+            status: failed.length ? "failed" : "ok",
+            mode: "custom-marker-icon",
+            categoryId,
+            checks,
+            failures: failed.length,
+            frameErrors
+          }, null, 2);
+          return;
+        }
         assert(checks, "Bundled IBM Plex Mono is available offline", !doc.fonts || doc.fonts.check('12px "IBM Plex Mono"'));
         const rootStyle = frame.contentWindow.getComputedStyle(doc.documentElement);
         const bodyStyle = frame.contentWindow.getComputedStyle(doc.body);
@@ -1443,7 +1579,7 @@
             const input = doc.querySelector("#csvInput");
             const transfer = new frame.contentWindow.DataTransfer();
             transfer.items.add(new frame.contentWindow.File([
-              "Project,Project FR,Type,Type FR,Details,Longitude,Latitude\nTest project,Projet test,Referred Project,Projets soumis,Funding approved,-75.7,45.4"
+              "Project,Project FR,Type,Type FR,Details,Longitude,Latitude,City,Province\nTest project,Projet test,Referred Project,Projets soumis,Funding approved,-75.7,45.4,Ottawa,Ontario"
             ], "mapped-sample.csv", { type: "text/csv" }));
             Object.defineProperty(input, "files", { configurable: true, value: transfer.files });
             input.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
@@ -1460,11 +1596,15 @@
             assert(checks, "Required mappings enable import", doc.querySelector("#confirmCsvMapBtn")?.disabled === false);
             assert(checks, "Source samples are visible", Array.from(dialog.querySelectorAll(".csv-map-sample")).some(sample => /Test project/.test(sample.textContent || "")));
             const coordinateImportMode = doc.querySelector("[data-csv-location-mode='coordinates']");
+            const cityImportMode = doc.querySelector("[data-csv-location-mode='cities']");
             const regionImportMode = doc.querySelector("[data-csv-location-mode='regions']");
-            assert(checks, "CSV mapping dialog exposes coordinate and region location modes", Boolean(coordinateImportMode && regionImportMode && coordinateImportMode.getAttribute("aria-pressed") === "true"));
+            assert(checks, "CSV mapping dialog exposes coordinate, city, and province location modes", Boolean(coordinateImportMode && cityImportMode && regionImportMode && coordinateImportMode.getAttribute("aria-pressed") === "true"));
             regionImportMode?.click();
             await waitFor(() => doc.querySelectorAll("#csvMapRows .csv-map-row").length === 5 && doc.querySelector("#csvMapRows [data-csv-target='region']"), 2000);
-            assert(checks, "Switching the dialog to Regions replaces coordinate mappings without changing the workspace yet", !doc.querySelector("#csvMapRows [data-csv-target='lon'], #csvMapRows [data-csv-target='lat']") && doc.querySelector("#projectTable")?.dataset.locationMode === "coordinates" && doc.querySelector("#confirmCsvMapBtn")?.disabled === true);
+            assert(checks, "Switching the dialog to Provinces replaces coordinate mappings without changing the workspace yet", doc.querySelector("#csvMapRows [data-csv-target='region'] select")?.value === "Province" && !doc.querySelector("#csvMapRows [data-csv-target='lon'], #csvMapRows [data-csv-target='lat'], #csvMapRows [data-csv-target='city']") && doc.querySelector("#projectTable")?.dataset.locationMode === "coordinates" && doc.querySelector("#confirmCsvMapBtn")?.disabled === false);
+            cityImportMode?.click();
+            await waitFor(() => doc.querySelectorAll("#csvMapRows .csv-map-row").length === 5 && doc.querySelector("#csvMapRows [data-csv-target='city'] select")?.value === "City", 2000);
+            assert(checks, "Switching the dialog to City restores its detected mapping without changing the workspace yet", !doc.querySelector("#csvMapRows [data-csv-target='lon'], #csvMapRows [data-csv-target='lat'], #csvMapRows [data-csv-target='region']") && doc.querySelector("#projectTable")?.dataset.locationMode === "coordinates" && doc.querySelector("#confirmCsvMapBtn")?.disabled === false);
             coordinateImportMode?.click();
             await waitFor(() => doc.querySelectorAll("#csvMapRows .csv-map-row").length === 6 && doc.querySelector("#csvMapRows [data-csv-target='lon'] select")?.value === "Longitude" && doc.querySelector("#csvMapRows [data-csv-target='lat'] select")?.value === "Latitude", 2000);
             assert(checks, "Switching back to Coordinates restores its detected mappings", coordinateImportMode?.getAttribute("aria-pressed") === "true" && doc.querySelector("#confirmCsvMapBtn")?.disabled === false);
@@ -1524,6 +1664,51 @@
             doc.querySelector("#propertiesSelectionControls [data-property-action='remove-content-block'][data-block-index='0']")?.click();
             await waitFor(() => JSON.parse(importedRow.dataset.content || "[]").length === 0);
             assert(checks, "Imported label elements can be deleted in Properties", JSON.parse(importedRow.dataset.content || "[]").length === 0);
+
+            const provinceTransfer = new frame.contentWindow.DataTransfer();
+            provinceTransfer.items.add(new frame.contentWindow.File([
+              "Project,Type,Province\nImported Ontario project,Referred Project,Ontario"
+            ], "sample-projects-provinces.csv", { type: "text/csv" }));
+            Object.defineProperty(input, "files", { configurable: true, value: provinceTransfer.files });
+            input.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+            await waitFor(() => dialog.hidden === false && doc.querySelectorAll("#csvMapRows .csv-map-row").length === 6, 4000);
+            doc.querySelector("[data-csv-location-mode='regions']")?.click();
+            await waitFor(() => doc.querySelector("#csvMapRows [data-csv-target='region'] select")?.value === "Province", 2000);
+            doc.querySelector("#confirmCsvMapBtn")?.click();
+            await waitFor(() => dialog.hidden && doc.querySelector("#projectTable")?.dataset.locationMode === "regions" && doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.region === "Ontario", 4000);
+            const importedProvinceRow = doc.querySelector("#projectTable tbody tr[data-row-id]");
+            assert(checks, "Province sample imports as a resolved region anchor", importedProvinceRow?.dataset.anchor === "region" && importedProvinceRow?.dataset.region === "Ontario" && !importedProvinceRow?.querySelector(".lon-input")?.value && !importedProvinceRow?.querySelector(".lat-input")?.value, `${importedProvinceRow?.dataset.anchor || ""}/${importedProvinceRow?.dataset.region || ""}`);
+            doc.querySelector("[data-project-location-mode='coordinates']")?.click();
+            await waitFor(() => doc.querySelector("#projectTable")?.dataset.locationMode === "coordinates" && importedProvinceRow?.dataset.anchor === "coord", 2000);
+            assert(checks, "Switching a province-only import to Coordinates leaves it unlocated", importedProvinceRow?.dataset.region === "Ontario" && !importedProvinceRow?.querySelector(".lon-input")?.value && !importedProvinceRow?.querySelector(".lat-input")?.value, `${importedProvinceRow?.dataset.region || ""}/${importedProvinceRow?.querySelector(".lon-input")?.value || ""}/${importedProvinceRow?.querySelector(".lat-input")?.value || ""}`);
+            doc.querySelector("[data-project-location-mode='regions']")?.click();
+            await waitFor(() => doc.querySelector("#projectTable")?.dataset.locationMode === "regions" && importedProvinceRow?.dataset.anchor === "region", 2000);
+            assert(checks, "Returning to Province restores the imported region", importedProvinceRow?.dataset.region === "Ontario");
+
+            const cityTransfer = new frame.contentWindow.DataTransfer();
+            cityTransfer.items.add(new frame.contentWindow.File([
+              "Project,Type,City\nImported Montreal project,Referred Project,\"Montreal, QC\""
+            ], "sample-projects-cities.csv", { type: "text/csv" }));
+            Object.defineProperty(input, "files", { configurable: true, value: cityTransfer.files });
+            input.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+            await waitFor(() => dialog.hidden === false && doc.querySelectorAll("#csvMapRows .csv-map-row").length === 5, 4000);
+            doc.querySelector("[data-csv-location-mode='cities']")?.click();
+            await waitFor(() => doc.querySelector("#csvMapRows [data-csv-target='city'] select")?.value === "City", 2000);
+            doc.querySelector("#confirmCsvMapBtn")?.click();
+            await waitFor(() => dialog.hidden && doc.querySelector("#projectTable")?.dataset.locationMode === "cities" && doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.cityId === "ca-qc-montreal", 4000);
+            const importedCityRow = doc.querySelector("#projectTable tbody tr[data-row-id]");
+            const importedCityLongitude = importedCityRow.querySelector(".lon-input")?.value || "";
+            const importedCityLatitude = importedCityRow.querySelector(".lat-input")?.value || "";
+            assert(checks, "City sample imports as an exact catalogue city with its province and coordinates", importedCityRow?.dataset.anchor === "city" && importedCityRow?.dataset.region === "Quebec" && Boolean(importedCityLongitude && importedCityLatitude), `${importedCityRow?.dataset.anchor || ""}/${importedCityRow?.dataset.region || ""}/${importedCityLongitude}/${importedCityLatitude}`);
+            doc.querySelector("[data-project-location-mode='regions']")?.click();
+            await waitFor(() => doc.querySelector("#projectTable")?.dataset.locationMode === "regions" && importedCityRow?.dataset.anchor === "region", 2000);
+            assert(checks, "Switching a City import to Province keeps its containing province and city assignment", importedCityRow.dataset.region === "Quebec" && importedCityRow.dataset.cityId === "ca-qc-montreal", `${importedCityRow.dataset.region}/${importedCityRow.dataset.cityId}`);
+            doc.querySelector("[data-project-location-mode='coordinates']")?.click();
+            await waitFor(() => doc.querySelector("#projectTable")?.dataset.locationMode === "coordinates" && importedCityRow?.dataset.anchor === "coord", 2000);
+            assert(checks, "Switching a City import to Coordinates restores its exact catalogue coordinates", importedCityRow.querySelector(".lon-input")?.value === importedCityLongitude && importedCityRow.querySelector(".lat-input")?.value === importedCityLatitude && importedCityRow.dataset.cityId === "ca-qc-montreal", `${importedCityRow.querySelector(".lon-input")?.value}/${importedCityRow.querySelector(".lat-input")?.value}/${importedCityRow.dataset.cityId}`);
+            doc.querySelector("[data-project-location-mode='cities']")?.click();
+            await waitFor(() => doc.querySelector("#projectTable")?.dataset.locationMode === "cities" && importedCityRow?.dataset.anchor === "city", 2000);
+            assert(checks, "Returning to City restores the imported catalogue city", importedCityRow.dataset.cityId === "ca-qc-montreal" && importedCityRow.querySelector(".cityLocationInput")?.value.startsWith("Montréal"), `${importedCityRow.dataset.cityId}/${importedCityRow.querySelector(".cityLocationInput")?.value || ""}`);
           }
           if (requestedDialog === "point-catalog") {
             doc.querySelector("#projectTableTab").click();
