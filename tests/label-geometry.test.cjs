@@ -285,6 +285,29 @@ test("no-coordinate callouts preserve the headed compact-box rhythm on screen", 
   assert.equal(layout.contentHeight, 80);
 });
 
+test("no-coordinate callouts can shrink and wrap their heading and rows", () => {
+  const api = loadApi();
+  const settings = makeSettings({
+    outputMode: "web",
+    mapLanguage: "en",
+    compactFurniture: true,
+    labelSizePt: 12,
+    labelTitleSizeRender: 10,
+    labelBodySizeRender: 8
+  });
+  api.setManualBoxPositions({ callouts: { x: 20, y: 20, width: 96, height: 80 } });
+  const box = api.getCalloutBoxLayout([
+    makeLabel({ name: "Critical Minerals Strategy" })
+  ], settings);
+
+  assert.equal(box.dimensions.width, 96);
+  assert.equal(box.constraints.minWidth, 80);
+  assert.ok(box.headingLines.length > 1);
+  assert.ok(box.rows[0].nameLines.length > 1);
+  assert.ok(box.rows[0].nameLines.every(line => String(line.text || "").length <= box.maxNameChars));
+  assert.ok(box.dimensions.height >= box.contentHeight);
+});
+
 test("localized config fallbacks prefer the requested language", () => {
   const api = loadApi();
   const item = { label: "Custom style", labelFr: "Style personnalisé" };
@@ -670,7 +693,7 @@ test("segment crossing and segment-rectangle intersection catch leader conflicts
   assert.equal(api.segmentIntersectsRect({ x: 0, y: 20 }, { x: 10, y: 20 }, rect), false);
 });
 
-test("map quality counts a leader crossing another label", () => {
+test("QA analysis counts a leader crossing another label", () => {
   const api = loadApi();
   const placed = [
     makeLabel({ rowId: "row-line", name: "Line owner", x: 20, y: 100, labelX: 250, labelY: 100 }),

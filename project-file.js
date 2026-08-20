@@ -72,35 +72,13 @@
     }
   }
 
-  function normalizeReferenceCities(value) {
-    const source = isPlainObject(value) ? value : {};
-    const ids = Array.isArray(source.ids)
-      ? source.ids.map(id => String(id || "").trim()).filter((id, index, all) => id && all.indexOf(id) === index)
-      : [];
-    const overrides = {};
-    if (isPlainObject(source.overrides)) {
-      Object.entries(source.overrides).forEach(([id, override]) => {
-        if (!id || !isPlainObject(override)) return;
-        const name = isPlainObject(override.name) ? override.name : {};
-        overrides[id] = { name: { en: String(name.en || ""), fr: String(name.fr || "") } };
-      });
-    }
-    return {
-      ids,
-      overrides,
-      rule: source.rule == null ? null : source.rule,
-      style: String(source.style || "default")
-    };
-  }
-
   function normalizeBaselayer(value, boundary, boundarySources = {}) {
     const source = isPlainObject(value) ? value : {};
     const boundarySource = boundarySources[boundary] || {};
     return {
       id: String(source.id || boundary),
       geometrySource: String(source.geometrySource || boundary),
-      projection: String(source.projection || boundarySource.projection || boundary),
-      referenceCities: normalizeReferenceCities(source.referenceCities)
+      projection: String(source.projection || boundarySource.projection || boundary)
     };
   }
 
@@ -182,13 +160,6 @@
     if (rawProject.baselayer !== undefined && !isPlainObject(rawProject.baselayer)) {
       throw validationError("Project baselayer must be an object.", "project.error.fieldObject", { field: "baselayer" });
     }
-    if (rawProject.baselayer && rawProject.baselayer.referenceCities !== undefined && !isPlainObject(rawProject.baselayer.referenceCities)) {
-      throw validationError("Project reference cities must be an object.", "project.error.fieldObject", { field: "baselayer.referenceCities" });
-    }
-    if (rawProject.baselayer && rawProject.baselayer.referenceCities && rawProject.baselayer.referenceCities.ids !== undefined && !Array.isArray(rawProject.baselayer.referenceCities.ids)) {
-      throw validationError("Project reference city IDs must be an array.", "project.error.fieldObject", { field: "baselayer.referenceCities.ids" });
-    }
-
     [
       "chromeTranslations",
       "regionVisibility",
@@ -226,5 +197,5 @@
     };
   }
 
-  return { normalizeBaselayer, normalizeReferenceCities, validateAndNormalizeProject };
+  return { normalizeBaselayer, validateAndNormalizeProject };
 });

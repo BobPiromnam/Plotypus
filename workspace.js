@@ -77,10 +77,7 @@
       + Number(report.labelsNearEdge || 0)
       + Number(report.offCanvasPoints || 0)
       + (report.projectedProblems ? report.projectedProblems.length : 0)
-      + (report.hiddenRegionProblems ? report.hiddenRegionProblems.length : 0)
-      + (report.referenceCityUnresolvedIds ? report.referenceCityUnresolvedIds.length : 0)
-      + (report.referenceCityExcludedRegionIds ? report.referenceCityExcludedRegionIds.length : 0)
-      + (report.referenceCityUnsupportedBoundaryIds ? report.referenceCityUnsupportedBoundaryIds.length : 0);
+      + (report.hiddenRegionProblems ? report.hiddenRegionProblems.length : 0);
     return {
       value: issues
         ? (labels.issueCount
@@ -108,13 +105,17 @@
   function summaryChip(label, value, options) {
     const { state = "neutral", action = "", destination = "", id = "", escapeHtml } = options || {};
     const key = String(label).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-    const content = `<span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>`;
+    const stateIcon = state === "warning"
+      ? '<span class="workspace-summary-warning-icon" data-icon="shield-check" aria-hidden="true"></span>'
+      : "";
+    const content = `${stateIcon}<span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>`;
     if (!action) {
       return `<span class="workspace-summary-chip is-static" data-summary-key="${escapeHtml(key)}" data-summary-state="${escapeHtml(state)}">${content}</span>`;
     }
     const destinationText = destination || label;
+    const actionClass = id === "workspaceReviewBtn" ? " is-review-action" : "";
     return `
-      <button${id ? ` id="${escapeHtml(id)}"` : ""} type="button" class="workspace-summary-chip" data-summary-key="${escapeHtml(key)}" data-summary-state="${escapeHtml(state)}" data-summary-action="${escapeHtml(action)}" role="button" tabindex="0" title="${escapeHtml(destinationText)}" aria-label="${escapeHtml(destinationText)}">
+      <button${id ? ` id="${escapeHtml(id)}"` : ""} type="button" class="workspace-summary-chip is-actionable${actionClass}" data-summary-key="${escapeHtml(key)}" data-summary-state="${escapeHtml(state)}" data-summary-action="${escapeHtml(action)}" title="${escapeHtml(destinationText)}" aria-label="${escapeHtml(destinationText)}">
         ${content}
       </button>
     `;

@@ -179,8 +179,8 @@
     },
     imageSizePresets: {
       letter: {
-        label: "8.5 x 11",
-        labelFr: "8,5 x 11",
+        label: "8.5 × 11",
+        labelFr: "8,5 × 11",
         documentPage: { widthIn: 8.5, heightIn: 11, marginIn: 1 },
         sizes: [
           { value: "full", label: "Full page", labelFr: "Page complète", width: 612, height: 750 },
@@ -191,8 +191,8 @@
         ]
       },
       compact: {
-        label: "6.5 x 9.75",
-        labelFr: "6,5 x 9,75",
+        label: "6.5 × 9.75",
+        labelFr: "6,5 × 9,75",
         documentPage: { widthIn: 6.5, heightIn: 9.75, marginIn: 0.75 },
         sizes: [
           { value: "full", label: "Full page", labelFr: "Page complète", width: 468, height: 700 },

@@ -326,7 +326,6 @@
     qualityTableTab: document.querySelector("#qualityTableTab"),
     projectTablePane: document.querySelector("#projectTablePane"),
     regionTablePane: document.querySelector("#regionTablePane"),
-    baselayerReferenceCitiesField: document.querySelector("#referenceCitiesBaselayerField"),
     translateTablePane: document.querySelector("#translateTablePane"),
     previewTablePane: document.querySelector("#previewTablePane"),
     qualityTablePane: document.querySelector("#qualityTablePane"),
@@ -334,9 +333,15 @@
     workspaceSummaryMode: document.querySelector("#workspaceSummaryMode"),
     workspaceSummaryHeadline: document.querySelector("#workspaceSummaryHeadline"),
     workspaceSummaryMetrics: document.querySelector("#workspaceSummaryMetrics"),
+    workflowNextStep: document.querySelector("#workflowNextStep"),
+    workflowNextEyebrow: document.querySelector("#workflowNextEyebrow"),
+    workflowNextTitle: document.querySelector("#workflowNextTitle"),
+    workflowNextBody: document.querySelector("#workflowNextBody"),
+    workflowNextBtn: document.querySelector("#workflowNextBtn"),
     translationGroups: document.querySelector("#translationGroups"),
     translationProgressText: document.querySelector("#translationProgressText"),
     translationProgressBar: document.querySelector("#translationProgressBar"),
+    translationProgress: document.querySelector("#translationProgress"),
     translationPasteHint: document.querySelector("#translationPasteHint"),
     translationFilters: Array.from(document.querySelectorAll("[data-translation-filter]")),
     pasteTranslationColumnBtn: document.querySelector("#pasteTranslationColumnBtn"),
@@ -435,8 +440,6 @@
     statusBox: document.querySelector("#statusBox"),
     qualitySummaryBanner: document.querySelector("#qualitySummaryBanner"),
     qualityMetricsPanel: document.querySelector("#qualityMetricsPanel"),
-    performanceTelemetryStatus: document.querySelector("#performanceTelemetryStatus"),
-    performanceTelemetryMetrics: document.querySelector("#performanceTelemetryMetrics"),
     propertiesToggleBtn: document.querySelector("#propertiesToggleBtn"),
     feedbackDialog: document.querySelector("#feedbackDialog"),
     feedbackForm: document.querySelector("#feedbackForm"),
@@ -444,13 +447,12 @@
     feedbackTitle: document.querySelector("#feedbackTitle"),
     feedbackDetails: document.querySelector("#feedbackDetails"),
     feedbackDetailsLabel: document.querySelector("#feedbackDetailsLabel"),
-    githubIssueLink: document.querySelector("#githubIssueLink"),
-    feedbackEmailLink: document.querySelector("#feedbackEmailLink"),
+    feedbackDestinationButtons: Array.from(document.querySelectorAll("[data-feedback-destination]")),
+    feedbackSendLink: document.querySelector("#feedbackSendLink"),
     startupDialog: document.querySelector("#startupDialog"),
     startupStartScreen: document.querySelector("#startupStartScreen"),
     startupStartNewBtn: document.querySelector("#startupStartNewBtn"),
     startupSetupForm: document.querySelector("#startupSetupForm"),
-    startupReferenceCitiesField: document.querySelector("#referenceCitiesField"),
     startupBaselayerOptions: Array.from(document.querySelectorAll("[data-startup-baselayer]")),
     startupMapStyleInput: document.querySelector("#startupMapStyleInput"),
     startupBookSizeInput: document.querySelector("#startupBookSizeInput"),
@@ -527,18 +529,14 @@
   const indexedReferenceCities = referenceCitySearch && Array.isArray(window.PLOTYPUS_CITIES)
     ? referenceCitySearch.indexDataset(window.PLOTYPUS_CITIES)
     : [];
-  let startupReferenceCitiesController = null;
-  let baselayerReferenceCitiesController = null;
   let projectCitiesController = null;
   const projectRowCityControllers = new Map();
   let propertiesProjectCityController = null;
-  let startupReferenceCities = referenceCitiesApi ? referenceCitiesApi.createDefaultModel() : { ids: [], overrides: {}, rule: null, style: "default" };
   let pendingProjectCities = referenceCitiesApi ? referenceCitiesApi.createDefaultModel() : { ids: [], overrides: {}, rule: null, style: "default" };
   let baselayer = {
     id: currentBoundary,
     geometrySource: currentBoundary,
-    projection: boundarySources[currentBoundary] && boundarySources[currentBoundary].projection || currentBoundary,
-    referenceCities: referenceCitiesApi ? referenceCitiesApi.createDefaultModel() : { ids: [], overrides: {}, rule: null, style: "default" }
+    projection: boundarySources[currentBoundary] && boundarySources[currentBoundary].projection || currentBoundary
   };
   let renderOutputMode = "web";
   let canvasViewZoom = defaultCanvasViewZoom;
@@ -608,6 +606,7 @@
   let pendingRenderDelayTimer = null;
   let pendingRenderIdleCallback = null;
   let pendingRenderOptions = null;
+  let pendingScheduledRenderFocusSelector = null;
   let pendingRichLabelPreviewFrame = null;
   const pendingRichLabelPreviewRowIds = new Set();
   let shortcutsReturnFocus = null;
@@ -776,35 +775,6 @@
     };
   }
 
-  function performanceMetric(label, sample, budgetMs) {
-    if (!sample) {
-      return `<div class="performance-metric" data-state="neutral"><span class="type-caption">${escapeHtml(label)}</span><strong class="type-data">${escapeHtml(t("performance.notRun"))}</strong><small class="type-caption">${escapeHtml(t("performance.budget", { value: Math.round(budgetMs) }))}</small></div>`;
-    }
-    const queuedPrefix = sample.queueMs ? t("performance.renderQueued", { render: Math.round(sample.durationMs), queued: Math.round(sample.queueMs) }) : "";
-    return `
-      <div class="performance-metric" data-state="${sample.overBudget ? "warning" : "ok"}">
-        <span class="type-caption">${escapeHtml(label)}</span>
-        <strong class="type-data">${Math.round(sample.totalMs)} ms</strong>
-        <small class="type-caption">${escapeHtml(queuedPrefix)}${escapeHtml(t("performance.budget", { value: Math.round(sample.budgetMs) }))}</small>
-      </div>`;
-  }
-
-  function refreshPerformanceTelemetry() {
-    if (!els.performanceTelemetryMetrics || !els.performanceTelemetryStatus) return;
-    const snapshot = getRenderPerformanceSnapshot();
-    const p95Ratio = snapshot.p95BudgetRatio;
-    const p95State = p95Ratio !== null && p95Ratio > 1 ? "warning" : p95Ratio === null ? "neutral" : "ok";
-    const p95Value = p95Ratio === null ? t("performance.notRun") : `${Math.round(p95Ratio * 100)}%`;
-    els.performanceTelemetryMetrics.innerHTML = `
-      ${performanceMetric(t("performance.latestRender"), snapshot.latestByKind.render, renderPerformanceBudgets.renderMs)}
-      ${performanceMetric(t("performance.latestAutoPlace"), snapshot.latestByKind.autoPlace, renderPerformanceBudgets.autoPlaceMs)}
-      ${performanceMetric(t("performance.latestExportRender"), snapshot.latestByKind.export, renderPerformanceBudgets.exportMs)}
-      <div class="performance-metric" data-state="${p95State}"><span class="type-caption">${escapeHtml(t("performance.rollingP95"))}</span><strong class="type-data">${escapeHtml(p95Value)}</strong><small class="type-caption">${escapeHtml(t("performance.samples", { count: snapshot.samples.length, total: renderPerformanceBudgets.sampleWindow }))}</small></div>
-      <div class="performance-metric" data-state="${snapshot.overBudgetCount ? "warning" : snapshot.samples.length ? "ok" : "neutral"}"><span class="type-caption">${escapeHtml(t("performance.budgetWarnings"))}</span><strong class="type-data">${snapshot.overBudgetCount}</strong><small class="type-caption">${escapeHtml(t("performance.currentWindow"))}</small></div>`;
-    els.performanceTelemetryStatus.textContent = snapshot.overBudgetCount ? t("performance.overBudget", { count: snapshot.overBudgetCount }) : snapshot.samples.length ? t("performance.withinBudgets") : t("quality.performance.none");
-    els.performanceTelemetryStatus.dataset.state = snapshot.overBudgetCount ? "warning" : snapshot.samples.length ? "ok" : "neutral";
-  }
-
   function recordRenderPerformance(options, startedAt, completedAt, error = null) {
     const kind = renderPerformanceKind(options);
     const durationMs = Math.max(0, completedAt - startedAt);
@@ -828,7 +798,9 @@
     };
     renderPerformanceSamples.push(sample);
     if (renderPerformanceSamples.length > renderPerformanceBudgets.sampleWindow) renderPerformanceSamples.shift();
-    refreshPerformanceTelemetry();
+    if (new URLSearchParams(window.location.search).get("debug") === "performance" && window.console && typeof window.console.debug === "function") {
+      console.debug("[Plotypus performance]", getRenderPerformanceSnapshot());
+    }
     if (sample.overBudget && window.console && typeof window.console.warn === "function") {
       console.warn(`[Plotypus performance] ${kind} took ${Math.round(totalMs)} ms including queue time (budget ${budgetMs} ms).`, sample);
     }
@@ -1078,7 +1050,6 @@
       const boundaryChanged = snapshot.boundary && snapshot.boundary !== currentBoundary;
       currentBoundary = snapshot.boundary || currentBoundary;
       baselayer = normalizeBaselayerState(snapshot.baselayer, currentBoundary);
-      baselayerReferenceCitiesController?.setModel(baselayer.referenceCities);
       if (els.boundaryInput) els.boundaryInput.value = currentBoundary;
       applyMapStylePreset(snapshot.mapStyle || currentMapStylePreset, { applyMapColours: false, render: false });
       applySettings(snapshot.settings || {});
@@ -1153,7 +1124,7 @@
 
   function captureScheduledRenderFocus() {
     const active = document.activeElement;
-    if (!active || !els.propertiesSelectionControls?.contains(active)) return null;
+    if (!active || !els.propertiesSelectionControls?.contains(active)) return pendingScheduledRenderFocusSelector;
     const stableAttributes = [
       "data-marker-size-draft",
       "data-leader-line-width-draft",
@@ -1167,13 +1138,14 @@
       const escaped = window.CSS && typeof CSS.escape === "function" ? CSS.escape(value) : value.replace(/["\\]/g, "\\$&");
       return `[${attribute}="${escaped}"]`;
     }
-    return active.id ? `#${window.CSS && typeof CSS.escape === "function" ? CSS.escape(active.id) : active.id}` : null;
+    return active.id ? `#${window.CSS && typeof CSS.escape === "function" ? CSS.escape(active.id) : active.id}` : pendingScheduledRenderFocusSelector;
   }
 
   function restoreScheduledRenderFocus(selector) {
     if (!selector) return;
     const target = els.propertiesSelectionControls?.querySelector(selector);
     if (target && document.activeElement !== target) target.focus({ preventScroll: true });
+    if (pendingScheduledRenderFocusSelector === selector) pendingScheduledRenderFocusSelector = null;
   }
 
   function scheduleRender(options = {}) {
@@ -1363,7 +1335,23 @@
     return categorySettings.some(category => category.id === categoryId);
   }
 
+  function applyCanonicalButtonClasses(root = document) {
+    root.querySelectorAll("button, .file-button").forEach(button => {
+      const existing = ["btn-primary", "btn-default", "btn-danger", "btn-quiet", "btn-icon", "btn-toggle", "btn-card"];
+      if (existing.some(className => button.classList.contains(className))) return;
+      let className = "btn-default";
+      if (button.classList.contains("primary-action") || button.matches("button.primary")) className = "btn-primary";
+      else if (button.classList.contains("is-danger") || button.classList.contains("project-danger-action")) className = "btn-danger";
+      else if (button.classList.contains("startup-option") || button.classList.contains("startup-baselayer-option") || button.classList.contains("catalog-card")) className = "btn-card";
+      else if (button.classList.contains("icon-button") || button.classList.contains("ribbon-icon-only") || button.classList.contains("dialog-close")) className = "btn-icon";
+      else if (button.classList.contains("quiet-link") || button.classList.contains("text-action") || button.classList.contains("ghost-button")) className = "btn-quiet";
+      else if (button.matches("[aria-pressed], [role='tab'], [role='radio'], [role='menuitemradio']")) className = "btn-toggle";
+      button.classList.add(className);
+    });
+  }
+
   function renderRibbonIcons() {
+    applyCanonicalButtonClasses();
     document.querySelectorAll("[data-icon]").forEach(element => {
       const icon = iconPaths[element.dataset.icon];
       if (!icon || element.querySelector(":scope > .button-icon")) return;
@@ -1918,10 +1906,14 @@
     const isRegions = isRegionLocationMode();
     const isCities = isCityLocationMode();
     if (els.projectTable) els.projectTable.dataset.locationMode = activeProjectLocationMode;
+    if (els.addPointsBtn) els.addPointsBtn.hidden = !isCities;
     els.projectLocationModeButtons.forEach(button => {
       const active = normalizeProjectLocationMode(button.dataset.projectLocationMode) === activeProjectLocationMode;
       button.classList.toggle("is-active", active);
-      button.setAttribute("aria-pressed", active ? "true" : "false");
+      const stateAttribute = button.getAttribute("role") === "menuitemradio" ? "aria-checked" : "aria-pressed";
+      const staleAttribute = stateAttribute === "aria-checked" ? "aria-pressed" : "aria-checked";
+      button.removeAttribute(staleAttribute);
+      button.setAttribute(stateAttribute, active ? "true" : "false");
     });
     if (els.bulkClearCoordinatesBtn) {
       const label = els.bulkClearCoordinatesBtn.querySelector("span") || els.bulkClearCoordinatesBtn;
@@ -2324,19 +2316,19 @@
     const numericRowId = Number(rowId);
     nextRowId = Number.isFinite(numericRowId) ? Math.max(nextRowId, numericRowId + 1) : nextRowId + 1;
     tr.innerHTML = `
-      <td class="name-cell vcell" data-cell-field="name"><input class="name-input" type="text" value="${escapeHtml(activeAuthoringLanguage === "fr" ? row.nameFr || "" : row.name || "")}" title="${escapeHtml(activeAuthoringLanguage === "fr" ? row.nameFr || "" : row.name || "")}" aria-label="${escapeHtml(t("table.projectName.aria"))}"><span class="row-validation-badge" aria-hidden="true"></span><button class="row-fix-link" type="button" hidden>${escapeHtml(t("table.fix"))}</button></td>
-      <td data-cell-field="footnote"><input class="footnote-input" type="text" value="${escapeHtml(row.footnote || "")}" aria-label="${escapeHtml(t("table.footnote.title"))}" maxlength="2" pattern="[A-Za-z0-9]*|[*]"></td>
+      <td class="name-cell vcell" data-cell-field="name"><input class="name-input type-editable-text" type="text" value="${escapeHtml(activeAuthoringLanguage === "fr" ? row.nameFr || "" : row.name || "")}" title="${escapeHtml(activeAuthoringLanguage === "fr" ? row.nameFr || "" : row.name || "")}" aria-label="${escapeHtml(t("table.projectName.aria"))}"><span class="row-validation-badge" aria-hidden="true"></span><button class="row-fix-link" type="button" hidden>${escapeHtml(t("table.fix"))}</button></td>
+      <td data-cell-field="footnote"><input class="footnote-input type-editable-text" type="text" value="${escapeHtml(row.footnote || "")}" aria-label="${escapeHtml(t("table.footnote.title"))}" maxlength="2" pattern="[A-Za-z0-9]*|[*]"></td>
       <td class="vcell" data-cell-field="type">
-        <select class="type-input" title="${escapeHtml(getCategoryLabel(row.type, activeAuthoringLanguage))}" aria-label="${escapeHtml(t("table.projectType.aria"))}">
+        <select class="type-input type-control" title="${escapeHtml(getCategoryLabel(row.type, activeAuthoringLanguage))}" aria-label="${escapeHtml(t("table.projectType.aria"))}">
           ${getTypeOptions(row.type)}
         </select>
       </td>
       <td class="annotation-preview-cell label-preview-cell" data-cell-field="labelStyle"><span class="label-preview-text"></span></td>
       <td class="bulk-edit-cell city-cell vcell" data-cell-field="city"><div class="project-city-cell-field"></div></td>
-      <td class="bulk-edit-cell region-cell anchor-preview-cell vcell" data-cell-field="region"><select class="region-input" aria-label="${escapeHtml(t("properties.field.region"))}"></select></td>
-      <td class="bulk-edit-cell coordinate-cell lon-cell vcell" data-cell-field="lon"><input class="lon-input" type="text" inputmode="decimal" value="${escapeHtml(formatProjectCoordinate(row.lon))}" aria-label="${escapeHtml(t("table.longitude"))}"><button class="clear-coordinate-cell" type="button" data-clear-coordinate="lon" aria-label="${escapeHtml(t("table.clearLongitude"))}" title="${escapeHtml(t("table.clearLongitude"))}" hidden>&times;</button></td>
-      <td class="bulk-edit-cell coordinate-cell lat-cell vcell" data-cell-field="lat"><input class="lat-input" type="text" inputmode="decimal" value="${escapeHtml(formatProjectCoordinate(row.lat))}" aria-label="${escapeHtml(t("table.latitude"))}"><button class="clear-coordinate-cell" type="button" data-clear-coordinate="lat" aria-label="${escapeHtml(t("table.clearLatitude"))}" title="${escapeHtml(t("table.clearLatitude"))}" hidden>&times;</button></td>
-      <td class="status-cell" data-cell-field="status"><span class="row-status-badge"></span></td>
+      <td class="bulk-edit-cell region-cell anchor-preview-cell vcell" data-cell-field="region"><select class="region-input type-control" aria-label="${escapeHtml(t("properties.field.region"))}"></select></td>
+      <td class="bulk-edit-cell coordinate-cell lon-cell vcell" data-cell-field="lon"><input class="lon-input type-numeric-data" type="text" inputmode="decimal" value="${escapeHtml(formatProjectCoordinate(row.lon))}" aria-label="${escapeHtml(t("table.longitude"))}"><button class="clear-coordinate-cell" type="button" data-clear-coordinate="lon" aria-label="${escapeHtml(t("table.clearLongitude"))}" title="${escapeHtml(t("table.clearLongitude"))}" hidden>&times;</button></td>
+      <td class="bulk-edit-cell coordinate-cell lat-cell vcell" data-cell-field="lat"><input class="lat-input type-numeric-data" type="text" inputmode="decimal" value="${escapeHtml(formatProjectCoordinate(row.lat))}" aria-label="${escapeHtml(t("table.latitude"))}"><button class="clear-coordinate-cell" type="button" data-clear-coordinate="lat" aria-label="${escapeHtml(t("table.clearLatitude"))}" title="${escapeHtml(t("table.clearLatitude"))}" hidden>&times;</button></td>
+      <td class="status-cell" data-cell-field="status"><span class="row-status-badge type-status-badge"></span></td>
       <td class="line-cell" data-cell-field="hideLine"><input type="checkbox" class="hide-line-input" aria-label="${escapeHtml(t("properties.field.hideLeaderLine"))}"${row.hideLine ? " checked" : ""}></td>
       <td hidden>
         <input type="checkbox" class="elbow-leader-input" aria-label="${escapeHtml(t("properties.field.useElbowLeader"))}"${row.elbowLeader ? " checked" : ""}>
@@ -2357,8 +2349,8 @@
       }
       updateRowTitles(tr);
       updateRowAnnotationPreview(tr);
-    syncCoordinateClearButtons(tr);
-      if (isProjectStatusInput(input)) scheduleProjectTableUxRefresh();
+      syncCoordinateClearButtons(tr);
+      scheduleProjectTableUxRefresh();
       requestPreviewRefresh();
       refreshActiveRowProperties();
     };
@@ -2386,6 +2378,10 @@
     });
     tr.addEventListener("click", event => {
       if (event.target.closest(".row-select")) return;
+      if (event.target.closest(".project-city-cell-field")) {
+        activateProjectCityInlineEditor(tr);
+        return;
+      }
       const fixButton = event.target.closest(".row-fix-link");
       if (fixButton) {
         focusProjectRowIssue(tr.dataset.rowId);
@@ -2395,6 +2391,10 @@
     });
     tr.addEventListener("focusin", event => {
       if (event.target.closest(".row-select")) return;
+      if (event.target.closest(".project-city-cell-field")) {
+        activateProjectCityInlineEditor(tr);
+        return;
+      }
       setProjectRowPropertiesFromElement(tr);
     });
     (options.container || els.tableBody).appendChild(tr);
@@ -2519,14 +2519,6 @@
     const isCallout = row && !isRegionMode && !isCityMode && !isBlank && hasName && !hasAnyCoordinate;
     const isMapped = !isBlank && (isRegionMode ? hasRegionAnchor : isCityMode ? hasCityAnchor : hasBothCoordinates);
     return { isBlank, isMapped, isCallout, isMissingCoordinate, row };
-  }
-
-  function isProjectStatusInput(input) {
-    return input.classList.contains("name-input")
-      || input.classList.contains("lon-input")
-      || input.classList.contains("lat-input")
-      || input.classList.contains("region-input")
-      || input.classList.contains("cityLocationInput");
   }
 
   function captureInputUndo(input, label) {
@@ -2673,6 +2665,101 @@
     return workspace.rowMatchesProjectFilter(state, activeProjectFilter);
   }
 
+  const projectTableWidthBands = Object.freeze(["compact", "comfortable", "wide", "spacious"]);
+  const projectTableWidthThresholds = Object.freeze({
+    name: [240, 320, 400],
+    type: [180, 230, 280],
+    label: [140, 170, 220],
+    location: [180, 220, 280],
+    status: [120, 150, 180]
+  });
+  let projectTableTextMeasureContext = null;
+
+  function getProjectTableContentWidth(value, source, extraWidth = 0) {
+    const rawText = String(value || "").trim();
+    if (!rawText) return extraWidth;
+    const style = source ? getComputedStyle(source) : getComputedStyle(els.projectTable);
+    const text = style.textTransform === "uppercase" ? rawText.toLocaleUpperCase(currentUiLanguage) : rawText;
+    const characters = Array.from(text);
+    const letterSpacing = Number.parseFloat(style.letterSpacing) || 0;
+    const padding = (Number.parseFloat(style.paddingLeft) || 0) + (Number.parseFloat(style.paddingRight) || 0);
+    if (!projectTableTextMeasureContext && typeof document.createElement === "function") {
+      projectTableTextMeasureContext = document.createElement("canvas").getContext("2d");
+    }
+    if (!projectTableTextMeasureContext) return Math.ceil(characters.length * 8 + padding + extraWidth);
+    projectTableTextMeasureContext.font = [
+      style.fontStyle,
+      style.fontVariant,
+      style.fontWeight,
+      style.fontSize,
+      style.fontFamily
+    ].filter(Boolean).join(" ");
+    return Math.ceil(
+      projectTableTextMeasureContext.measureText(text).width
+      + Math.max(0, characters.length - 1) * letterSpacing
+      + padding
+      + extraWidth
+    );
+  }
+
+  function getProjectTableWidthBand(column, requiredWidths = []) {
+    const maximumWidth = requiredWidths.reduce((width, requiredWidth) => {
+      return Math.max(width, Number(requiredWidth) || 0);
+    }, 0);
+    const thresholds = projectTableWidthThresholds[column] || projectTableWidthThresholds.label;
+    const bandIndex = thresholds.findIndex(threshold => maximumWidth <= threshold);
+    return projectTableWidthBands[bandIndex < 0 ? projectTableWidthBands.length - 1 : bandIndex];
+  }
+
+  function setProjectTableWidthBand(column, band) {
+    if (!els.projectTable) return;
+    projectTableWidthBands.forEach(candidate => {
+      els.projectTable.classList.toggle(`project-${column}-width-${candidate}`, candidate === band);
+    });
+  }
+
+  function updateProjectTableColumnSizing(rows = getTableRows()) {
+    if (!els.projectTable) return;
+    const visibleRows = rows.filter(row => !row.hidden);
+    const sizingRows = visibleRows.length ? visibleRows : rows;
+    const headerWidth = selector => {
+      const header = els.projectTable.querySelector(selector);
+      return header ? getProjectTableContentWidth(header.textContent, header, 24) : 0;
+    };
+    const cityMode = isCityLocationMode();
+    const values = {
+      name: [headerWidth(".name-col"), ...sizingRows.map(row => {
+        const input = row.querySelector(".name-input");
+        return getProjectTableContentWidth(input?.value, input);
+      })],
+      type: [headerWidth(".type-col"), ...sizingRows.map(row => {
+        const input = row.querySelector(".type-input");
+        return getProjectTableContentWidth(input?.selectedOptions[0]?.textContent, input);
+      })],
+      label: [headerWidth(".annotation-preview-col"), ...sizingRows.map(row => {
+        const cell = row.querySelector(".annotation-preview-cell");
+        return getProjectTableContentWidth(cell?.textContent, cell);
+      })],
+      location: [
+        headerWidth(cityMode ? ".city-col" : ".region-col"),
+        ...sizingRows.map(row => {
+          const input = row.querySelector(cityMode ? ".cityLocationInput" : ".region-input");
+          const value = cityMode
+            ? input?.value || (currentUiLanguage === "fr" ? row.dataset.cityNameFr || row.dataset.cityName : row.dataset.cityName)
+            : input?.selectedOptions[0]?.textContent || row.dataset.region;
+          return getProjectTableContentWidth(value, input);
+        })
+      ],
+      status: [headerWidth(".status-col"), ...sizingRows.map(row => {
+        const badge = row.querySelector(".row-status-badge");
+        return getProjectTableContentWidth(badge?.textContent, badge, 32);
+      })]
+    };
+    Object.entries(values).forEach(([column, columnValues]) => {
+      setProjectTableWidthBand(column, getProjectTableWidthBand(column, columnValues));
+    });
+  }
+
   function refreshProjectTableUx() {
     if (projectTableUxRefreshFrame) {
       cancelAnimationFrame(projectTableUxRefreshFrame);
@@ -2785,6 +2872,8 @@
         fixLink.setAttribute("aria-label", t("project.preview.fixCoordinatesAria", { name: readRowElement(tr).name || t("project.preview.thisRow") }));
       }
     });
+
+    updateProjectTableColumnSizing(rows);
 
     if (els.projectTableSummary) {
       const filterSuffix = activeProjectFilter === "all" && !activeProjectSearch ? "" : t("project.summary.shownSuffix", { count: visibleRows });
@@ -3059,11 +3148,23 @@
       tr.classList.toggle("is-active-row", isActive);
       tr.setAttribute("aria-selected", String(isActive));
       tr.querySelectorAll("input:not([type='hidden']):not(.row-select), select, textarea, .project-city-cell-field").forEach(control => {
+        if (control.closest(".project-city-cell-field")) {
+          control.setAttribute("aria-readonly", "false");
+          if (control.matches("input[type='text']")) control.readOnly = false;
+          if (control.matches("input")) control.tabIndex = 0;
+          return;
+        }
         control.setAttribute("aria-readonly", String(!isActive));
         if (control.matches("input[type='text'], input[type='number'], textarea")) control.readOnly = !isActive;
         if (control.matches("input, select, textarea")) control.tabIndex = isActive ? 0 : -1;
       });
     });
+  }
+
+  function activateProjectCityInlineEditor(tr) {
+    activePropertiesSelection = null;
+    applyAdaptivePropertiesState(null);
+    highlightActiveProjectRow(tr?.dataset.rowId);
   }
 
   function setProjectRowPropertiesFromElement(tr) {
@@ -3150,6 +3251,100 @@
     return workspace.summaryChip(label, value, { state, action, destination, id, escapeHtml });
   }
 
+  function getWorkflowGuideSteps() {
+    const rowSummary = summarizeProjectRows(getRows());
+    const regionSummary = getVisibleRegionSummary();
+    const translationSummary = getTranslationSummary();
+    const qualitySummary = getQualitySummary();
+    const hasProjects = rowSummary.total > 0;
+    const previewReady = hasProjects && Boolean(lastLayout && lastLayout.report);
+    const qualityReady = previewReady
+      && !qualitySummary.pending
+      && !qualitySummary.unavailable
+      && getReviewIssueCount() === 0;
+    return [
+      {
+        name: "projects",
+        step: 1,
+        tab: els.projectTableTab,
+        title: t("workflow.projects.title"),
+        description: t("workflow.projects.body"),
+        complete: hasProjects && rowSummary.coordinateIssues === 0
+      },
+      {
+        name: "regions",
+        step: 2,
+        tab: els.regionTableTab,
+        title: t("workflow.regions.title"),
+        description: t("workflow.regions.body"),
+        complete: hasProjects && regionSummary.state === "ok"
+      },
+      {
+        name: "translate",
+        step: 3,
+        tab: els.translateTableTab,
+        title: t("tab.translate"),
+        description: t("workflow.translate.body"),
+        complete: hasProjects && translationSummary.missing === 0
+      },
+      {
+        name: "preview",
+        step: 4,
+        tab: els.previewTableTab,
+        title: t("tab.map"),
+        description: t("workflow.preview.body"),
+        complete: previewReady
+      },
+      {
+        name: "quality",
+        step: 5,
+        tab: els.qualityTableTab,
+        title: t("workflow.quality.title"),
+        description: t("workflow.quality.body"),
+        complete: qualityReady
+      }
+    ];
+  }
+
+  function updateWorkflowGuide() {
+    const steps = getWorkflowGuideSteps();
+    const nextStep = steps.find(step => !step.complete) || null;
+    steps.forEach(step => {
+      if (!step.tab) return;
+      const state = step.complete ? "complete" : step === nextStep ? "next" : "pending";
+      const status = t(`workflow.status.${state}`);
+      const accessibleLabel = t("workflow.tabStatus", {
+        step: step.step,
+        title: step.title,
+        description: step.description,
+        status
+      });
+      step.tab.dataset.workflowState = state;
+      step.tab.setAttribute("title", accessibleLabel);
+      step.tab.setAttribute("aria-label", accessibleLabel);
+    });
+    if (!els.workflowNextStep || !els.workflowNextBtn) return;
+    const target = nextStep ? nextStep.name : "export";
+    els.workflowNextStep.dataset.state = nextStep ? "next" : "complete";
+    els.workflowNextBtn.dataset.workflowTarget = target;
+    if (els.workflowNextEyebrow) els.workflowNextEyebrow.textContent = t(nextStep ? "workflow.next" : "workflow.ready");
+    if (els.workflowNextTitle) els.workflowNextTitle.textContent = nextStep ? nextStep.title : t("workflow.export.title");
+    if (els.workflowNextBody) els.workflowNextBody.textContent = nextStep ? nextStep.description : t("workflow.export.body");
+    els.workflowNextBtn.textContent = t(`workflow.open.${target}`);
+  }
+
+  function handleWorkflowNextAction() {
+    if (!els.workflowNextBtn) return;
+    const target = els.workflowNextBtn.dataset.workflowTarget || "projects";
+    if (target === "export") {
+      setExportMenuOpen(true);
+      els.exportMenuBtn?.focus();
+      return;
+    }
+    setActiveDataTab(target);
+    getDataTabs().find(item => item.name === target)?.tab?.focus();
+  }
+
   function updateWorkspaceSummary(options = {}) {
     if (!els.workspaceSummaryHeadline || !els.workspaceSummaryMetrics) return;
     const rows = options.rows || getRows();
@@ -3175,15 +3370,20 @@
         qualityUnavailable ? "" : "quality",
         qualityUnavailable ? t("summary.openQuality") : t("summary.openQualityCount", { count: reviewCount }),
         "workspaceReviewBtn"
-      );
+    );
     els.workspaceSummaryMetrics.innerHTML = `<div class="workspace-summary-overview">${overviewChips.join("")}</div>${reviewChip}`;
+    renderRibbonIcons();
+    updateWorkflowGuide();
   }
 
   function syncAuthoringLanguageControls(language = activeAuthoringLanguage) {
     document.querySelectorAll("[data-authoring-language]").forEach(button => {
       const active = button.dataset.authoringLanguage === language;
       button.classList.toggle("is-active", active);
-      button.setAttribute("aria-pressed", String(active));
+      const stateAttribute = button.getAttribute("role") === "menuitemradio" ? "aria-checked" : "aria-pressed";
+      const staleAttribute = stateAttribute === "aria-checked" ? "aria-pressed" : "aria-checked";
+      button.removeAttribute(staleAttribute);
+      button.setAttribute(stateAttribute, String(active));
     });
   }
 
@@ -3246,8 +3446,7 @@
     return {
       id: boundary,
       geometrySource: boundary,
-      projection: boundarySources[boundary] && boundarySources[boundary].projection || boundary,
-      referenceCities: cloneReferenceCities(value && value.referenceCities)
+      projection: boundarySources[boundary] && boundarySources[boundary].projection || boundary
     };
   }
 
@@ -3397,18 +3596,6 @@
     });
   }
 
-  function ensureCityRegionsIncluded(ids) {
-    const enabled = [];
-    (ids || []).forEach(id => {
-      const city = getIndexedCityById(id);
-      const regionId = getCityRegionId(city);
-      if (!regionId || regionVisibility[regionId] !== false) return;
-      regionVisibility[regionId] = true;
-      enabled.push(regionId);
-    });
-    return enabled;
-  }
-
   function createReferenceCitiesController(root, model, options = {}) {
     if (!root || !referenceCitiesApi || !referenceCitySearch) return null;
     return referenceCitiesApi.createField({
@@ -3425,34 +3612,6 @@
       t,
       onBeforeChange: options.onBeforeChange,
       onChange: options.onChange
-    });
-  }
-
-  function mountStartupReferenceCitiesField() {
-    startupReferenceCitiesController?.destroy();
-    startupReferenceCitiesController = createReferenceCitiesController(els.startupReferenceCitiesField, startupReferenceCities, {
-      idPrefix: "refCity",
-      allowOverrides: false,
-      onChange(value) {
-        startupReferenceCities = cloneReferenceCities(value);
-      }
-    });
-  }
-
-  function mountBaselayerReferenceCitiesField() {
-    baselayerReferenceCitiesController?.destroy();
-    baselayerReferenceCitiesController = createReferenceCitiesController(els.baselayerReferenceCitiesField, baselayer.referenceCities, {
-      idPrefix: "baselayerRefCity",
-      allowOverrides: true,
-      onBeforeChange() {
-        pushAppUndoHistory("reference cities edit");
-      },
-      onChange(value) {
-        baselayer.referenceCities = cloneReferenceCities(value);
-        ensureCityRegionsIncluded(value.ids);
-        if (canadaGeo && Array.isArray(canadaGeo.features)) applyRegionColoursByValue(false);
-        requestPreviewRefresh();
-      }
     });
   }
 
@@ -3478,9 +3637,7 @@
     });
   }
 
-  function refreshReferenceCitiesFields() {
-    startupReferenceCitiesController?.refresh();
-    baselayerReferenceCitiesController?.refresh();
+  function refreshProjectCityFields() {
     projectCitiesController?.refresh();
     projectRowCityControllers.forEach(controller => controller.refresh());
     propertiesProjectCityController?.refresh();
@@ -3593,7 +3750,7 @@
     if (els.confirmationDialog && !els.confirmationDialog.hidden && pendingConfirmation) {
       renderConfirmationDialog();
     }
-    refreshReferenceCitiesFields();
+    refreshProjectCityFields();
     setProjectSaveState(projectSaveState);
   }
 
@@ -3819,8 +3976,14 @@
   function renderTranslationProgressOnly() {
     const summary = getTranslationSummary();
     if (els.translationProgressText) {
-      els.translationProgressText.textContent = t("translate.progress", { complete: summary.complete, total: summary.total });
+      const progressKey = summary.total === 0
+        ? "translate.progress.empty"
+        : summary.complete === summary.total
+          ? (summary.total === 1 ? "translate.progress.completeSingular" : "translate.progress.complete")
+          : "translate.progress";
+      els.translationProgressText.textContent = t(progressKey, { complete: summary.complete, total: summary.total });
     }
+    if (els.translationProgress) els.translationProgress.hidden = summary.total === 0;
     if (els.translationProgressBar) {
       els.translationProgressBar.style.width = summary.total ? `${Math.round(summary.complete / summary.total * 100)}%` : "0%";
     }
@@ -4049,7 +4212,7 @@
       `properties.size.image.${size.value}`,
       getLocalizedConfigLabel(size, currentUiLanguage, size.value)
     );
-    return `${label} (${size.width} x ${size.height} px)`;
+    return `${label} (${size.width} × ${size.height} px)`;
   }
 
   function formatBookSizeOption(value, preset) {
@@ -4135,6 +4298,31 @@
     els.startupImageSizeInput.value = book.sizes.some(size => size.value === imageSizeValue)
       ? imageSizeValue
       : (book.sizes.some(size => size.value === layoutDefaults.imageSizeInput) ? layoutDefaults.imageSizeInput : book.sizes[0].value);
+    syncSingleOptionSelect(els.startupImageSizeInput);
+  }
+
+  function syncSingleOptionSelect(select) {
+    if (!select) return;
+    const label = select.closest("label");
+    if (!label) return;
+    let staticValue = label.querySelector(".startup-static-value");
+    let staticHint = label.querySelector(".startup-static-hint");
+    if (!staticValue) {
+      staticValue = document.createElement("span");
+      staticValue.className = "startup-static-value";
+      select.insertAdjacentElement("afterend", staticValue);
+    }
+    if (!staticHint) {
+      staticHint = document.createElement("small");
+      staticHint.className = "startup-static-hint";
+      staticValue.insertAdjacentElement("afterend", staticHint);
+    }
+    const singleOption = select.options.length === 1;
+    select.hidden = singleOption;
+    staticValue.hidden = !singleOption;
+    staticHint.hidden = !singleOption;
+    staticValue.textContent = singleOption ? select.options[0].textContent : "";
+    staticHint.textContent = t("dialog.startup.changeLater");
   }
 
   function renderStartupSetupSelectOptions(options = {}) {
@@ -4156,6 +4344,8 @@
     )).join("");
     els.startupBookSizeInput.value = imageSizePresets[bookSizeValue] ? bookSizeValue : layoutDefaults.bookSizeInput;
     renderStartupImageSizeOptions(imageSizeValue);
+    syncSingleOptionSelect(els.startupMapStyleInput);
+    syncSingleOptionSelect(els.startupBookSizeInput);
   }
 
   function selectStartupBaselayerOption(selectedOption, options = {}) {
@@ -4339,7 +4529,7 @@
     const parsed = Number(value);
     const fallback = layoutDefaults.mapScaleInput;
     const mapScale = Number.isFinite(parsed) ? parsed : fallback;
-    return Math.max(mapScaleRange.min, Math.min(mapScaleRange.max, mapScale));
+    return Math.round(Math.max(mapScaleRange.min, Math.min(mapScaleRange.max, mapScale)));
   }
 
   function normalizeMarkerSize(value, fallback = layoutDefaults.markerSizeInput, minimum = 4, maximum = 30) {
@@ -4426,6 +4616,7 @@
   function focusMarkerSizeDraft(scope) {
     const targetScope = scope === "category" ? "category" : "global";
     const selector = `[data-marker-size-draft='${targetScope}']`;
+    pendingScheduledRenderFocusSelector = selector;
     const restoreFocus = () => {
       const input = els.propertiesSelectionControls?.querySelector(selector);
       if (!input || !input.isConnected) return false;
@@ -4547,6 +4738,7 @@
   function focusLeaderLineWidthDraft(scope) {
     const targetScope = scope === "point" || scope === "category" ? scope : "global";
     const selector = `[data-leader-line-width-draft='${targetScope}']`;
+    pendingScheduledRenderFocusSelector = selector;
     const restoreFocus = () => {
       const input = els.propertiesSelectionControls?.querySelector(selector);
       if (!input || !input.isConnected) return false;
@@ -5162,9 +5354,9 @@
             ${regionStatusOptionsHtml(region.status)}
           </select>
         </td>
-        <td class="region-count-cell">${region.count}</td>
-        <td class="region-value-cell region-vcell">
-          <input class="region-value-input" type="number" step="any" value="${region.value === "" ? "" : region.value}" data-region-id="${escapeHtml(region.id)}" aria-label="${escapeHtml(t("properties.region.colourOrderAria", { name: region.name }))}">
+        <td class="region-count-cell type-numeric-data">${region.count}</td>
+        <td class="region-value-cell region-vcell type-numeric-data">
+          <input class="region-value-input type-numeric-data" type="number" step="any" value="${region.value === "" ? "" : region.value}" data-region-id="${escapeHtml(region.id)}" aria-label="${escapeHtml(t("properties.region.colourOrderAria", { name: region.name }))}">
         </td>
         <td>
           <select class="region-colour-set-input" data-region-id="${escapeHtml(region.id)}" aria-label="${escapeHtml(t("region.colour.approvedFillAria", { name: region.name }))}">
@@ -5174,7 +5366,7 @@
         <td class="region-fill-cell region-vcell">
           <span class="region-fill-picker">
             <input class="region-colour-input" type="color" value="${escapeHtml(region.colour)}" aria-label="${escapeHtml(t("region.colour.fillAria", { name: region.name }))}" data-region-id="${escapeHtml(region.id)}">
-            <span>${escapeHtml(region.colour)}</span>
+            <span class="type-numeric-data">${escapeHtml(region.colour)}</span>
           </span>
         </td>
       </tr>
@@ -7179,7 +7371,6 @@
       layout.mapBounds,
       Array.isArray(layout.mappedRows) ? layout.mappedRows : layout.placed
     );
-    attachReferenceCityDiagnostics(report, createReferenceCityRenderState(layout.projection, layout.settings, layout.placed));
     layout.report = report;
     return report;
   }
@@ -7368,7 +7559,6 @@
       restartBackgroundQualityRefresh(token);
       return false;
     }
-    attachReferenceCityDiagnostics(report, createReferenceCityRenderState(work.layout.projection, work.layout.settings, work.layout.placed));
     work.layout.report = report;
     if (Array.isArray(work.mappedRows)) work.layout.mappedRows = work.mappedRows;
     if (Array.isArray(work.calloutRows)) work.layout.calloutRows = work.calloutRows;
@@ -7583,27 +7773,6 @@
       ? checklistItem("warning", t("quality.check.hiddenPoints"), t("quality.check.hiddenPointsDetail", { count: report.hiddenRegionProblems.length, regionNoun }))
       : checklistItem("ok", t("quality.check.noHiddenPoints"), t("quality.check.noHiddenPointsDetail")));
 
-    if (baselayer.referenceCities.ids.length) {
-      const unresolvedReferenceCities = (report.referenceCityUnresolvedIds || []).length;
-      const excludedReferenceCities = (report.referenceCityExcludedRegionIds || []).length;
-      const unsupportedReferenceCities = (report.referenceCityUnsupportedBoundaryIds || []).length;
-      const referenceProblemCount = unresolvedReferenceCities + excludedReferenceCities + unsupportedReferenceCities;
-      checklist.push(referenceProblemCount
-        ? checklistItem(
-          unresolvedReferenceCities ? "danger" : "warning",
-          t("quality.check.referenceCities"),
-          t("quality.check.referenceCitiesProblems", {
-            unresolved: unresolvedReferenceCities,
-            excluded: excludedReferenceCities,
-            unsupported: unsupportedReferenceCities
-          })
-        )
-        : checklistItem("ok", t("quality.check.referenceCities"), t("quality.check.referenceCitiesReady", { count: baselayer.referenceCities.ids.length })));
-      checklist.push(report.referenceCityHiddenLabelCount
-        ? checklistItem("info", t("quality.check.referenceCityLabels"), t("quality.check.referenceCityLabelsHidden", { count: report.referenceCityHiddenLabelCount }))
-        : checklistItem("ok", t("quality.check.referenceCityLabels"), t("quality.check.referenceCityLabelsVisible")));
-    }
-
     checklist.push(report.projectedProblems.length
       ? checklistItem("danger", t("quality.check.invalidCoordinates"), t("quality.check.invalidCoordinatesDetail", { count: report.projectedProblems.length }))
       : checklistItem("ok", t("quality.check.coordinateRanges"), t("quality.check.coordinateRangesDetail")));
@@ -7759,7 +7928,10 @@
     activePropertiesSelection = selection;
     highlightActiveProjectRow(selection && selection.rowId ? selection.rowId : null);
     if (els.propertiesTitle) els.propertiesTitle.textContent = title;
-    if (els.propertiesSubtitle) els.propertiesSubtitle.textContent = subtitle;
+    if (els.propertiesSubtitle) {
+      els.propertiesSubtitle.textContent = subtitle;
+      els.propertiesSubtitle.hidden = !selection;
+    }
     if (els.propertiesIcon) els.propertiesIcon.innerHTML = iconSvg(propertiesIconForSelection(selection), "properties-entity-svg");
     if (els.propertiesDescription) {
       els.propertiesDescription.textContent = hint;
@@ -8917,7 +9089,7 @@
       if (activeDataTable === "projects") {
         renderPropertiesForActiveState({ kind: "project-data" });
         window.requestAnimationFrame(() => {
-          els.projectAddMenuBtn?.focus({ preventScroll: true });
+          els.projectMoreMenuBtn?.focus({ preventScroll: true });
         });
         return;
       }
@@ -9296,7 +9468,7 @@
     });
     if (open) positionProjectToolbarMenu(button, menu);
     if (open && options.focusFirst) {
-      const firstItem = menu.querySelector('[role="menuitem"]:not([disabled])');
+      const firstItem = menu.querySelector('[role="menuitem"]:not([disabled]):not([hidden])');
       if (firstItem) firstItem.focus();
     }
   }
@@ -9325,7 +9497,7 @@
       return;
     }
     if (event.currentTarget === menu && ["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
-      const items = Array.from(menu.querySelectorAll('[role="menuitem"]:not([disabled])'));
+      const items = Array.from(menu.querySelectorAll('[role="menuitem"]:not([disabled]):not([hidden])'));
       if (!items.length) return;
       event.preventDefault();
       const currentIndex = items.indexOf(document.activeElement);
@@ -9371,10 +9543,10 @@
 
   function getDataTabs() {
     return [
-      { name: "preview", title: t("tab.map"), tab: els.previewTableTab, pane: els.previewTablePane, actions: "preview" },
       { name: "projects", title: t("tab.projects"), tab: els.projectTableTab, pane: els.projectTablePane, actions: "projects" },
       { name: "regions", title: t("tab.regions"), tab: els.regionTableTab, pane: els.regionTablePane, actions: "regions" },
       { name: "translate", title: t("tab.translate"), tab: els.translateTableTab, pane: els.translateTablePane, actions: "translate" },
+      { name: "preview", title: t("tab.map"), tab: els.previewTableTab, pane: els.previewTablePane, actions: "preview" },
       { name: "quality", title: t("tab.quality"), tab: els.qualityTableTab, pane: els.qualityTablePane, actions: "quality" }
     ];
   }
@@ -9462,8 +9634,10 @@
     const side = normalizePropertiesPanelSide(value);
     document.body.dataset.propertiesSide = side;
     syncPropertiesPanelDomOrder(side);
-    els.propertiesSideInputs.forEach(input => {
-      input.checked = input.value === side;
+    els.propertiesSideInputs.forEach(button => {
+      const active = button.value === side;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", String(active));
     });
     if (persist) savePropertiesPanelPreference({ side });
     return side;
@@ -9741,127 +9915,6 @@
     clearPreviewInteractionOverlays();
   }
 
-  function getReferenceCityMapLabel(city, language = currentMapLanguage) {
-    if (!city) return "";
-    const override = baselayer.referenceCities.overrides[city.id] && baselayer.referenceCities.overrides[city.id].name;
-    if (override && String(override[language] || "").trim()) return String(override[language]).trim();
-    return language === "fr" ? String(city.name_fr || city.name || "") : String(city.name || city.name_fr || "");
-  }
-
-  function createReferenceCityRenderState(projection, settings, placed) {
-    const state = {
-      items: [],
-      unresolvedIds: [],
-      excludedRegionIds: [],
-      unsupportedBoundaryIds: [],
-      hiddenLabelCount: 0,
-      active: false
-    };
-    const model = cloneReferenceCities(baselayer.referenceCities);
-    if (!model.ids.length) return state;
-    state.active = true;
-    if (currentBoundary !== "canada") {
-      state.unsupportedBoundaryIds = model.ids.slice();
-      return state;
-    }
-
-    const occupied = (placed || []).map(labelBackgroundRect);
-    const acceptedReferenceRects = [];
-    const fontSize = Math.max(8, Math.min(11, Number(settings.labelSize || 14) * 0.62));
-    const dotRadius = Math.max(2.5, Math.min(4, settings.width / 245));
-
-    model.ids.forEach(id => {
-      const city = getIndexedCityById(id);
-      if (!city) {
-        state.unresolvedIds.push(id);
-        return;
-      }
-      const regionId = getCityRegionId(city);
-      if (!regionId) {
-        state.unresolvedIds.push(id);
-        return;
-      }
-      if (regionVisibility[regionId] === false) {
-        state.excludedRegionIds.push(id);
-        return;
-      }
-      const point = projection([Number(city.lon), Number(city.lat)]);
-      if (!point || !Number.isFinite(point[0]) || !Number.isFinite(point[1])) {
-        state.unresolvedIds.push(id);
-        return;
-      }
-      const name = getReferenceCityMapLabel(city, settings.mapLanguage);
-      const labelX = point[0] + dotRadius + 3;
-      const labelY = point[1] + fontSize * 0.34;
-      const labelWidth = measureLabelTextWidth(name, fontSize, settings.fontFamily, 700);
-      const rect = {
-        x0: labelX - 1,
-        y0: labelY - fontSize - 1,
-        x1: labelX + labelWidth + 1,
-        y1: labelY + 2
-      };
-      const outsideCanvas = rect.x0 < 0 || rect.y0 < 0 || rect.x1 > settings.width || rect.y1 > settings.height;
-      const conflicts = outsideCanvas
-        || occupied.some(other => rectsOverlap(rect, other))
-        || acceptedReferenceRects.some(other => rectsOverlap(rect, other));
-      if (conflicts) state.hiddenLabelCount += 1;
-      else acceptedReferenceRects.push(rect);
-      state.items.push({
-        id: city.id,
-        name,
-        province: city.prov,
-        regionId,
-        x: point[0],
-        y: point[1],
-        labelX,
-        labelY,
-        fontSize,
-        dotRadius,
-        showLabel: !conflicts
-      });
-    });
-    return state;
-  }
-
-  function attachReferenceCityDiagnostics(report, referenceState) {
-    const target = report || {};
-    const state = referenceState || {};
-    if (!state.active) {
-      delete target.referenceCityUnresolvedIds;
-      delete target.referenceCityExcludedRegionIds;
-      delete target.referenceCityUnsupportedBoundaryIds;
-      delete target.referenceCityHiddenLabelCount;
-      return target;
-    }
-    target.referenceCityUnresolvedIds = Array.isArray(state.unresolvedIds) ? state.unresolvedIds : [];
-    target.referenceCityExcludedRegionIds = Array.isArray(state.excludedRegionIds) ? state.excludedRegionIds : [];
-    target.referenceCityUnsupportedBoundaryIds = Array.isArray(state.unsupportedBoundaryIds) ? state.unsupportedBoundaryIds : [];
-    target.referenceCityHiddenLabelCount = Number(state.hiddenLabelCount || 0);
-    return target;
-  }
-
-  function drawReferenceCities(svg, referenceState) {
-    const layer = svg.append("g").attr("class", "reference-city-layer");
-    layer.selectAll("circle")
-      .data(referenceState.items)
-      .join("circle")
-      .attr("class", "reference-city-dot")
-      .attr("data-reference-city-id", city => city.id)
-      .attr("data-region-id", city => city.regionId)
-      .attr("cx", city => city.x)
-      .attr("cy", city => city.y)
-      .attr("r", city => city.dotRadius);
-    layer.selectAll("text")
-      .data(referenceState.items.filter(city => city.showLabel))
-      .join("text")
-      .attr("class", city => `reference-city-label ${mapTypographySizeClass(city.fontSize)}`)
-      .attr("data-reference-city-id", city => city.id)
-      .attr("data-region-id", city => city.regionId)
-      .attr("x", city => city.labelX)
-      .attr("y", city => city.labelY)
-      .text(city => city.name);
-  }
-
   function render(options = {}) {
     const startedAt = performanceNow();
     let renderError = null;
@@ -9993,8 +10046,6 @@
     const markerRows = mappedRows.map(row => placedByRowId.get(row.rowId) || row);
     const leaderRows = settings.hideLeaderLines ? [] : placed.filter(row => !row.hideLine);
     const report = analyzeLayout(placed, settings, projectedProblems, hiddenRegionProblems, mapBounds, mappedRows);
-    const referenceCityState = createReferenceCityRenderState(projection, settings, placed);
-    attachReferenceCityDiagnostics(report, referenceCityState);
     lastLayout = {
       placed,
       settings,
@@ -10007,8 +10058,6 @@
       path,
       visibleGeo
     };
-
-    drawReferenceCities(svg, referenceCityState);
 
     const leaderLayer = svg.append("g").attr("class", "leader-layer");
     if (settings.showLineCasing) {
@@ -10611,7 +10660,7 @@
       .attr("cy", center.y)
       .attr("r", 3);
 
-    const badgeText = `${settings.mapScale}%`;
+    const badgeText = formatMapScalePercent(settings.mapScale);
     const badgeX = clamp(x1 + 10, 8, settings.width - 58);
     const badgeY = clamp(y0 - 22, 8, settings.height - 24);
     const badge = overlay.append("g")
@@ -11760,25 +11809,76 @@
     };
   }
 
+  function wrapNarrowCalloutText(text, maxChars) {
+    const value = String(text || "");
+    const limit = Math.max(1, Math.floor(Number(maxChars) || 1));
+    const words = value.split(/\s+/).filter(Boolean);
+    const lines = [];
+    let current = "";
+
+    const pushCurrent = () => {
+      if (!current) return;
+      lines.push(current);
+      current = "";
+    };
+
+    words.forEach(sourceWord => {
+      let word = sourceWord;
+      const candidate = current ? `${current} ${word}` : word;
+      if (candidate.length <= limit) {
+        current = candidate;
+        return;
+      }
+      pushCurrent();
+      while (word.length > limit) {
+        const hyphenIndex = word.lastIndexOf("-", limit - 1);
+        const breakAt = hyphenIndex > 0 ? hyphenIndex + 1 : limit;
+        lines.push(word.slice(0, breakAt));
+        word = word.slice(breakAt);
+      }
+      current = word;
+    });
+    pushCurrent();
+    return lines.length ? lines : [value];
+  }
+
+  function getNarrowCalloutLabelLines(row, settings, maxChars) {
+    return getLabelLines(row, {
+      ...settings,
+      labelMaxChars: Math.max(12, maxChars)
+    }).flatMap(line => {
+      if (line && ["separator", "image"].includes(line.role)) return [line];
+      return wrapNarrowCalloutText(lineText(line), maxChars).map(text => ({
+        ...(typeof line === "string" ? asLabelLine(line, settings.mapLanguage, "title") : line),
+        text
+      }));
+    });
+  }
+
   function getCalloutContentLayout(calloutRows, settings, width) {
     const compact = settings.compactFurniture !== false;
-    const rowMetrics = compact
-      ? { insetX: 24, markerX: 46, textX: 72, rightPad: 24 }
-      : getFurnitureRowMetrics(settings);
     const headingText = getChromeText("calloutHeading", settings.mapLanguage);
     const { headingSize, nameSize } = getCalloutTypography(settings);
-    const headingHeight = Math.max(compact ? 22 : 26, Math.round(headingSize * (compact ? 1.8 : 2)));
+    const widthProgress = Math.max(0, Math.min(1, (width - 80) / 180));
+    const insetX = compact ? Math.round(10 + 14 * widthProgress) : Math.round(12 + 18 * widthProgress);
+    const markerX = compact ? insetX + Math.round(10 + 12 * widthProgress) : insetX + Math.round(12 + 10 * widthProgress);
+    const textX = compact ? markerX + Math.round(18 + 8 * widthProgress) : markerX + Math.round(20 + 10 * widthProgress);
+    const rightPad = insetX;
+    const headingLineH = Math.max(compact ? 12 : 14, Math.round(headingSize * 1.25));
+    const headingTextWidth = Math.max(1, width - insetX - Math.max(insetX, 34));
+    const headingMaxChars = Math.max(2, Math.floor(headingTextWidth / Math.max(4, headingSize * 0.58)));
+    const headingLines = wrapNarrowCalloutText(headingText, headingMaxChars);
+    const headingHeight = Math.max(compact ? 22 : 26, headingLines.length * headingLineH);
     const lineH = Math.max(compact ? 12 : 14, Math.round(nameSize * (compact ? 1.5 : 1.65)));
     const rowGap = Math.max(compact ? 6 : 8, Math.round(nameSize * (compact ? 0.75 : 1)));
     const padV = Math.max(compact ? 16 : 20, Math.round(headingSize * (compact ? 1.4 : 1.6)));
     const headingRuleY = padV + headingHeight;
     const headingRuleGap = compact ? 12 : 15;
-    const { textX, markerX, rightPad } = rowMetrics;
-    const textWidth = Math.max(90, width - textX - rightPad);
-    const maxNameChars = Math.max(12, Math.floor(textWidth / Math.max(6, nameSize * 0.58)));
+    const textWidth = Math.max(1, width - textX - rightPad);
+    const maxNameChars = Math.max(2, Math.floor(textWidth / Math.max(4, nameSize * 0.58)));
     let cursorY = headingRuleY + headingRuleGap;
     const rows = calloutRows.map((row, index) => {
-      const nameLines = getLabelLines(row, { ...settings, labelMaxChars: maxNameChars });
+      const nameLines = getNarrowCalloutLabelLines(row, settings, maxNameChars);
       const nameHeight = nameLines.length * lineH;
       const markerSize = Math.max(7, Math.min(14, getCategoryMarkerSize(getCategory(row.type), settings)));
       const rowHeight = Math.max(nameHeight, markerSize * 2);
@@ -11795,14 +11895,20 @@
 
     return {
       headingText,
+      headingLines,
       headingSize,
+      headingLineH,
       headingHeight,
       headingRuleY,
       nameSize,
       lineH,
       rowGap,
       padV,
-      ...rowMetrics,
+      insetX,
+      markerX,
+      textX,
+      rightPad,
+      maxNameChars,
       rows,
       contentHeight: Math.max(padV * 2, cursorY + padV)
     };
@@ -11818,7 +11924,7 @@
     const headingWidth = headingText.length * headingSize * 0.58 + boxPad;
     const fallbackWidth = Math.max(compact ? 270 : 300, Math.min(settings.width - 40, Math.round(Math.max(nameWidth, headingWidth))));
     const widthConstraints = {
-      minWidth: compact ? 260 : 290,
+      minWidth: 80,
       minHeight: 40,
       maxWidth: settings.width - 20,
       maxHeight: settings.height - 20
@@ -11936,7 +12042,7 @@
       .attr("transform", `translate(${Math.max(0, dimensions.width - 16)},${Math.max(0, dimensions.height - 16)})`);
   }
 
-  function attachBoxControls(group, key, position, dimensions, constraints, settings, label, mapBounds, visibilityInput) {
+  function attachBoxControls(group, key, position, dimensions, constraints, settings, label, mapBounds, visibilityInput, onResizeCommit = null) {
     if (visibilityInput) {
       const hide = group.append("g")
         .attr("class", "box-controls box-hide-control")
@@ -12006,11 +12112,20 @@
           });
         })
         .on("end", function () {
+          const resized = Boolean(resizeState.historyPushed);
           d3.select(this).classed("is-dragging", false);
           group.classed("is-resizing", false);
           delete resizeState.historyPushed;
           clearDistanceMarkers();
-          scheduleRender();
+          if (!resized) return;
+          if (typeof onResizeCommit === "function") {
+            onResizeCommit({
+              position: { x: resizeState.x, y: resizeState.y },
+              dimensions: { width: resizeState.width, height: resizeState.height }
+            });
+          } else {
+            scheduleRender();
+          }
           setStatusMessage(t("status.itemResized", { label }), "ok");
         }));
 
@@ -12129,12 +12244,14 @@
       dimensions,
       position,
       constraints,
-      headingText,
+      headingLines,
       headingSize,
+      headingLineH,
       headingRuleY,
       nameSize,
       lineH,
       padV,
+      insetX,
       textX,
       markerX,
       rows
@@ -12163,16 +12280,21 @@
 
     group.append("text")
       .attr("class", `box-heading callout-heading ${mapTypographySizeClass(headingSize)}`)
-      .attr("x", 24)
+      .attr("x", insetX)
       .attr("y", padV + 4)
       .attr("dominant-baseline", "hanging")
-      .text(headingText);
+      .selectAll("tspan")
+      .data(headingLines)
+      .join("tspan")
+      .attr("x", insetX)
+      .attr("dy", (_, index) => index === 0 ? 0 : headingLineH)
+      .text(line => line);
 
     group.append("line")
       .attr("class", "box-heading-rule callout-heading-rule")
-      .attr("x1", 24)
+      .attr("x1", insetX)
       .attr("y1", headingRuleY)
-      .attr("x2", Math.max(24, dimensions.width - 24))
+      .attr("x2", Math.max(insetX, dimensions.width - insetX))
       .attr("y2", headingRuleY);
 
     rows.forEach(layout => {
@@ -12198,7 +12320,36 @@
     });
 
     attachBoxDragging(group, "callouts", position, dimensions, settings, t("properties.furniture.callouts"), mapBounds);
-    attachBoxControls(group, "callouts", position, dimensions, constraints, settings, t("properties.furniture.callouts"), mapBounds, els.showCalloutsInput);
+    attachBoxControls(
+      group,
+      "callouts",
+      position,
+      dimensions,
+      constraints,
+      settings,
+      t("properties.furniture.callouts"),
+      mapBounds,
+      els.showCalloutsInput,
+      () => {
+        const svgNode = svg.node();
+        const insertionPoint = group.node()?.nextSibling || null;
+        group.remove();
+        drawCallouts(svg, calloutRows, settings, mapBounds);
+        const replacement = svg.select(".callout-layer").node();
+        if (replacement && insertionPoint && insertionPoint.parentNode === svgNode) {
+          svgNode.insertBefore(replacement, insertionPoint);
+        }
+        const layoutObstacles = getLayoutBoxObstacles(settings, calloutRows);
+        settings.layoutObstacles = layoutObstacles;
+        if (lastLayout?.settings) {
+          lastLayout.settings.layoutObstacles = layoutObstacles.map(obstacle => ({
+            ...obstacle,
+            rect: obstacle.rect ? { ...obstacle.rect } : obstacle.rect
+          }));
+        }
+        invalidatePatchedLayoutQuality();
+      }
+    );
   }
 
   function drawMarkerSymbol(svg, category, cx, cy, size) {
@@ -12409,8 +12560,6 @@
       .map-title { font-weight: 700; fill: ${ink}; }
       .map-title.is-compact { font-weight: 400; }
       .province { stroke: ${mapBoundary}; stroke-width: 1.2; }
-      .reference-city-dot { fill: ${getCssVar("--accent", "#3f6b5e")}; stroke: ${mapBackground}; stroke-width: 0.8; vector-effect: non-scaling-stroke; }
-      .reference-city-label { fill: ${ink}; font-family: ${fontFamily}; font-weight: 700; paint-order: stroke; stroke: ${mapBackground}; stroke-width: 2.5px; stroke-linejoin: round; }
       .marker { stroke-width: 2.2; }
       .leader-casing { fill: none; stroke: ${mapBackground}; stroke-linecap: round; stroke-linejoin: round; }
       .leader-line { fill: none; stroke-linecap: round; stroke-linejoin: round; }
@@ -12617,7 +12766,6 @@
 
         currentBoundary = project.boundary;
         baselayer = normalizeBaselayerState(project.baselayer, currentBoundary);
-        baselayerReferenceCitiesController?.setModel(baselayer.referenceCities);
         els.boundaryInput.value = currentBoundary;
         applyMapStylePreset(project.mapStyle || defaultMapStylePreset, { applyMapColours: false, render: false });
         applySettings(project.settings || {});
@@ -12694,8 +12842,6 @@
   }
 
   function showStartupSetupScreen() {
-    startupReferenceCities = referenceCitiesApi.createDefaultModel();
-    startupReferenceCitiesController?.setModel(startupReferenceCities);
     syncStartupSetupControls();
     setStartupScreen("setup");
     renderStartupBaselayerThumbnails();
@@ -12785,8 +12931,6 @@
     els.startupSetupForm.setAttribute("aria-busy", "true");
     try {
       emptyBaselayerPreviewEnabled = true;
-      baselayer.referenceCities = cloneReferenceCities(startupReferenceCities);
-      baselayerReferenceCitiesController?.setModel(baselayer.referenceCities);
       applyMapStylePreset(els.startupMapStyleInput.value, { render: false });
       applyImageSizePreset(els.startupBookSizeInput.value, els.startupImageSizeInput.value);
       const defaultMapScale = normalizeMapScale(layoutDefaults.mapScaleInput);
@@ -12798,7 +12942,6 @@
       saveLayoutPreferences();
       await changeBoundary(boundary);
       applyRegionPreset(regionPreset);
-      ensureCityRegionsIncluded(baselayer.referenceCities.ids);
       setActiveDataTab("preview");
       setProjectSaveState("dirty");
       els.startupDialog._returnFocus = els.previewTableTab;
@@ -12826,6 +12969,25 @@
     if (dialog._returnFocus && typeof dialog._returnFocus.focus === "function") dialog._returnFocus.focus();
   }
 
+  function handleSegmentedControlKeydown(event) {
+    const button = event.target.closest?.("[role='group'] button[aria-pressed]");
+    if (!button || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
+    const group = button.closest("[role='group']");
+    const options = Array.from(group.querySelectorAll("button[aria-pressed]:not([disabled])"))
+      .filter(option => !option.hidden && option.getClientRects().length);
+    if (options.length < 2) return;
+    event.preventDefault();
+    const current = Math.max(0, options.indexOf(button));
+    const previous = event.key === "ArrowLeft" || event.key === "ArrowUp";
+    const nextIndex = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? options.length - 1
+        : (current + (previous ? -1 : 1) + options.length) % options.length;
+    options[nextIndex].focus();
+    options[nextIndex].click();
+  }
+
   function initializeFeedbackComposer() {
     feedbackComposer = feedback.createFeedbackComposer({
       form: els.feedbackForm,
@@ -12833,8 +12995,8 @@
       titleInput: els.feedbackTitle,
       detailsInput: els.feedbackDetails,
       detailsLabel: els.feedbackDetailsLabel,
-      githubIssueLink: els.githubIssueLink,
-      feedbackEmailLink: els.feedbackEmailLink
+      destinationButtons: els.feedbackDestinationButtons,
+      sendLink: els.feedbackSendLink
     }, {
       appVersion: currentAppVersion,
       protocol: window.location.protocol,
@@ -12860,6 +13022,14 @@
 
   function getConfirmationCopy(confirmation = pendingConfirmation) {
     if (!confirmation) return null;
+    if (confirmation.titleKey && confirmation.actionKey && confirmation.messageKey) {
+      return {
+        titleKey: confirmation.titleKey,
+        actionKey: confirmation.actionKey,
+        messageKey: confirmation.messageKey,
+        messageParams: confirmation.messageParams || {}
+      };
+    }
     const deleting = confirmation.kind === "delete";
     const label = confirmation.count === 1
       ? t(deleting ? "status.selectedRowSingular" : "status.projectRowSingular")
@@ -12888,6 +13058,10 @@
     pendingConfirmation = {
       kind: options.kind === "delete" ? "delete" : "clear",
       count: Number(options.count) || 0,
+      titleKey: options.titleKey,
+      actionKey: options.actionKey,
+      messageKey: options.messageKey,
+      messageParams: options.messageParams,
       onConfirm: options.onConfirm,
       onCancel: options.onCancel
     };
@@ -12981,6 +13155,7 @@
   }
 
   function showPointCatalog(event) {
+    if (!isCityLocationMode()) return;
     const trigger = event && event.currentTarget ? event.currentTarget : document.activeElement;
     if (els.pointCatalogScope) {
       els.pointCatalogScope.textContent = t("dialog.pointCatalog.scope", { count: indexedReferenceCities.length });
@@ -13649,8 +13824,23 @@
       setStatusMessage(t("status.regionColoursApplied"), "ok");
     });
     on(els.resetRegionValuesBtn, "click", () => {
-      pushAppUndoHistory("reset region values");
-      resetRegionValues();
+      const manualValueCount = Object.keys(regionValues).length;
+      const resetValues = () => {
+        pushAppUndoHistory("reset region values");
+        resetRegionValues();
+      };
+      if (!manualValueCount) {
+        resetValues();
+        return;
+      }
+      openConfirmationDialog({
+        titleKey: "region.confirm.resetValues.title",
+        actionKey: "region.confirm.resetValues.action",
+        messageKey: "region.confirm.resetValues",
+        messageParams: { count: manualValueCount },
+        returnFocus: els.resetRegionValuesBtn,
+        onConfirm: resetValues
+      });
     });
     on(els.csvInput, "change", e => {
       const file = e.target.files && e.target.files[0];
@@ -13665,14 +13855,16 @@
     on(els.statusBox, "click", handleStatusAction);
     on(els.csvImportPreview, "click", handleStatusAction);
     on(els.workspaceSummaryMetrics, "click", handleWorkspaceSummaryClick);
+    on(els.workflowNextBtn, "click", handleWorkflowNextAction);
     on(els.propertiesToggleBtn, "click", togglePropertiesPanel);
     on(els.propertiesCollapseBtn, "click", togglePropertiesPanel);
     on(els.propertiesResizeHandle, "pointerdown", handlePropertiesResizeStart);
     on(els.propertiesResizeHandle, "keydown", handlePropertiesResizeKeydown);
+    on(els.propertiesPanel, "scroll", () => {
+      els.propertiesPanel.classList.toggle("is-scrolled", els.propertiesPanel.scrollTop > 0);
+    }, { passive: true });
     els.propertiesSideInputs.forEach(input => {
-      on(input, "change", event => {
-        if (event.target.checked) setPropertiesPanelSide(event.target.value);
-      });
+      on(input, "click", event => setPropertiesPanelSide(event.currentTarget.value));
     });
     if (typeof propertiesDrawerMedia.addEventListener === "function") {
       propertiesDrawerMedia.addEventListener("change", syncResponsivePropertiesState);
@@ -13862,6 +14054,7 @@
     on(els.projectTable, "keydown", handleProjectTableKeydown);
     on(els.bulkClearCoordinatesBtn, "click", clearSelectedCoordinateCells);
     document.addEventListener("keydown", handleGlobalKeyboardShortcuts);
+    document.addEventListener("keydown", handleSegmentedControlKeydown);
     document.addEventListener("keydown", event => {
       const openDialogElement = getOpenDialogElement();
       if (!openDialogElement) return;
@@ -14080,8 +14273,23 @@
       setAllRegions(false);
     });
     on(els.selectProjectRegionsBtn, "click", () => {
-      pushAppUndoHistory("select project regions");
-      selectRegionsWithProjectPoints();
+      const manualValueCount = Object.keys(regionValues).length;
+      const useProjectRegions = () => {
+        pushAppUndoHistory("select project regions");
+        selectRegionsWithProjectPoints();
+      };
+      if (!manualValueCount) {
+        useProjectRegions();
+        return;
+      }
+      openConfirmationDialog({
+        titleKey: "region.confirm.useProjectRegions.title",
+        actionKey: "region.confirm.useProjectRegions.action",
+        messageKey: "region.confirm.useProjectRegions",
+        messageParams: { count: manualValueCount },
+        returnFocus: els.selectProjectRegionsBtn,
+        onConfirm: useProjectRegions
+      });
     });
     on(els.resetRegionColoursBtn, "click", () => {
       pushAppUndoHistory("reset region colours");
@@ -14210,8 +14418,6 @@
 
   async function init() {
     renderRibbonIcons();
-    mountStartupReferenceCitiesField();
-    mountBaselayerReferenceCitiesField();
     initializeFeedbackComposer();
     initEvents();
     initializePropertiesPanelState();
@@ -14274,6 +14480,7 @@
       isLabelWidthResizable,
       measureLabelTextWidth,
       getCalloutContentLayout,
+      getCalloutBoxLayout,
       normalizeRichLabelImageDisplaySize,
       getRichLabelImageDimensions,
       getLocalizedConfigLabel,

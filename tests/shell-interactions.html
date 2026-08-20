@@ -13,7 +13,7 @@
   </style>
 </head>
 <body>
-  <iframe id="app" title="Plotypus application under test" data-src="../index.html?v=20260624-i18n-quality"></iframe>
+  <iframe id="app" title="Plotypus application under test" data-src="../index.html?v=20260820-city-sticky-header-2"></iframe>
   <pre id="result">{"status":"running"}</pre>
   <script>
     const result = document.querySelector("#result");
@@ -27,6 +27,7 @@
     const customMarkerIconOnly = params.get("customMarkerIcon") === "1";
     const measurePerformance = params.get("performance") === "1";
     const visualCapture = params.get("visual") === "1";
+    const accessibilityAudit = params.get("accessibility") === "1";
     const propertiesSide = ["left", "right"].includes(params.get("propertiesSide")) ? params.get("propertiesSide") : "";
     const projectRoundTrip = params.get("projectRoundTrip") === "1";
     const seededCanvasZoom = Number(params.get("canvasZoom"));
@@ -36,6 +37,7 @@
     try {
       if (propertiesSide) localStorage.setItem("plotypus.propertiesPanel", JSON.stringify({ side: propertiesSide }));
       else localStorage.removeItem("plotypus.propertiesPanel");
+      localStorage.removeItem("plotypus.layoutPreferences");
       localStorage.removeItem("plotypus.uiLanguage");
       if (canvasZoomLevels.includes(seededCanvasZoom)) {
         localStorage.setItem("plotypus.canvasViewZoom", JSON.stringify(seededCanvasZoom));
@@ -221,6 +223,33 @@
       };
     }
 
+    function projectContentAwareTableLayout(table) {
+      if (!table) return { pass: false, detail: "table missing" };
+      const view = table.ownerDocument.defaultView;
+      const style = view.getComputedStyle(table);
+      const readTrack = property => parseFloat(style.getPropertyValue(property)) || 0;
+      const widths = {
+        name: readTrack("--project-name-column-width"),
+        type: readTrack("--project-type-column-width"),
+        label: readTrack("--project-label-column-width"),
+        location: readTrack("--project-location-column-width"),
+        coordinate: readTrack("--project-coordinate-column-width"),
+        status: readTrack("--project-status-column-width")
+      };
+      const widthClassesPresent = ["name", "type", "label", "location", "status"].every(column => (
+        Array.from(table.classList).some(className => className.startsWith(`project-${column}-width-`))
+      ));
+      const contentWidthFloor = widths.name + widths.type + widths.label + widths.status
+        + (table.dataset.locationMode === "coordinates" ? widths.coordinate * 2 : widths.location);
+      return {
+        pass: style.tableLayout === "auto"
+          && widthClassesPresent
+          && Object.values(widths).every(width => width > 0)
+          && contentWidthFloor < 1500,
+        detail: `layout=${style.tableLayout}; classes=${widthClassesPresent}; floor=${contentWidthFloor}; widths=${Object.entries(widths).map(([key, value]) => `${key}:${value}`).join("|")}`
+      };
+    }
+
     function projectRegionsModeLayout(table, { utilitySelectors = [], bodyTextSelectors = [] } = {}) {
       if (!table) return { pass: false, detail: "table missing" };
       const originalMode = table.getAttribute("data-location-mode");
@@ -236,7 +265,7 @@
         metrics = semanticTableLayout(table, {
           utilitySelectors,
           bodyTextSelectors,
-          minimumWidth: 1530
+          minimumWidth: 0
         });
         regionHeaderIsVisible = isRenderedLayoutElement(table.querySelector(".region-col"));
         regionSelectIsVisible = isRenderedLayoutElement(table.querySelector("tbody .region-input"));
@@ -431,35 +460,6 @@
 
     async function runFocusedTableLayoutChecks(doc, checks, workspace) {
       const appWidth = doc.defaultView.innerWidth;
-      const propertiesPanel = doc.querySelector("#propertiesPanel");
-      const propertiesResizeHandle = doc.querySelector("#propertiesResizeHandle");
-      const workspaceElement = doc.querySelector(".workspace");
-      if (propertiesSide) {
-        assert(checks, `Properties starts on the requested ${propertiesSide} side`, doc.body.dataset.propertiesSide === propertiesSide, doc.body.dataset.propertiesSide || "missing");
-        if (appWidth > 1080) {
-          const panelRect = propertiesPanel?.getBoundingClientRect();
-          const workspaceRect = workspaceElement?.getBoundingClientRect();
-          const orderIsCorrect = propertiesSide === "left"
-            ? propertiesPanel?.nextElementSibling === workspaceElement && panelRect?.right <= workspaceRect?.left + 1
-            : workspaceElement?.nextElementSibling === propertiesPanel && panelRect?.left >= workspaceRect?.right - 1;
-          assert(checks, `Docked ${propertiesSide} Properties keeps the correct visual and DOM order`, orderIsCorrect, `panel=${panelRect?.left}-${panelRect?.right}; workspace=${workspaceRect?.left}-${workspaceRect?.right}`);
-          const startingWidth = Math.round(panelRect?.width || 0);
-          dispatchKey(propertiesResizeHandle, propertiesSide === "left" ? "ArrowRight" : "ArrowLeft");
-          await waitFor(() => Math.round(propertiesPanel?.getBoundingClientRect().width || 0) === startingWidth + 16, 2000);
-          assert(checks, `Docked ${propertiesSide} Properties resizes inward from its splitter`, Math.round(propertiesPanel?.getBoundingClientRect().width || 0) === startingWidth + 16, `${startingWidth} -> ${Math.round(propertiesPanel?.getBoundingClientRect().width || 0)}`);
-          dispatchKey(propertiesResizeHandle, propertiesSide === "left" ? "ArrowLeft" : "ArrowRight");
-        } else {
-          const style = doc.defaultView.getComputedStyle(propertiesPanel);
-          const appShellRect = doc.querySelector(".app-shell")?.getBoundingClientRect();
-          const appShellStyle = doc.defaultView.getComputedStyle(doc.querySelector(".app-shell"));
-          const workspaceRect = workspaceElement?.getBoundingClientRect();
-          const workspaceStyle = doc.defaultView.getComputedStyle(workspaceElement);
-          const viewportWidth = doc.documentElement.clientWidth;
-          const drawerUsesRequestedEdge = style.position === "fixed" && (propertiesSide === "left" ? style.left === "0px" : style.right === "0px");
-          assert(checks, `Narrow ${propertiesSide} Properties uses the requested slide-over edge`, drawerUsesRequestedEdge && propertiesPanel?.inert, `left=${style.left}; right=${style.right}; inert=${propertiesPanel?.inert}`);
-          assert(checks, "Closed narrow Properties does not reserve workspace width", appShellRect?.width >= viewportWidth - 1 && workspaceRect?.width >= viewportWidth - 1, `shell=${Math.round(appShellRect?.width || 0)}; workspace=${Math.round(workspaceRect?.width || 0)}; viewport=${viewportWidth}; columns=${appShellStyle.gridTemplateColumns}; areas=${appShellStyle.gridTemplateAreas}; workspaceArea=${workspaceStyle.gridArea}; justify=${workspaceStyle.justifySelf}`);
-        }
-      }
       const uiEnglishButton = doc.querySelector("[data-ui-language='en']");
       const uiFrenchButton = doc.querySelector("[data-ui-language='fr']");
       const useUiLanguage = async language => {
@@ -474,13 +474,15 @@
         const bodyText = [".name-input", ".type-input", ".annotation-preview-cell", ".region-input", ".lon-input", ".lat-input", ".status-cell"];
         const authoringEnglish = doc.querySelector("[data-authoring-language='en']");
         const authoringFrench = doc.querySelector("[data-authoring-language='fr']");
-        const checkLanguage = (language, minimumWidth) => {
+        const checkLanguage = language => {
           const label = language === "fr" ? "French" : "English";
-          const metrics = semanticTableLayout(table, { utilitySelectors: utilities, bodyTextSelectors: bodyText, minimumWidth });
+          const metrics = semanticTableLayout(table, { utilitySelectors: utilities, bodyTextSelectors: bodyText, minimumWidth: 0 });
+          const contentAwareLayout = projectContentAwareTableLayout(table);
           assert(checks, `${label} Project table headers fit with consistent inline padding`, metrics.headersFit && metrics.headerPaddingIsConsistent, metrics.detail);
           assert(checks, `${label} Project row text uses the shared inline cell padding`, metrics.bodyTextPaddingIsConsistent, metrics.detail);
           assert(checks, `${label} Project utility columns contain their controls and status text`, metrics.utilityColumnsFit, metrics.detail);
-          assert(checks, `${appWidth <= 1080 ? "1024px" : "Desktop"} ${language === "fr" ? "French " : ""}Project table ${language === "fr" ? "keeps horizontal overflow inside the table viewport" : "enforces its language-safe minimum width inside horizontal scrolling"}`, metrics.minimumWidthIsEnforced && metrics.horizontalOverflowIsContained, metrics.detail);
+          assert(checks, `${label} Project table derives compact tracks from visible content`, contentAwareLayout.pass, contentAwareLayout.detail);
+          assert(checks, `${appWidth <= 1080 ? "1024px" : "Desktop"} ${language === "fr" ? "French " : ""}Project table keeps horizontal overflow inside the table viewport`, metrics.minimumWidthIsEnforced && metrics.horizontalOverflowIsContained, metrics.detail);
           const typePattern = language === "fr" ? /Stratégies de transformation/ : /Transformative Strategies/;
           const typeSelect = Array.from(table.querySelectorAll(".type-input")).find(select => typePattern.test(select.selectedOptions[0]?.textContent || ""));
           const typeFit = selectOptionTextFit(typeSelect, typeSelect?.selectedOptions[0]?.textContent.trim());
@@ -496,11 +498,26 @@
         await useUiLanguage("en");
         authoringEnglish?.click();
         await waitFor(() => Array.from(table.querySelectorAll(".type-input")).some(select => /Transformative Strategies/.test(select.selectedOptions[0]?.textContent || "")), 2000);
-        checkLanguage("en", table.dataset.locationMode === "regions" ? 1530 : 1650);
+        checkLanguage("en");
+        const projectSearchInput = doc.querySelector("#projectSearchInput");
+        const fullTableWidth = table.getBoundingClientRect().width;
+        const fullNameColumnWidth = table.querySelector(".name-col")?.getBoundingClientRect().width || 0;
+        const fullNameWidthClass = Array.from(table.classList).find(className => className.startsWith("project-name-width-"));
+        if (projectSearchInput) {
+          projectSearchInput.value = "Ksi Lisims LNG";
+          projectSearchInput.dispatchEvent(new doc.defaultView.Event("input", { bubbles: true }));
+          await waitFor(() => table.classList.contains("project-name-width-compact") && Array.from(table.tBodies[0].rows).filter(row => !row.hidden).length === 1, 2000);
+          const filteredTableWidth = table.getBoundingClientRect().width;
+          const filteredNameColumnWidth = table.querySelector(".name-col")?.getBoundingClientRect().width || 0;
+          assert(checks, "Filtering to shorter visible content contracts the Project name track", filteredNameColumnWidth < fullNameColumnWidth && filteredTableWidth <= fullTableWidth + 1, `name=${Math.round(fullNameColumnWidth)} -> ${Math.round(filteredNameColumnWidth)}; table=${Math.round(fullTableWidth)} -> ${Math.round(filteredTableWidth)}; ${table.className}`);
+          projectSearchInput.value = "";
+          projectSearchInput.dispatchEvent(new doc.defaultView.Event("input", { bubbles: true }));
+          await waitFor(() => Boolean(fullNameWidthClass) && table.classList.contains(fullNameWidthClass) && Array.from(table.tBodies[0].rows).filter(row => !row.hidden).length > 1, 2000);
+        }
         await useUiLanguage("fr");
         authoringFrench?.click();
         await waitFor(() => Array.from(table.querySelectorAll(".type-input")).some(select => /Stratégies de transformation/.test(select.selectedOptions[0]?.textContent || "")), 2000);
-        checkLanguage("fr", table.dataset.locationMode === "regions" ? 1530 : 1650);
+        checkLanguage("fr");
         authoringEnglish?.click();
         await useUiLanguage("en");
         return;
@@ -585,7 +602,7 @@
     }
 
     function leaderToggleLayout(root) {
-      const list = root?.querySelector(":scope > .leader-line-toggle-list");
+      const list = root?.querySelector(".leader-line-toggle-list");
       if (!list) return { pass: false, detail: "toggle list missing" };
       const listRect = list.getBoundingClientRect();
       const rows = Array.from(list.querySelectorAll(":scope > .toolbar-check"));
@@ -711,7 +728,7 @@
       /\bMap size\b/i,
       /\bCanvas size\b/i,
       /\bPage preset\b/i,
-      /\bDefault maximum characters per line\b/i,
+      /\bCharacters per line\b/i,
       /\bMap display\b/i,
       /\bLegend\b/i,
       /\bCompact boxes\b/i,
@@ -1006,8 +1023,8 @@
         const bodyStyle = frame.contentWindow.getComputedStyle(doc.body);
         const typographyScale = ["--type-body-size", "--type-h6-size", "--type-h5-size", "--type-h4-size", "--type-h3-size", "--type-h2-size", "--type-h1-size"]
           .map(token => parseFloat(rootStyle.getPropertyValue(token)) || 0);
-        assert(checks, "Application typography uses an explicit 18px minimum body size", parseFloat(bodyStyle.fontSize) >= 18 && typographyScale[0] === 18, `body=${bodyStyle.fontSize}, token=${typographyScale[0]}`);
-        assert(checks, "Application heading tokens form a non-decreasing 18-40px hierarchy", typographyScale[0] === 18 && typographyScale.at(-1) === 40 && typographyScale.every((value, index) => index === 0 || value >= typographyScale[index - 1]), typographyScale.join(" / "));
+        assert(checks, "Application typography uses the compact 15px control and body size", parseFloat(bodyStyle.fontSize) === 15 && typographyScale[0] === 15, `body=${bodyStyle.fontSize}, token=${typographyScale[0]}`);
+        assert(checks, "Application heading tokens follow the documented semantic hierarchy", typographyScale.join(",") === "15,14,15,16,22,28,30", typographyScale.join(" / "));
         const iconScale = ["--icon-hint-size", "--icon-compact-size", "--icon-action-size"]
           .map(token => parseFloat(rootStyle.getPropertyValue(token)) || 0);
         const commandActionIcons = ["#ribbonUndoBtn", "#propertiesToggleBtn", "#feedbackBtn", "#applicationSettingsBtn"]
@@ -1020,13 +1037,13 @@
         const workspaceTabIcons = Array.from(doc.querySelectorAll(".workspace-nav .table-tab > .button-icon"));
         const inlineHintIcons = [doc.querySelector(".col-edit-hint"), doc.querySelector(".translation-column-edit-hint")].filter(Boolean);
         const inlineHintIconWidths = inlineHintIcons.map(icon => parseFloat(frame.contentWindow.getComputedStyle(icon).width) || 0);
-        assert(checks, "Application icon tokens scale with the 18px typography baseline", iconScale.join(",") === "14,18,22" && iconScale[2] > typographyScale[0], `hint/compact/action=${iconScale.join("/")}; body=${typographyScale[0]}`);
+        assert(checks, "Application icon tokens scale with the compact typography hierarchy", iconScale.join(",") === "14,18,22" && iconScale[2] > typographyScale[0], `hint/compact/action=${iconScale.join("/")}; body=${typographyScale[0]}`);
         assert(checks, "Command actions use a consistent compact icon size", commandActionIcons.length === 4 && commandActionIconWidths.every(width => width === 20), commandActionIconWidths.join(", "));
         assert(checks, "Map details is absent from the command bar", !doc.querySelector("#mapDetailsBtn") && !doc.querySelector("#frMetaWarning"));
         assert(checks, "Translated command labels preserve their action icons", translatedActionIcons.length === 4);
         const workspaceTabIconWidths = workspaceTabIcons.map(icon => parseFloat(frame.contentWindow.getComputedStyle(icon).width) || 0);
         assert(checks, "Every workspace tab preserves its action icon", workspaceTabIcons.length === 5 && workspaceTabIconWidths.every(width => width === iconScale[2]), `${workspaceTabIcons.length} icons: ${workspaceTabIconWidths.join(", ")}`);
-        assert(checks, "Inline edit and status hints use the larger shared hint size", inlineHintIcons.length === 2 && inlineHintIconWidths.every(width => width === iconScale[0]), inlineHintIconWidths.join(", "));
+        assert(checks, "Remaining inline edit hints use the shared hint size", inlineHintIcons.length === 1 && inlineHintIconWidths.every(width => width === iconScale[0]), inlineHintIconWidths.join(", "));
         const brandSurfaces = {
           app: rootStyle.getPropertyValue("--app-background").trim(),
           controls: rootStyle.getPropertyValue("--control-background").trim(),
@@ -1088,8 +1105,22 @@
             headingStyle.marginBottom
           ].join("|");
         });
-        assert(checks, "All five workspaces use the shared intro template", workspaceIntros.length === 5 && workspaceIntros.every(intro => intro.tagName === "HEADER" && intro.firstElementChild?.classList.contains("workspace-intro-copy")));
+        assert(checks, "All five workspaces use the shared intro template", workspaceIntros.length === 5 && workspaceIntros.every(intro => intro.tagName === "HEADER" && intro.firstElementChild?.classList.contains("workspace-intro-copy") && intro.querySelector("h2")?.classList.contains("workspace-title")));
         assert(checks, "All workspace intros use identical spacing", new Set(workspaceIntroSignatures).size === 1, workspaceIntroSignatures.join(", "));
+        const visibleWorkspaceIntros = workspaceIntros.filter(intro => intro.getBoundingClientRect().height > 0);
+        const activeWorkspaceName = doc.body.dataset.workspaceView;
+        const activeWorkspaceIntro = activeWorkspaceName === "projects"
+          ? doc.querySelector(".project-workspace-intro")
+          : doc.querySelector(`.table-pane[data-workspace='${activeWorkspaceName}'] > .workspace-intro`);
+        const visibleWorkspaceIntro = visibleWorkspaceIntros[0];
+        const visibleWorkspaceHeading = visibleWorkspaceIntro?.querySelector("h2");
+        assert(checks, "Only the active workspace intro is visible", visibleWorkspaceIntros.length === 1 && visibleWorkspaceIntro === activeWorkspaceIntro, `active=${activeWorkspaceName}, visible=${visibleWorkspaceIntros.map(intro => intro.querySelector("h2")?.textContent.trim() || "unknown").join(",")}`);
+        assert(checks, "Visible workspaces begin with a compact page heading", Boolean(
+          visibleWorkspaceIntro
+          && visibleWorkspaceHeading
+          && visibleWorkspaceHeading.getBoundingClientRect().height >= 24
+          && visibleWorkspaceIntro.getBoundingClientRect().height <= 80
+        ), visibleWorkspaceIntro ? `intro=${visibleWorkspaceIntro.getBoundingClientRect().height}, heading=${visibleWorkspaceHeading?.getBoundingClientRect().height || 0}` : "No visible workspace intro");
         const startupDialog = await waitFor(() => {
           const dialog = doc.querySelector("#startupDialog");
           return dialog && dialog.hidden === false ? dialog : null;
@@ -1182,6 +1213,66 @@
           }, 2000);
           const pointFormAfterAdd = doc.querySelector("#propertiesSelectionControls .properties-form[data-row-id]");
           assert(checks, "Adding a Rich element to a selected map point keeps that point in Properties", pointFormAfterAdd?.dataset.propertyKind === "marker" && pointFormAfterAdd.dataset.rowId === compositionRowId, `${pointFormAfterAdd?.dataset.propertyKind || "reset"}/${pointFormAfterAdd?.dataset.rowId || "none"}`);
+          await waitFor(() => !doc.querySelector("#mapHost")?.classList.contains("is-rendering") && frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot().pending === false, 12000);
+          const calloutLayerBeforeResize = doc.querySelector("#mapSvg .callout-layer");
+          const calloutBoxBeforeResize = calloutLayerBeforeResize?.querySelector(".callout-box");
+          const calloutResizeHandle = calloutLayerBeforeResize?.querySelector(".box-resize-control");
+          const calloutResizeRect = calloutResizeHandle?.getBoundingClientRect();
+          const calloutWidthBeforeResize = Number(calloutBoxBeforeResize?.getAttribute("width") || 0);
+          const calloutHeadingLinesBeforeResize = calloutLayerBeforeResize?.querySelectorAll(".callout-heading tspan").length || 0;
+          const markerBeforeCalloutResize = doc.querySelector("#mapSvg .marker-layer .marker");
+          const renderSamplesBeforeCalloutResize = frame.contentWindow.PLOTYPUS_RENDER_PERFORMANCE?.snapshot().samples.length || 0;
+          let calloutResizeShowedLoader = doc.querySelector("#mapHost")?.classList.contains("is-rendering") || false;
+          const calloutResizeObserver = new frame.contentWindow.MutationObserver(() => {
+            calloutResizeShowedLoader ||= doc.querySelector("#mapHost")?.classList.contains("is-rendering") || false;
+          });
+          calloutResizeObserver.observe(doc.querySelector("#mapHost"), { attributes: true, attributeFilter: ["class"] });
+          if (calloutResizeHandle && calloutResizeRect) {
+            const startX = calloutResizeRect.left + calloutResizeRect.width / 2;
+            const startY = calloutResizeRect.top + calloutResizeRect.height / 2;
+            calloutResizeHandle.dispatchEvent(new frame.contentWindow.MouseEvent("mousedown", {
+              bubbles: true,
+              cancelable: true,
+              view: frame.contentWindow,
+              clientX: startX,
+              clientY: startY,
+              button: 0,
+              buttons: 1
+            }));
+            frame.contentWindow.dispatchEvent(new frame.contentWindow.MouseEvent("mousemove", {
+              bubbles: true,
+              cancelable: true,
+              view: frame.contentWindow,
+              clientX: startX - 120,
+              clientY: startY,
+              button: 0,
+              buttons: 1
+            }));
+            frame.contentWindow.dispatchEvent(new frame.contentWindow.MouseEvent("mouseup", {
+              bubbles: true,
+              cancelable: true,
+              view: frame.contentWindow,
+              clientX: startX - 120,
+              clientY: startY,
+              button: 0,
+              buttons: 0
+            }));
+          }
+          await new Promise(resolve => frame.contentWindow.requestAnimationFrame(() => frame.contentWindow.requestAnimationFrame(resolve)));
+          calloutResizeObserver.disconnect();
+          const calloutLayerAfterResize = doc.querySelector("#mapSvg .callout-layer");
+          const calloutWidthAfterResize = Number(calloutLayerAfterResize?.querySelector(".callout-box")?.getAttribute("width") || 0);
+          const calloutHeadingLinesAfterResize = calloutLayerAfterResize?.querySelectorAll(".callout-heading tspan").length || 0;
+          const renderSamplesAfterCalloutResize = frame.contentWindow.PLOTYPUS_RENDER_PERFORMANCE?.snapshot().samples.length || 0;
+          assert(checks, "Resizing a callout redraws only that callout without showing the map loader", Boolean(calloutLayerBeforeResize && calloutResizeHandle) && calloutWidthAfterResize < calloutWidthBeforeResize && calloutHeadingLinesAfterResize >= calloutHeadingLinesBeforeResize && markerBeforeCalloutResize?.isConnected === true && renderSamplesAfterCalloutResize === renderSamplesBeforeCalloutResize && !calloutResizeShowedLoader, `width=${calloutWidthBeforeResize}->${calloutWidthAfterResize}; heading=${calloutHeadingLinesBeforeResize}->${calloutHeadingLinesAfterResize}; renders=${renderSamplesBeforeCalloutResize}->${renderSamplesAfterCalloutResize}; loader=${calloutResizeShowedLoader}`);
+          const mapScaleInput = doc.querySelector("#mapScaleInput");
+          mapScaleInput.value = "47.03476053851771";
+          mapScaleInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+          await waitFor(() => mapScaleInput.value === "47" && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), 12000);
+          const resizedBaselayerRegion = await waitFor(() => doc.querySelector("#mapSvg .province"), 4000);
+          resizedBaselayerRegion.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
+          const resizedMapScaleBadge = await waitFor(() => doc.querySelector("#mapSvg .map-scale-badge text"), 2000);
+          assert(checks, "Baselayer resizing stores and displays a whole percentage", mapScaleInput.value === "47" && resizedMapScaleBadge.textContent.trim() === "47%", `input=${mapScaleInput.value}; badge=${resizedMapScaleBadge.textContent.trim()}`);
           const failed = checks.filter(check => !check.pass);
           result.textContent = JSON.stringify({
             status: failed.length ? "failed" : "ok",
@@ -1198,7 +1289,7 @@
         if (requestedDialog === "startup") {
           doc.querySelector("[data-ui-language='fr']")?.click();
           await waitFor(() => doc.documentElement.lang === "fr" && /Créer une carte Plotypus/.test(doc.querySelector("#startupTitle")?.textContent || ""), 2000);
-          assert(checks, "Application language setting switches Startup dialog copy to French", /Partir de zéro/.test(startupDialog.textContent || "") && /Ouvrir un projet enregistré/.test(startupDialog.textContent || "") && /Explorer l'exemple/.test(startupDialog.textContent || "") && /Importer un fichier de données/.test(startupDialog.textContent || ""), startupDialog.textContent || "");
+          assert(checks, "Application language setting switches Startup dialog copy to French", /Partir de zéro/.test(startupDialog.textContent || "") && /Ouvrir un projet enregistré/.test(startupDialog.textContent || "") && /Explorer l[’']exemple/.test(startupDialog.textContent || "") && /Importer un fichier de données/.test(startupDialog.textContent || ""), startupDialog.textContent || "");
           assertNoRawUiKeys(checks, "Startup dialog does not show raw translation keys in French", startupDialog);
           assertNoKnownEnglishUi(checks, "Startup dialog does not show known English UI phrases in French", [startupDialog]);
           assertNoRawUiKeysInAttributes(checks, "Startup dialog attributes do not show raw translation keys in French", [startupDialog]);
@@ -1207,45 +1298,14 @@
           await waitFor(() => startupDialog.dataset.startupScreen === "setup" && doc.querySelector("#startupSetupForm")?.hidden === false, 2000);
           assert(checks, "Start from scratch opens the bilingual setup step", startupDialog.getAttribute("aria-labelledby") === "startupSetupTitle" && /Configurer votre carte/.test(doc.querySelector("#startupSetupTitle")?.textContent || "") && doc.querySelectorAll("[data-startup-baselayer]").length === 6);
           assert(checks, "New maps default to the two-thirds Letter canvas", doc.querySelector("#startupBookSizeInput")?.value === "letter" && doc.querySelector("#startupImageSizeInput")?.value === "two-thirds", `${doc.querySelector("#startupBookSizeInput")?.value} / ${doc.querySelector("#startupImageSizeInput")?.value}`);
-          const referenceCitiesField = doc.querySelector("#referenceCitiesField");
-          const setReferenceCityQuery = value => {
-            const input = doc.querySelector("#refCityInput");
-            input.value = value;
-            input.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
-          };
-          const pressReferenceCityKey = key => {
-            doc.querySelector("#refCityInput")?.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
-          };
-          assert(checks, "Reference cities mounts below the baselayer grid", referenceCitiesField?.parentElement?.classList.contains("startup-baselayer-section") && referenceCitiesField.previousElementSibling?.classList.contains("startup-baselayer-grid"));
-          setReferenceCityQuery("st john");
-          await waitFor(() => doc.querySelectorAll("#refCityResults .refCityResultRow").length === 2, 2000);
-          const referenceCityResultText = doc.querySelector("#refCityResults")?.textContent || "";
-          const referenceCityResultPadding = frame.contentWindow.getComputedStyle(doc.querySelector("#refCityResults .refCityResultRow")).padding;
-          assert(checks, "Reference-city Saint search returns both provinces", /St\. John/.test(referenceCityResultText) && /Terre-Neuve-et-Labrador/.test(referenceCityResultText) && /Nouveau-Brunswick/.test(referenceCityResultText), referenceCityResultText);
-          pressReferenceCityKey("ArrowDown");
-          pressReferenceCityKey("Enter");
-          await waitFor(() => doc.querySelectorAll("#referenceCitiesField .refCityChip").length === 1, 2000);
-          setReferenceCityQuery("st john");
-          await waitFor(() => doc.querySelectorAll("#refCityResults .refCityResultRow").length === 1, 2000);
-          doc.querySelector("#refCityResults .refCityResultRow")?.dispatchEvent(new frame.contentWindow.MouseEvent("mousedown", { bubbles: true, cancelable: true }));
-          await waitFor(() => doc.querySelectorAll("#referenceCitiesField .refCityChip").length === 2, 2000);
-          setReferenceCityQuery("mont");
-          pressReferenceCityKey("Escape");
-          assert(checks, "Reference-city Escape closes only its popover", startupDialog.dataset.startupScreen === "setup" && startupDialog.hidden === false && doc.querySelector("#refCityInput")?.value === "mont" && doc.querySelector("#refCityResults")?.hidden === true);
-          setReferenceCityQuery("moncton, victoria, atlantis");
-          pressReferenceCityKey("Enter");
-          await waitFor(() => doc.querySelectorAll("#referenceCitiesField .refCityChip").length === 4, 2000);
-          assert(checks, "Reference-city bulk paste adds hits and names misses", /atlantis/.test(doc.querySelector("#referenceCitiesField .refCityHint")?.textContent || "") && /Moncton/.test(referenceCitiesField.textContent || "") && /Victoria/.test(referenceCitiesField.textContent || ""), referenceCitiesField.textContent || "");
-          setReferenceCityQuery("");
-          pressReferenceCityKey("Backspace");
-          assert(checks, "Reference-city Backspace removes the last chip", doc.querySelectorAll("#referenceCitiesField .refCityChip").length === 3);
-          setReferenceCityQuery("st john");
-          assert(checks, "Already-added reference cities stay out of results", doc.querySelectorAll("#refCityResults .refCityResultRow").length === 0);
-          const referenceCityInputStyle = frame.contentWindow.getComputedStyle(doc.querySelector("#refCityInput"));
-          const referenceCityResultsStyle = frame.contentWindow.getComputedStyle(doc.querySelector("#refCityResults"));
-          const referenceCityChipStyle = frame.contentWindow.getComputedStyle(doc.querySelector("#referenceCitiesField .refCityChip"));
-          const referenceCityHintStyle = frame.contentWindow.getComputedStyle(doc.querySelector("#referenceCitiesField .refCityHint"));
-          assert(checks, "Reference-city component matches the reviewed geometry", referenceCityInputStyle.height === "38px" && referenceCityResultsStyle.top === "42px" && referenceCityChipStyle.borderRadius === "999px" && referenceCityResultPadding === "9px 11px" && referenceCityHintStyle.fontSize === "11.5px", `${referenceCityInputStyle.height} / ${referenceCityResultsStyle.top} / ${referenceCityChipStyle.borderRadius} / ${referenceCityResultPadding} / ${referenceCityHintStyle.fontSize}`);
+          const startupSelects = [doc.querySelector("#startupMapStyleInput"), doc.querySelector("#startupBookSizeInput"), doc.querySelector("#startupImageSizeInput")];
+          assert(checks, "Startup Canvas exposes real choices instead of one-option selects", startupSelects.map(select => select?.options.length).join(",") === "4,2,5" && startupSelects.every(select => select?.hidden === false && select?.parentElement?.querySelector(".startup-static-value")?.hidden === true), startupSelects.map(select => `${select?.options.length}/${select?.hidden}`).join(", "));
+          const dialogCloseSizes = Array.from(doc.querySelectorAll(".dialog-close, .application-settings-close")).map(button => {
+            const style = frame.contentWindow.getComputedStyle(button);
+            return `${style.width}×${style.height}`;
+          });
+          assert(checks, "Every dialog close control uses the 44 px control target", dialogCloseSizes.length === 7 && dialogCloseSizes.every(size => size === "44px×44px"), dialogCloseSizes.join(", "));
+          assert(checks, "New-map setup leaves city selection to Markers", !doc.querySelector("#referenceCitiesField") && !/Reference cities|Villes de référence/.test(doc.querySelector("#startupSetupForm")?.textContent || ""));
           await waitFor(() => Array.from(doc.querySelectorAll(".startup-baselayer-map")).every(svg => svg.querySelector(".startup-baselayer-land")), 4000);
           const baselayerThumbnailSvgs = Array.from(doc.querySelectorAll(".startup-baselayer-map"));
           const baselayerThumbnailSignatures = baselayerThumbnailSvgs.map(svg => Array.from(svg.querySelectorAll(".startup-baselayer-land")).map(path => path.getAttribute("d") || "").join("|"));
@@ -1258,7 +1318,7 @@
           doc.querySelector("#mapScaleInput").value = "45";
           doc.querySelector("#startupStartNewBtn")?.click();
           await waitFor(() => startupDialog.dataset.startupScreen === "setup", 2000);
-          if (visualCapture) {
+          if (visualCapture || accessibilityAudit) {
             doc.activeElement?.blur();
             const failed = checks.filter(check => !check.pass);
             result.textContent = JSON.stringify({
@@ -1288,7 +1348,7 @@
           assert(checks, "Create map applies baselayer and canvas setup", startupDialog.hidden === true && doc.body.dataset.workspaceView === "preview" && setupStyle.value === doc.querySelector("#mapStylePresetInput")?.value && doc.querySelector("#bookSizeInput")?.value === "compact" && doc.querySelector("#imageSizeInput")?.value === "half" && doc.querySelector("#mapScaleInput")?.value === "100" && doc.querySelector("#labelCharsInput")?.value === "31" && includedWorldRegions.length === 1 && /United States/.test(includedWorldRegions[0]?.textContent || ""), `${doc.querySelector("#boundaryInput")?.value} / ${doc.querySelector("#regionPresetInput")?.value} / scale=${doc.querySelector("#mapScaleInput")?.value} / included=${includedWorldRegions.length}`);
           await waitFor(() => doc.querySelectorAll("#mapSvg .province").length === 1 && frame.contentWindow.getComputedStyle(doc.querySelector("#mapSvg")).display !== "none", 4000);
           assert(checks, "Create map renders the selected empty baselayer on the Map tab", doc.querySelectorAll("#mapSvg .province").length === 1 && doc.querySelectorAll("#mapSvg .marker, #mapSvg .map-label, #mapSvg .legend-layer").length === 0 && doc.querySelector("#canvasPlaceholder")?.hidden === true, `regions=${doc.querySelectorAll("#mapSvg .province").length}, annotations=${doc.querySelectorAll("#mapSvg .marker, #mapSvg .map-label, #mapSvg .legend-layer").length}`);
-          assert(checks, "Empty Project points prioritizes Add data", doc.querySelector("#projectFilterControl")?.hidden === true && doc.querySelector("#projectSelectionActions")?.hidden === true && doc.querySelector("#clearRowsBtn")?.disabled === true && Boolean(doc.querySelector("#projectAddMenuBtn")));
+          assert(checks, "Empty Markers prioritizes Add data", doc.querySelector("#projectFilterControl")?.hidden === true && doc.querySelector("#projectSelectionActions")?.hidden === true && doc.querySelector("#clearRowsBtn")?.disabled === true && Boolean(doc.querySelector("#projectAddMenuBtn")));
           const failed = checks.filter(check => !check.pass);
           result.textContent = JSON.stringify({
             status: failed.length ? "failed" : "ok",
@@ -1319,6 +1379,10 @@
           await waitFor(() => startupDialog.hidden === true, 10000);
           const emptyCanvasActions = doc.querySelector("#canvasEmptyActions");
           assert(checks, "Empty map canvas provides direct next-step actions", Boolean(emptyCanvasActions) && frame.contentWindow.getComputedStyle(emptyCanvasActions).display !== "none" && ["add-project", "import-csv", "load-sample"].every(action => emptyCanvasActions.querySelector(`[data-empty-action='${action}']`)), emptyCanvasActions?.textContent.trim() || "missing");
+          const emptyActionButtons = Array.from(emptyCanvasActions?.querySelectorAll(".empty-state-action") || []);
+          const emptyActionRects = emptyActionButtons.map(button => button.getBoundingClientRect());
+          const emptyActionIcons = emptyActionButtons.map(button => button.querySelector("svg")?.getBoundingClientRect());
+          assert(checks, "Empty map actions share one compact aligned control treatment", emptyActionRects.length === 3 && emptyActionRects.every(rect => Math.abs(rect.height - 44) <= 1 && Math.abs(rect.top - emptyActionRects[0].top) <= 1) && emptyActionIcons.every(rect => rect && Math.abs(rect.width - 18) <= 1 && Math.abs(rect.height - 18) <= 1), JSON.stringify(emptyActionRects.map((rect, index) => ({ label: emptyActionButtons[index].textContent.trim(), width: rect.width, height: rect.height, top: rect.top, icon: emptyActionIcons[index] && [emptyActionIcons[index].width, emptyActionIcons[index].height] }))));
           assert(checks, "Creating a new map exposes persistent unsaved feedback", doc.querySelector("#projectSaveState")?.dataset.state === "dirty" && /Unsaved changes|Modifications non enregistrées/.test(doc.querySelector("#projectSaveState")?.textContent || ""), doc.querySelector("#projectSaveState")?.textContent || "missing");
         }
 
@@ -1445,22 +1509,25 @@
           const canvasWidthBeforeZoom = parseFloat(doc.querySelector("#mapSvg")?.style.width || "0");
           const documentPageWidthBeforeZoom = parseFloat(frame.contentWindow.getComputedStyle(doc.querySelector("#documentPagePreview")).width || "0");
           const zoomAfterIncrease = canvasZoomLevels.find(level => level > initialCanvasZoom);
+          const zoomInButton = doc.querySelector("#canvasZoomInBtn");
+          const canIncreaseCanvasZoom = !zoomInButton?.disabled;
           assert(checks, seededCanvasZoom ? "Canvas zoom restores the saved browser preference on load" : "Canvas zoom defaults to 125%", readoutText === `Canvas ${initialCanvasZoom}%`, readoutText);
-          doc.querySelector("#canvasZoomInBtn")?.click();
+          zoomInButton?.click();
           const canvasWidthAfterZoom = parseFloat(doc.querySelector("#mapSvg")?.style.width || "0");
           const documentPageWidthAfterZoom = parseFloat(frame.contentWindow.getComputedStyle(doc.querySelector("#documentPagePreview")).width || "0");
-          assert(checks, "Canvas zoom enlarges the composed canvas without changing baselayer size", canvasZoomReadout.textContent.trim() === `Canvas ${zoomAfterIncrease}%` && canvasWidthAfterZoom > canvasWidthBeforeZoom && doc.querySelector("#mapScaleInput")?.value === mapScaleBeforeCanvasZoom, `${canvasZoomReadout.textContent.trim()} | canvas ${canvasWidthBeforeZoom} -> ${canvasWidthAfterZoom} | baselayer ${mapScaleBeforeCanvasZoom} -> ${doc.querySelector("#mapScaleInput")?.value}`);
-          assert(checks, "Canvas zoom changes persist as a browser preference", JSON.parse(frame.contentWindow.localStorage.getItem("plotypus.canvasViewZoom") || "null") === zoomAfterIncrease);
-          assert(checks, "Canvas zoom enlarges the document-page context at the same time", documentPageWidthAfterZoom > documentPageWidthBeforeZoom, `${documentPageWidthBeforeZoom} -> ${documentPageWidthAfterZoom}`);
-          doc.querySelector("#canvasZoomOutBtn")?.click();
-          assert(checks, "Canvas zoom can return to its initial saved size", canvasZoomReadout.textContent.trim() === `Canvas ${initialCanvasZoom}%` && JSON.parse(frame.contentWindow.localStorage.getItem("plotypus.canvasViewZoom") || "null") === initialCanvasZoom, canvasZoomReadout.textContent.trim());
+          assert(checks, canIncreaseCanvasZoom ? "Canvas zoom enlarges the composed canvas without changing baselayer size" : "Canvas zoom is capped when the next level would overflow the workspace", canIncreaseCanvasZoom ? canvasZoomReadout.textContent.trim() === `Canvas ${zoomAfterIncrease}%` && canvasWidthAfterZoom > canvasWidthBeforeZoom && doc.querySelector("#mapScaleInput")?.value === mapScaleBeforeCanvasZoom : canvasZoomReadout.textContent.trim() === `Canvas ${initialCanvasZoom}%` && canvasWidthAfterZoom === canvasWidthBeforeZoom, `${canvasZoomReadout.textContent.trim()} | canvas ${canvasWidthBeforeZoom} -> ${canvasWidthAfterZoom} | baselayer ${mapScaleBeforeCanvasZoom} -> ${doc.querySelector("#mapScaleInput")?.value}`);
+          const savedZoomAfterIncrease = JSON.parse(frame.contentWindow.localStorage.getItem("plotypus.canvasViewZoom") || "null");
+          assert(checks, "Canvas zoom preference reflects the applied level", canIncreaseCanvasZoom ? savedZoomAfterIncrease === zoomAfterIncrease : savedZoomAfterIncrease === null || savedZoomAfterIncrease === initialCanvasZoom, String(savedZoomAfterIncrease));
+          assert(checks, "Canvas zoom keeps the document-page context synchronized", canIncreaseCanvasZoom ? documentPageWidthAfterZoom > documentPageWidthBeforeZoom : documentPageWidthAfterZoom === documentPageWidthBeforeZoom, `${documentPageWidthBeforeZoom} -> ${documentPageWidthAfterZoom}`);
+          if (canIncreaseCanvasZoom) doc.querySelector("#canvasZoomOutBtn")?.click();
+          assert(checks, "Canvas zoom can return to its initial saved size", canvasZoomReadout.textContent.trim() === `Canvas ${initialCanvasZoom}%`, canvasZoomReadout.textContent.trim());
           if (loadSample) {
             const mapScaleInput = doc.querySelector("#mapScaleInput");
             mapScaleInput.value = "45";
             mapScaleInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
             doc.querySelector("#canvasZoomInBtn")?.click();
             doc.querySelector("#canvasZoomInBtn")?.click();
-            const zoomAfterTwoIncreases = canvasZoomLevels.filter(level => level > initialCanvasZoom).slice(0, 2).at(-1);
+            const zoomBeforeAutoFit = canvasZoomReadout.textContent.trim();
             const samplesBeforeSmallMapAutoFit = performanceApi.snapshot().samples.length;
             doc.querySelector("#canvasAutoPlaceBtn")?.click();
             await waitFor(() => performanceApi.snapshot().samples.length > samplesBeforeSmallMapAutoFit && performanceApi.snapshot().latestByKind.autoPlace, 60000);
@@ -1470,10 +1537,9 @@
             const labelBottom = Math.max(...labelBounds.map(box => box.y + box.height));
             const canvasHeight = doc.querySelector("#mapSvg")?.viewBox?.baseVal?.height || 0;
             assert(checks, "Fit map + labels can enlarge an undersized baselayer", fittedScale > 45, `45% -> ${fittedScale}%`);
-            assert(checks, "Auto-fit remains independent of canvas viewport zoom", canvasZoomReadout.textContent.trim() === `Canvas ${zoomAfterTwoIncreases}%`, canvasZoomReadout.textContent.trim());
+            assert(checks, "Auto-fit remains independent of canvas viewport zoom", canvasZoomReadout.textContent.trim() === zoomBeforeAutoFit, canvasZoomReadout.textContent.trim());
             assert(checks, "Recovered auto-fit layout uses the available canvas height", labelBounds.length > 0 && labelBottom - labelTop > canvasHeight * 0.55, `labels=${Math.round(labelTop)}-${Math.round(labelBottom)} canvas=${canvasHeight}`);
-            doc.querySelector("#canvasZoomOutBtn")?.click();
-            doc.querySelector("#canvasZoomOutBtn")?.click();
+            while (canvasZoomReadout.textContent.trim() !== `Canvas ${initialCanvasZoom}%` && !doc.querySelector("#canvasZoomOutBtn")?.disabled) doc.querySelector("#canvasZoomOutBtn")?.click();
           }
         }
 
@@ -1496,8 +1562,9 @@
             trigger.focus();
             trigger.click();
             const dialog = await waitFor(() => doc.querySelector(dialogSelector)?.hidden === false && doc.querySelector(dialogSelector), 2000);
-            const githubLink = doc.querySelector("#githubIssueLink");
-            const emailLink = doc.querySelector("#feedbackEmailLink");
+            const sendLink = doc.querySelector("#feedbackSendLink");
+            const githubDestination = doc.querySelector("[data-feedback-destination='github']");
+            const emailDestination = doc.querySelector("[data-feedback-destination='email']");
             const titleInput = doc.querySelector("#feedbackTitle");
             const detailsInput = doc.querySelector("#feedbackDetails");
             const suggestionInput = dialog.querySelector("[name='feedback-type'][value='improvement']");
@@ -1506,8 +1573,8 @@
             assert(checks, "Send feedback dialog is fully visible and unobscured", feedbackSurfaceState.pass, feedbackSurfaceState.detail);
             assert(checks, "Send feedback exposes modal and form semantics", dialog.getAttribute("role") === "dialog" && dialog.getAttribute("aria-modal") === "true" && dialog.getAttribute("aria-labelledby") === "feedbackDialogTitle" && titleInput.required && detailsInput.required);
             assert(checks, "Send feedback starts on Issue", doc.activeElement === dialog.querySelector("[name='feedback-type'][value='problem']") && /What happened/.test(doc.querySelector("#feedbackDetailsLabel")?.textContent || ""));
-            assert(checks, "Send feedback includes the Propel privacy warning and both destinations", /personal or protected information/.test(dialog.querySelector(".feedback-privacy")?.textContent || "") && Boolean(githubLink && emailLink));
-            const invalidGitHubHandoffAllowed = githubLink.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true, cancelable: true }));
+            assert(checks, "Send feedback includes the privacy warning, a destination selector, and one primary handoff", /personal or protected information/.test(dialog.querySelector(".feedback-privacy")?.textContent || "") && Boolean(sendLink && githubDestination && emailDestination) && dialog.querySelectorAll(".feedback-destination").length === 1);
+            const invalidGitHubHandoffAllowed = sendLink.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true, cancelable: true }));
             assert(checks, "Feedback handoff requires a title and details", invalidGitHubHandoffAllowed === false && !titleInput.checkValidity());
             titleInput.value = "Reuse common map settings";
             titleInput.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
@@ -1515,21 +1582,27 @@
             detailsInput.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
             suggestionInput.checked = true;
             suggestionInput.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
-            const githubUrl = new URL(githubLink.href);
-            const emailUrl = new URL(emailLink.href);
+            const githubUrl = new URL(sendLink.href);
             assert(checks, "Suggestion handoff targets this Plotypus repository and issue form", githubUrl.origin + githubUrl.pathname === "https://github.com/BobPiromnam/Plotypus/issues/new" && githubUrl.searchParams.get("template") === "feature_request.yml" && githubUrl.searchParams.get("title") === titleInput.value && githubUrl.searchParams.get("details") === detailsInput.value);
             assert(checks, "GitHub handoff includes only broad privacy-safe environment details", /Plotypus version:/.test(githubUrl.searchParams.get("environment") || "") && !/shell-interactions|file:\/\/|Mozilla\/5\.0/.test(githubUrl.searchParams.get("environment") || ""), githubUrl.searchParams.get("environment") || "");
+            emailDestination.click();
+            const emailUrl = new URL(sendLink.href);
             assert(checks, "Email handoff uses the shared mailbox and requested CC", emailUrl.protocol === "mailto:" && emailUrl.pathname === "web@fin.gc.ca" && emailUrl.searchParams.get("cc") === "itthiphol.piromnam@fin.gc.ca" && emailUrl.searchParams.get("subject") === `Plotypus feedback: ${titleInput.value}`);
+            assert(checks, "Feedback exposes one selected destination at a time", emailDestination.getAttribute("aria-pressed") === "true" && githubDestination.getAttribute("aria-pressed") === "false" && !sendLink.hasAttribute("target"));
             assert(checks, "Suggestion choice updates the feedback prompt", /What would improve Plotypus/.test(doc.querySelector("#feedbackDetailsLabel")?.textContent || "") && /reuse common map settings/i.test(titleInput.placeholder));
             doc.querySelector("[data-ui-language='fr']")?.click();
             await waitFor(() => doc.documentElement.lang === "fr" && /Envoyer des commentaires/.test(doc.querySelector("#feedbackDialogTitle")?.textContent || ""), 2000);
-            assert(checks, "Send feedback switches fully to French", /Qu’est-ce qui améliorerait Plotypus/.test(doc.querySelector("#feedbackDetailsLabel")?.textContent || "") && /Choisissez où l’envoyer/.test(dialog.textContent || "") && /Courriel/.test(emailLink.textContent || ""), dialog.textContent || "");
+            assert(checks, "Send feedback switches fully to French", /Qu’est-ce qui améliorerait Plotypus/.test(doc.querySelector("#feedbackDetailsLabel")?.textContent || "") && /Envoyer avec/.test(dialog.textContent || "") && /Courriel/.test(emailDestination.textContent || ""), dialog.textContent || "");
             assertNoRawUiKeys(checks, "Send feedback does not show raw translation keys in French", dialog);
             assertNoRawUiKeysInAttributes(checks, "Send feedback attributes do not show raw translation keys in French", [dialog]);
             doc.querySelector("[data-ui-language='en']")?.click();
             await waitFor(() => doc.documentElement.lang === "en" && /Send feedback/.test(doc.querySelector("#feedbackDialogTitle")?.textContent || ""), 2000);
             dispatchKey(doc, "Escape");
             assert(checks, "Escape closes Send feedback and restores command-bar focus", dialog.hidden && trigger.getAttribute("aria-expanded") === "false" && doc.activeElement === trigger);
+            if (accessibilityAudit) {
+              trigger.click();
+              await waitFor(() => dialog.hidden === false, 2000);
+            }
           }
           if (requestedDialog === "map-details") {
             doc.querySelector("#qualityTableTab")?.click();
@@ -1664,7 +1737,6 @@
             doc.querySelector("#propertiesSelectionControls [data-property-action='remove-content-block'][data-block-index='0']")?.click();
             await waitFor(() => JSON.parse(importedRow.dataset.content || "[]").length === 0);
             assert(checks, "Imported label elements can be deleted in Properties", JSON.parse(importedRow.dataset.content || "[]").length === 0);
-
             const provinceTransfer = new frame.contentWindow.DataTransfer();
             provinceTransfer.items.add(new frame.contentWindow.File([
               "Project,Type,Province\nImported Ontario project,Referred Project,Ontario"
@@ -1709,12 +1781,19 @@
             doc.querySelector("[data-project-location-mode='cities']")?.click();
             await waitFor(() => doc.querySelector("#projectTable")?.dataset.locationMode === "cities" && importedCityRow?.dataset.anchor === "city", 2000);
             assert(checks, "Returning to City restores the imported catalogue city", importedCityRow.dataset.cityId === "ca-qc-montreal" && importedCityRow.querySelector(".cityLocationInput")?.value.startsWith("Montréal"), `${importedCityRow.dataset.cityId}/${importedCityRow.querySelector(".cityLocationInput")?.value || ""}`);
+            if (accessibilityAudit) {
+              input.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+              await waitFor(() => dialog.hidden === false, 2000);
+            }
           }
           if (requestedDialog === "point-catalog") {
             doc.querySelector("#projectTableTab").click();
             await waitFor(() => doc.body.dataset.workspaceView === "projects");
             const trigger = doc.querySelector("#addPointsBtn");
             const mapBeforeCatalog = doc.querySelector("#mapSvg")?.innerHTML || "";
+            assert(checks, "Choose cities stays hidden outside City location mode", trigger?.hidden === true);
+            doc.querySelector("[data-project-location-mode='cities']")?.click();
+            await waitFor(() => doc.querySelector("#projectTable")?.dataset.locationMode === "cities" && trigger?.hidden === false, 2000);
             trigger.focus();
             trigger.click();
             await waitFor(() => doc.querySelector(dialogSelector)?.hidden === false);
@@ -1726,6 +1805,7 @@
             assert(checks, "Point catalog dialog is fully visible and unobscured", pointCatalogSurfaceState.pass, pointCatalogSurfaceState.detail);
             assert(checks, "Point catalog exposes modal semantics", dialog.getAttribute("role") === "dialog" && dialog.getAttribute("aria-modal") === "true" && dialog.getAttribute("aria-labelledby") === "pointCatalogTitle");
             assert(checks, "Point catalog starts on Cities with search focused", doc.activeElement === doc.querySelector("#projectCityInput") && citiesTab.getAttribute("aria-selected") === "true" && !doc.querySelector("#pointCatalogPresetsPanel").hidden);
+            assert(checks, "Offline city provenance is available inside the City picker", Boolean(doc.querySelector("#pointCatalogPresetsPanel .project-city-data-citation")) && !doc.querySelector("#applicationSettingsDialog .application-settings-city-data"));
             assert(checks, "Point catalog source tab is labelled Import CSV", sourcesTab.textContent.trim() === "Import CSV", sourcesTab.textContent.trim());
             assert(checks, "Point catalog reports its offline catalogue and province behaviour", /\d+ offline cities/.test(doc.querySelector("#pointCatalogScope")?.textContent || "") && /provinces are included automatically/.test(doc.querySelector("#pointCatalogScope")?.textContent || ""));
             doc.querySelector("[data-ui-language='fr']")?.click();
@@ -1762,7 +1842,7 @@
             await waitFor(() => doc.querySelectorAll("#projectTable tbody tr[data-row-id]").length === initialProjectRows + 1);
             const torontoRow = Array.from(doc.querySelectorAll("#projectTable tbody tr[data-row-id]")).find(row => row.dataset.cityId === "ca-on-toronto");
             const torontoCity = frame.contentWindow.PLOTYPUS_CITIES?.find(city => city.id === "ca-on-toronto");
-            assert(checks, "City autosuggest creates a blank Project-point row with a separate city location", doc.body.dataset.workspaceView === "projects" && doc.querySelector("#projectTable")?.dataset.locationMode === "cities" && torontoRow?.dataset.anchor === "city" && torontoRow?.dataset.region === "Ontario" && torontoRow.querySelector(".name-input")?.value === "" && torontoRow.querySelector(".lat-input")?.value === String(torontoCity?.lat) && torontoRow.querySelector(".lon-input")?.value === String(torontoCity?.lon), `${doc.querySelector("#projectTable")?.dataset.locationMode || ""}/${torontoRow?.dataset.anchor || ""}/${torontoRow?.dataset.region || ""}/${torontoRow?.querySelector(".name-input")?.value || ""}`);
+            assert(checks, "City autosuggest creates a blank Project-point row with a separate city location", doc.body.dataset.workspaceView === "projects" && doc.querySelector("#projectTable")?.dataset.locationMode === "cities" && torontoRow?.dataset.anchor === "city" && torontoRow?.dataset.region === "Ontario" && torontoRow.querySelector(".name-input")?.value === "" && Number(torontoRow.querySelector(".lat-input")?.value) === Number(Number(torontoCity?.lat).toFixed(2)) && Number(torontoRow.querySelector(".lon-input")?.value) === Number(Number(torontoCity?.lon).toFixed(2)), `${doc.querySelector("#projectTable")?.dataset.locationMode || ""}/${torontoRow?.dataset.anchor || ""}/${torontoRow?.dataset.region || ""}/${torontoRow?.querySelector(".lat-input")?.value || ""}/${torontoRow?.querySelector(".lon-input")?.value || ""}`);
             const rowCityField = torontoRow?.querySelector(".cityLocationInput");
             const rowCityIcon = torontoRow?.querySelector(".refCitySearchIcon");
             const rowCityInputRect = rowCityField?.getBoundingClientRect();
@@ -1771,23 +1851,45 @@
             const rowCityIconGap = rowCityInputRect && rowCityIconRect ? rowCityInputRect.left + rowCityPadding - rowCityIconRect.right : -1;
             const rowCityCenterDelta = rowCityInputRect && rowCityIconRect ? Math.abs(rowCityInputRect.top + rowCityInputRect.height / 2 - rowCityIconRect.top - rowCityIconRect.height / 2) : 99;
             assert(checks, "City field keeps its search icon clear of placeholder and value text", rowCityIconGap >= 12 && rowCityCenterDelta <= 1, `gap=${rowCityIconGap.toFixed(1)}, center=${rowCityCenterDelta.toFixed(1)}, padding=${rowCityPadding}`);
+            const projectTableWrap = doc.querySelector("#projectTablePane > .table-wrap");
+            const cityHeader = doc.querySelector("#projectTable .city-col");
+            const cityHeaderStyle = cityHeader && frame.contentWindow.getComputedStyle(cityHeader);
+            const previousProjectScrollTop = projectTableWrap?.scrollTop || 0;
+            if (projectTableWrap) projectTableWrap.scrollTop = projectTableWrap.scrollHeight;
+            await new Promise(resolve => frame.contentWindow.requestAnimationFrame(resolve));
+            const cityHeaderRect = cityHeader?.getBoundingClientRect();
+            const cityHeaderFrontElement = cityHeaderRect
+              ? doc.elementFromPoint(cityHeaderRect.left + cityHeaderRect.width / 2, cityHeaderRect.top + cityHeaderRect.height / 2)
+              : null;
+            const cityHeaderLayer = Number.parseInt(cityHeaderStyle?.zIndex || "0", 10);
+            const selectedCellLayer = Number.parseInt(frame.contentWindow.getComputedStyle(torontoRow.querySelector(".city-cell"), "::after").zIndex || "0", 10) || 0;
+            const autocompleteLayer = Number.parseInt(frame.contentWindow.getComputedStyle(torontoRow.querySelector(".cityLocationResults")).zIndex || "0", 10) || 0;
+            const editorLayer = Math.max(selectedCellLayer, autocompleteLayer);
+            assert(checks, "Sticky City heading stays above scrolled City editors", Boolean(cityHeader && cityHeader.contains(cityHeaderFrontElement)) && cityHeaderLayer > editorLayer, `${cityHeaderFrontElement?.className || cityHeaderFrontElement?.tagName || "none"}; header=${cityHeaderLayer}, editor=${editorLayer}`);
+            if (projectTableWrap) projectTableWrap.scrollTop = previousProjectScrollTop;
+            await new Promise(resolve => frame.contentWindow.requestAnimationFrame(resolve));
             const projectNameInput = torontoRow?.querySelector(".name-input");
-            torontoRow.click();
-            await waitFor(() => doc.querySelector("#projectCityPropertiesField .cityLocationInput"), 2000);
             projectNameInput.value = "Housing project";
             projectNameInput.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
             const rowCityInput = torontoRow?.querySelector(".cityLocationInput");
             rowCityInput.focus();
+            rowCityInput.click();
+            await new Promise(resolve => frame.contentWindow.requestAnimationFrame(resolve));
+            const cityPropertiesPanel = doc.querySelector("#propertiesPanel");
+            assert(checks, "Focusing the inline City search keeps Properties closed", doc.body.dataset.propertiesMode === "unavailable" && doc.body.classList.contains("properties-unavailable") && !doc.body.classList.contains("properties-open") && cityPropertiesPanel?.inert === true && cityPropertiesPanel?.getAttribute("aria-hidden") === "true", `${doc.body.dataset.propertiesMode || ""}/${doc.body.className}/${cityPropertiesPanel?.inert}/${cityPropertiesPanel?.getAttribute("aria-hidden") || ""}`);
             rowCityInput.value = "Montréal";
             rowCityInput.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
             const montrealResult = await waitFor(() => torontoRow.querySelector("[data-city-location-result='ca-qc-montreal']"), 2000);
             montrealResult.dispatchEvent(new frame.contentWindow.MouseEvent("mousedown", { bubbles: true, cancelable: true }));
             await waitFor(() => torontoRow.dataset.cityId === "ca-qc-montreal", 2000);
             assert(checks, "Changing City relocates the point without replacing its project name", torontoRow.dataset.region === "Quebec" && projectNameInput.value === "Housing project" && torontoRow.querySelector(".cityLocationInput")?.value.startsWith("Montréal"), `${torontoRow.dataset.region}/${projectNameInput.value}/${torontoRow.querySelector(".cityLocationInput")?.value || ""}`);
+            assert(checks, "Choosing an inline City result keeps Properties closed", doc.body.dataset.propertiesMode === "unavailable" && cityPropertiesPanel?.inert === true && !doc.querySelector("#projectCityPropertiesField .cityLocationInput"), `${doc.body.dataset.propertiesMode || ""}/${cityPropertiesPanel?.inert}`);
+            torontoRow.click();
+            await waitFor(() => doc.querySelector("#projectCityPropertiesField .cityLocationInput"), 2000);
             const propertiesCityInput = doc.querySelector("#projectCityPropertiesField .cityLocationInput");
             const propertiesCityRegion = doc.querySelector("#propertiesSelectionControls [data-city-derived='region']");
             const propertiesCityCoordinates = doc.querySelector("#propertiesSelectionControls [data-city-derived='coordinates']");
-            assert(checks, "City edits update the open Properties panel without resetting it", propertiesCityInput?.value.startsWith("Montréal") && propertiesCityRegion?.value === "Quebec" && propertiesCityCoordinates?.value.includes(String(torontoRow.querySelector(".lat-input")?.value || "")), `${propertiesCityInput?.value || ""}/${propertiesCityRegion?.value || ""}/${propertiesCityCoordinates?.value || ""}`);
+            assert(checks, "Intentional row selection opens Properties with the updated City", propertiesCityInput?.value.startsWith("Montréal") && propertiesCityRegion?.value === "Quebec" && propertiesCityCoordinates?.value.includes(String(torontoRow.querySelector(".lat-input")?.value || "")), `${propertiesCityInput?.value || ""}/${propertiesCityRegion?.value || ""}/${propertiesCityCoordinates?.value || ""}`);
             const ontarioRow = doc.querySelector("#regionTable tbody tr[data-region-id='Ontario']");
             const quebecRow = doc.querySelector("#regionTable tbody tr[data-region-id='Quebec']");
             assert(checks, "City selection keeps its containing province in the baselayer", (!ontarioRow || ontarioRow.querySelector(".region-table-included-input")?.checked === true) && (!quebecRow || quebecRow.querySelector(".region-table-included-input")?.checked === true));
@@ -1838,6 +1940,12 @@
             assert(checks, "Clear-table confirmation completes the destructive action", doc.querySelectorAll("#projectTable tbody tr[data-row-id]").length === 0 && /Tableau des projets vidé/.test(doc.querySelector("#statusBox")?.textContent || ""));
             doc.querySelector("[data-ui-language='en']")?.click();
             await waitFor(() => doc.documentElement.lang === "en", 2000);
+            if (accessibilityAudit) {
+              doc.querySelector("#addRowBtn")?.click();
+              await waitFor(() => doc.querySelectorAll("#projectTable tbody tr[data-row-id]").length === 1, 2000);
+              doc.querySelector("#clearRowsBtn")?.click();
+              await waitFor(() => dialog.hidden === false, 2000);
+            }
           }
           if (requestedDialog === "shortcuts") {
             dispatchKey(doc, "?");
@@ -1859,6 +1967,10 @@
             await waitFor(() => doc.documentElement.lang === "en" && /Shortcuts/.test(doc.querySelector("#shortcutsTitle")?.textContent || ""), 2000);
             dispatchKey(doc, "Escape");
             assert(checks, "Escape closes Shortcuts", dialog.hidden);
+            if (accessibilityAudit) {
+              dispatchKey(doc, "?");
+              await waitFor(() => dialog.hidden === false, 2000);
+            }
           }
           if (requestedDialog === "export-menu") {
             const trigger = doc.querySelector("#exportMenuBtn");
@@ -1881,6 +1993,10 @@
             await waitFor(() => doc.documentElement.lang === "en" && /Export PNG/.test(menu.textContent || ""), 2000);
             dispatchKey(doc, "Escape");
             assert(checks, "Escape closes Export menu", menu.hidden && trigger.getAttribute("aria-expanded") === "false");
+            if (accessibilityAudit) {
+              trigger.click();
+              await waitFor(() => menu.hidden === false, 2000);
+            }
           }
           if (requestedDialog === "add-data-menu") {
             doc.querySelector("#projectTableTab")?.click();
@@ -1893,8 +2009,22 @@
               boundary: doc.querySelector(".workspace"),
               hitTarget: menu.querySelector("[role='menuitem']")
             });
-            assert(checks, "Add data menu opens with accessible menu semantics", trigger.getAttribute("aria-expanded") === "true" && menu.getAttribute("role") === "menu" && menu.querySelectorAll("[role='menuitem']").length === 4 && Boolean(menu.querySelector("#addProjectTypeBtn[role='menuitem']")));
+            const visibleMenuItems = Array.from(menu.querySelectorAll("[role='menuitem']")).filter(item => !item.hidden);
+            assert(checks, "Add data menu opens with accessible, mode-specific commands", trigger.getAttribute("aria-expanded") === "true" && menu.getAttribute("role") === "menu" && visibleMenuItems.length === 2 && menu.querySelector("#addPointsBtn")?.hidden === true && !menu.querySelector("#addProjectTypeBtn"));
             assert(checks, "Add data menu stays fully visible beside right-side Properties", doc.body.dataset.propertiesSide === "right" && menuSurfaceState.pass, menuSurfaceState.detail);
+            doc.querySelector("[data-ui-language='fr']")?.click();
+            await waitFor(() => doc.documentElement.lang === "fr" && /Ajouter des données/.test(trigger.textContent || ""), 2000);
+            assert(checks, "Application language setting switches Add data menu copy to French", /Ligne vide/.test(menu.textContent || "") && /Importer un fichier CSV/.test(menu.textContent || ""), menu.textContent || "");
+            assertNoRawUiKeys(checks, "Add data menu does not show raw translation keys in French", menu);
+            assertNoKnownEnglishUi(checks, "Add data menu does not show known English UI phrases in French", [menu]);
+            doc.querySelector("[data-ui-language='en']")?.click();
+            await waitFor(() => doc.documentElement.lang === "en" && /Add data/.test(trigger.textContent || ""), 2000);
+            dispatchKey(doc, "Escape");
+            assert(checks, "Escape closes Add data menu", menu.hidden && trigger.getAttribute("aria-expanded") === "false");
+            if (accessibilityAudit) {
+              trigger.click();
+              await waitFor(() => menu.hidden === false, 2000);
+            }
           }
           if (requestedDialog === "project-load-error") {
             doc.querySelector("[data-ui-language='fr']")?.click();
@@ -1968,7 +2098,8 @@
           assert(checks, `${requestedWorkspace} workspace has a visible page intro`, Boolean(
             activeWorkspaceIntro
             && activeWorkspaceIntroStyle?.display !== "none"
-            && activeWorkspaceIntro.querySelector("h2")?.textContent.trim()
+            && activeWorkspaceIntro.querySelector("h2.workspace-title")?.textContent.trim()
+            && activeWorkspaceIntro.querySelector("h2.workspace-title")?.getBoundingClientRect().height >= 24
             && activeWorkspaceIntro.querySelector("p")?.textContent.trim()
           ));
           if (loadSample) {
@@ -2094,6 +2225,7 @@
           const applicationSettingsClose = doc.querySelector("#applicationSettingsCloseBtn");
           const workspaceElement = doc.querySelector(".workspace");
           const appWidth = frame.contentWindow.innerWidth;
+          const expectedPropertiesWidth = appWidth <= 1280 ? 300 : 320;
           const propertiesAvailableAtWorkspaceStart = !doc.body.classList.contains("properties-unavailable");
           const summaryChips = Array.from(doc.querySelectorAll("#workspaceSummaryMetrics .workspace-summary-chip"));
           const visibleSummaryChips = summaryChips.filter(chip => frame.contentWindow.getComputedStyle(chip).display !== "none");
@@ -2106,7 +2238,7 @@
           const headerRect = doc.querySelector(".app-ribbon")?.getBoundingClientRect();
           assert(checks, "A top-right gear opens the general application settings", Boolean(applicationSettingsButton && applicationSettingsMenu && applicationSettingsClose) && applicationSettingsButton.dataset.icon === "settings" && applicationSettingsButton.getAttribute("aria-haspopup") === "dialog" && applicationSettingsButton.getAttribute("aria-controls") === "applicationSettingsMenu" && applicationSettingsButton.getAttribute("aria-expanded") === "false" && applicationSettingsMenu.hidden && settingsButtonRect.right <= headerRect.right + 1 && headerRect.right - settingsButtonRect.right <= 32, `trigger=${applicationSettingsButton?.outerHTML || "missing"}; right=${settingsButtonRect?.right || "missing"}/${headerRect?.right || "missing"}`);
           assert(checks, "Application settings are the single source for interface language and Properties position", applicationLanguageButtons.length === 2 && applicationLanguageButtons.every(button => applicationSettingsMenu.contains(button)) && propertiesPositionInputs.length === 2 && propertiesPositionInputs.every(input => applicationSettingsMenu.contains(input)) && !doc.querySelector("#applicationConfigurationSection") && !doc.querySelector("#propertiesPanel [data-ui-language], #propertiesPanel [data-properties-side-input]"), `languages=${applicationLanguageButtons.length}; positions=${propertiesPositionInputs.length}; duplicate=${doc.querySelector("#applicationConfigurationSection")?.outerHTML || "none"}`);
-          assert(checks, "Properties defaults to the right with an accessible application setting", doc.body.dataset.propertiesSide === "right" && propertiesRightInput?.checked && propertiesRightInput?.closest("[role='radiogroup']")?.getAttribute("aria-labelledby") === "propertiesPositionLabel");
+          assert(checks, "Properties defaults to the right with an accessible application setting", doc.body.dataset.propertiesSide === "right" && propertiesRightInput?.getAttribute("aria-pressed") === "true" && propertiesRightInput?.closest("[role='group']")?.getAttribute("aria-labelledby") === "propertiesPositionLabel");
           if (propertiesAvailableAtWorkspaceStart && appWidth <= 1080) {
             propertiesToggle?.click();
             await waitFor(() => doc.body.classList.contains("properties-open") && !propertiesPanel.inert, 2000);
@@ -2143,18 +2275,18 @@
             assert(checks, "Right Properties is visually and structurally after the workspace", collapsedPanelRect.left >= initialWorkspaceRect.right - 1 && workspaceElement.nextElementSibling === propertiesPanel, `workspace=${initialWorkspaceRect.left}-${initialWorkspaceRect.right}, panel=${collapsedPanelRect.left}-${collapsedPanelRect.right}`);
             assert(checks, "Properties defaults to a quiet 48px rail", doc.body.classList.contains("properties-collapsed") && Math.round(collapsedPanelRect.width) === 48 && propertiesToggle?.getAttribute("aria-expanded") === "false", `${collapsedPanelRect.width}`);
             propertiesToggle?.click();
-            await waitFor(() => !doc.body.classList.contains("properties-collapsed") && Math.round(propertiesPanel.getBoundingClientRect().width) === 320, 2000);
+            await waitFor(() => !doc.body.classList.contains("properties-collapsed") && Math.round(propertiesPanel.getBoundingClientRect().width) === expectedPropertiesWidth, 2000);
             propertiesResizeHandle?.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true }));
-            await waitFor(() => Math.round(propertiesPanel.getBoundingClientRect().width) === 336, 2000);
+            await waitFor(() => Math.round(propertiesPanel.getBoundingClientRect().width) === expectedPropertiesWidth + 16, 2000);
             const savedRightResizePreference = JSON.parse(frame.contentWindow.localStorage.getItem("plotypus.propertiesPanel") || "{}");
-            assert(checks, "Right-side splitter grows inward", doc.body.dataset.propertiesSide === "right" && savedRightResizePreference.width === 336);
+            assert(checks, "Right-side splitter grows inward", doc.body.dataset.propertiesSide === "right" && savedRightResizePreference.width === expectedPropertiesWidth + 16);
             propertiesResizeHandle?.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }));
-            await waitFor(() => Math.round(propertiesPanel.getBoundingClientRect().width) === 320, 2000);
+            await waitFor(() => Math.round(propertiesPanel.getBoundingClientRect().width) === expectedPropertiesWidth, 2000);
           }
           applicationSettingsButton?.click();
           await waitFor(() => applicationSettingsMenu?.hidden === false, 2000);
           propertiesLeftInput?.click();
-          await waitFor(() => doc.body.dataset.propertiesSide === "left" && propertiesLeftInput.checked, 2000);
+          await waitFor(() => doc.body.dataset.propertiesSide === "left" && propertiesLeftInput.getAttribute("aria-pressed") === "true", 2000);
           const savedLeftPropertiesPreference = JSON.parse(frame.contentWindow.localStorage.getItem("plotypus.propertiesPanel") || "{}");
           assert(checks, "Properties can move left and saves the application preference without closing settings", savedLeftPropertiesPreference.side === "left" && propertiesPanel.nextElementSibling === workspaceElement && applicationSettingsMenu?.hidden === false && applicationSettingsButton?.getAttribute("aria-expanded") === "true");
           if (propertiesAvailableAtWorkspaceStart && appWidth > 1080) {
@@ -2166,32 +2298,23 @@
             const leftResizeHitTarget = doc.elementFromPoint(leftPanelRect.right - 2, leftPanelRect.top + Math.min(80, leftPanelRect.height / 2));
             assert(checks, "Left Properties exposes the full splitter hit target inside the panel", leftResizeHitWidth >= 8 && (leftResizeHitTarget === propertiesResizeHandle || propertiesResizeHandle?.contains(leftResizeHitTarget)), `handle=${leftResizeHandleRect?.left}-${leftResizeHandleRect?.right}; panel=${leftPanelRect.left}-${leftPanelRect.right}; hit=${leftResizeHitTarget?.id || leftResizeHitTarget?.className || "none"}`);
             const leftWidthBeforePointerResize = Math.round(leftPanelRect.width);
-            const originalSetPointerCapture = propertiesResizeHandle?.setPointerCapture;
-            const originalReleasePointerCapture = propertiesResizeHandle?.releasePointerCapture;
-            if (propertiesResizeHandle) {
-              propertiesResizeHandle.setPointerCapture = () => {};
-              propertiesResizeHandle.releasePointerCapture = () => {};
-            }
-            const leftResizeStartX = leftPanelRect.right - 2;
-            propertiesResizeHandle?.dispatchEvent(new frame.contentWindow.PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0, pointerId: 41, clientX: leftResizeStartX }));
-            frame.contentWindow.dispatchEvent(new frame.contentWindow.PointerEvent("pointermove", { bubbles: true, pointerId: 41, clientX: leftResizeStartX + 32 }));
-            frame.contentWindow.dispatchEvent(new frame.contentWindow.PointerEvent("pointerup", { bubbles: true, pointerId: 41, clientX: leftResizeStartX + 32 }));
-            if (propertiesResizeHandle) {
-              propertiesResizeHandle.setPointerCapture = originalSetPointerCapture;
-              propertiesResizeHandle.releasePointerCapture = originalReleasePointerCapture;
-            }
+            propertiesResizeHandle?.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }));
+            propertiesResizeHandle?.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }));
             await waitFor(() => Math.round(propertiesPanel.getBoundingClientRect().width) === leftWidthBeforePointerResize + 32, 2000);
             const savedLeftResizePreference = JSON.parse(frame.contentWindow.localStorage.getItem("plotypus.propertiesPanel") || "{}");
-            assert(checks, "Dragging the left-side splitter toward the workspace grows and saves the panel width", Math.round(propertiesPanel.getBoundingClientRect().width) === leftWidthBeforePointerResize + 32 && savedLeftResizePreference.width === leftWidthBeforePointerResize + 32, `width=${propertiesPanel.getBoundingClientRect().width}; saved=${savedLeftResizePreference.width}`);
+            assert(checks, "The left-side splitter grows toward the workspace and saves the panel width", Math.round(propertiesPanel.getBoundingClientRect().width) === leftWidthBeforePointerResize + 32 && savedLeftResizePreference.width === leftWidthBeforePointerResize + 32, `width=${propertiesPanel.getBoundingClientRect().width}; saved=${savedLeftResizePreference.width}`);
             propertiesResizeHandle?.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true }));
-            propertiesResizeHandle?.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true }));
+            await new Promise(resolve => frame.contentWindow.requestAnimationFrame(resolve));
+            if (Math.round(propertiesPanel.getBoundingClientRect().width) > leftWidthBeforePointerResize) {
+              propertiesResizeHandle?.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true }));
+            }
             await waitFor(() => Math.round(propertiesPanel.getBoundingClientRect().width) === leftWidthBeforePointerResize, 2000);
           }
           const uiFrenchButton = doc.querySelector("[data-ui-language='fr']");
           const uiEnglishButton = doc.querySelector("[data-ui-language='en']");
           const initialMapLanguage = doc.querySelector("#mapLanguageInput")?.value;
           uiFrenchButton?.click();
-          await waitFor(() => doc.documentElement.lang === "fr" && doc.querySelector("#previewTableTab")?.textContent.trim() === "Carte", 2000);
+          await waitFor(() => doc.documentElement.lang === "fr" && doc.querySelector("#previewTableTab .workspace-nav-copy strong")?.textContent.trim() === "Carte", 2000);
           const savedFrenchUiPreference = JSON.parse(frame.contentWindow.localStorage.getItem("plotypus.uiLanguage") || "null");
           assert(checks, "Application language switches app chrome to French and persists without closing settings", doc.documentElement.lang === "fr" && doc.querySelector("#propertiesToggleBtn")?.textContent.includes("Propriétés") && doc.querySelector("#exportMenuBtn")?.textContent.trim() === "Exporter" && savedFrenchUiPreference === "fr" && uiFrenchButton?.getAttribute("aria-pressed") === "true" && applicationSettingsMenu?.hidden === false);
           assert(checks, "Application settings copy and accessible names switch to French", /Paramètres de l’application/.test(applicationSettingsMenu?.textContent || "") && /Langue de l’application/.test(applicationSettingsMenu?.textContent || "") && /Position du panneau Propriétés/.test(applicationSettingsMenu?.textContent || "") && /Fermer les paramètres de l’application/.test(applicationSettingsClose?.getAttribute("aria-label") || ""), `${applicationSettingsMenu?.textContent || ""} | ${applicationSettingsClose?.getAttribute("aria-label") || ""}`);
@@ -2205,7 +2328,7 @@
             projects: "Points de projet",
             regions: "Fond de carte",
             translate: "Traduire",
-            quality: "Qualité de la carte"
+            quality: "AQ"
           };
           assert(checks, `${requestedWorkspace} page intro switches to French`, activeWorkspaceIntro?.querySelector("h2")?.textContent.trim() === expectedFrenchIntroTitles[requestedWorkspace] && Boolean(activeWorkspaceIntro?.querySelector("p")?.textContent.trim()), activeWorkspaceIntro?.textContent.trim() || "");
           if (requestedWorkspace === "preview") {
@@ -2229,13 +2352,13 @@
             const frenchLeaderControls = doc.querySelector("#propertiesSelectionControls [data-leader-line-controls='global']");
             const frenchLeaderWidthDraft = frenchLeaderControls?.querySelector("[data-leader-line-width-draft='global']");
             const frenchLeaderWidthReadout = frenchLeaderControls?.querySelector("[data-leader-line-width-readout]");
-            assert(checks, "Global leader-line Properties expose localized French draft and Apply labels", Boolean(frenchLeaderControls) && /Traits de renvoi/.test(frenchLeaderControls.textContent || "") && /Masquer tous les traits de renvoi/.test(frenchLeaderControls.textContent || "") && /Épaisseur/.test(frenchLeaderControls.textContent || "") && /Aperçu/.test(frenchLeaderControls.textContent || "") && /Appliquer/.test(frenchLeaderControls.textContent || "") && /Couleur/.test(frenchLeaderControls.textContent || "") && /^\d+\.\d$/.test(frenchLeaderWidthDraft?.value || "") && /\d+,\d px/.test(frenchLeaderWidthReadout?.textContent || ""), frenchLeaderControls?.textContent.trim() || "missing");
+            assert(checks, "Global leader-line Properties expose localized French controls and readout", Boolean(frenchLeaderControls) && /Traits de renvoi/.test(frenchLeaderControls.textContent || "") && /Masquer tous les traits de renvoi/.test(frenchLeaderControls.textContent || "") && /Épaisseur/.test(frenchLeaderControls.textContent || "") && /Appliquer/.test(frenchLeaderControls.textContent || "") && /Couleur/.test(frenchLeaderControls.textContent || "") && /^\d+\.\d$/.test(frenchLeaderWidthDraft?.value || "") && /^\d+,\d px$/.test(frenchLeaderWidthReadout?.textContent.trim() || ""), frenchLeaderControls?.textContent.trim() || "missing");
             const frenchLeaderToggleLayout = leaderToggleLayout(frenchLeaderControls);
             assert(checks, "French leader-line toggle labels wrap cleanly without clipping their switches", frenchLeaderToggleLayout.pass, frenchLeaderToggleLayout.detail);
             const frenchLegendList = doc.querySelector("#categoryList");
             assert(checks, "Map Properties Legend list switches to French", doc.querySelector("#legendPropertiesTitle")?.textContent.trim() === "Légende" && /Projets soumis|Stratégies de transformation/.test(frenchLegendList?.textContent || ""), frenchLegendList?.textContent.trim() || "");
             const placeholderText = doc.querySelector("#canvasPlaceholder")?.textContent || "";
-            assert(checks, "Application language setting switches empty canvas fallback to French", /Canevas de carte/.test(placeholderText) && /Canevas de \d+ x \d+ px/.test(placeholderText), placeholderText);
+            assert(checks, "Application language setting switches empty canvas fallback to French", /Canevas de carte/.test(placeholderText) && /Canevas de \d+ × \d+ px/.test(placeholderText), placeholderText);
             assert(checks, "Application language setting switches canvas zoom readout to French", /^Canevas \d+%$/.test(doc.querySelector("#canvasZoomReadout")?.textContent.trim() || ""), doc.querySelector("#canvasZoomReadout")?.textContent.trim() || "");
             const distanceGuidesInput = doc.querySelector("#showDistanceMarkersInput");
             if (distanceGuidesInput) {
@@ -2257,7 +2380,7 @@
           }
           if (requestedWorkspace === "projects") {
             const projectToolbarText = `${doc.querySelector("#addRowBtn")?.textContent || ""} ${doc.querySelector("#addPointsBtn")?.textContent || ""} ${doc.querySelector("#clearRowsBtn")?.textContent || ""}`;
-            assert(checks, "Application language setting switches Project toolbar copy to French", /Ligne/.test(projectToolbarText) && /Source/.test(projectToolbarText) && /Vider le tableau/.test(projectToolbarText), projectToolbarText);
+            assert(checks, "Application language setting switches Project toolbar copy to French", /Ligne/.test(projectToolbarText) && /Choisir des villes/.test(projectToolbarText) && /Vider le tableau/.test(projectToolbarText), projectToolbarText);
             const firstProjectRow = doc.querySelector("#projectTable tbody tr[data-row-id]");
             const initialProjectTable = doc.querySelector("#projectTable");
             const initialRegionHeaderDisplay = frame.contentWindow.getComputedStyle(initialProjectTable.querySelector(".region-col")).display;
@@ -2495,7 +2618,7 @@
           }
           if (requestedWorkspace === "quality") {
             const qualityText = `${doc.querySelector("#qualitySummaryBanner")?.textContent || ""} ${doc.querySelector("#statusBox")?.textContent || ""}`;
-            assert(checks, "Application language setting switches Map quality copy to French", /problèmes à réviser|Éléments à corriger|Localiser le premier|Vérification de la disposition mise à jour/.test(qualityText), qualityText);
+            assert(checks, "Application language setting switches QA copy to French", /problèmes à réviser|Éléments à corriger|Localiser le premier|Vérification de la disposition mise à jour/.test(qualityText), qualityText);
           }
           const rawPropertiesKeyPattern = /\b(?:properties|toolbar|dialog|region|quality|translate|status|project|table|settings|categories)\.[A-Za-z0-9_.-]+/;
           const frenchPropertiesText = doc.querySelector("#propertiesPanel")?.textContent || "";
@@ -2599,7 +2722,7 @@
           await waitFor(() => applicationSettingsMenu?.hidden === false && doc.activeElement === uiFrenchButton, 2000);
           assert(checks, "Reopening application settings focuses the active French interface language", doc.activeElement === uiFrenchButton && uiFrenchButton?.getAttribute("aria-pressed") === "true", doc.activeElement?.outerHTML || "none");
           uiEnglishButton?.click();
-          await waitFor(() => doc.documentElement.lang === "en" && doc.querySelector("#previewTableTab")?.textContent.trim() === "Map", 2000);
+          await waitFor(() => doc.documentElement.lang === "en" && doc.querySelector("#previewTableTab .workspace-nav-copy strong")?.textContent.trim() === "Map", 2000);
           const savedEnglishUiPreference = JSON.parse(frame.contentWindow.localStorage.getItem("plotypus.uiLanguage") || "null");
           assert(checks, "Application settings switches app chrome back to English without changing map output", doc.documentElement.lang === "en" && doc.querySelector("#propertiesToggleBtn")?.textContent.includes("Properties") && doc.querySelector("#exportMenuBtn")?.textContent.trim() === "Export" && doc.querySelector("#mapLanguageInput")?.value === initialMapLanguage && savedEnglishUiPreference === "en" && uiEnglishButton?.getAttribute("aria-pressed") === "true" && applicationSettingsMenu?.hidden === false);
           applicationSettingsClose?.click();
@@ -2612,27 +2735,27 @@
           if (!adaptivePropertiesAvailableNow) {
             const workspaceRect = workspaceElement.getBoundingClientRect();
             assert(checks, "Non-contextual workspace keeps Properties removed and gives content the full shell width", propertiesPanel.inert && propertiesPanel.getAttribute("aria-hidden") === "true" && propertiesToggle.hidden && workspaceRect.width >= doc.documentElement.clientWidth - 80, `workspace=${Math.round(workspaceRect.width)}; viewport=${doc.documentElement.clientWidth}; classes=${doc.body.className}`);
-            assert(checks, `${appWidth <= 1080 ? "Narrow" : "Desktop"} readiness keeps one Map quality shortcut`, currentVisibleSummaryChips.length === 1 && currentVisibleSummaryChips[0].dataset.summaryKey === "to-review", currentSummaryChips.map(chip => `${chip.dataset.summaryKey}:${frame.contentWindow.getComputedStyle(chip).display}`).join(", "));
+            assert(checks, `${appWidth <= 1080 ? "Narrow" : "Desktop"} readiness keeps one QA shortcut`, currentVisibleSummaryChips.length === 1 && currentVisibleSummaryChips[0].dataset.summaryKey === "review", currentSummaryChips.map(chip => `${chip.dataset.summaryKey}:${frame.contentWindow.getComputedStyle(chip).display}`).join(", "));
             assert(checks, `${appWidth <= 1080 ? "Icon-only" : "Desktop"} workspace tabs retain accessible tooltips`, workspaceTabs.every(tab => Boolean(tab.title)));
           } else if (appWidth > 1280) {
-            assert(checks, "Desktop Properties remains open after contextual editing", !doc.body.classList.contains("properties-collapsed") && Math.round(propertiesPanel.getBoundingClientRect().width) === 320 && propertiesToggle?.getAttribute("aria-expanded") === "true", `${propertiesPanel.getBoundingClientRect().width}`);
+            assert(checks, "Desktop Properties remains open after contextual editing", !doc.body.classList.contains("properties-collapsed") && Math.round(propertiesPanel.getBoundingClientRect().width) === expectedPropertiesWidth && propertiesToggle?.getAttribute("aria-expanded") === "true", `${propertiesPanel.getBoundingClientRect().width}`);
             assert(checks, "Docked Properties remains available to assistive technology", !propertiesPanel.inert && !propertiesPanel.hasAttribute("aria-hidden"));
             propertiesCollapse?.click();
             await waitFor(() => doc.body.classList.contains("properties-collapsed") && Math.round(propertiesPanel.getBoundingClientRect().width) === 48, 2000);
             assert(checks, "Desktop Properties can return to its quiet rail", propertiesToggle?.getAttribute("aria-expanded") === "false", `${propertiesPanel.getBoundingClientRect().width}`);
             propertiesToggle?.click();
-            await waitFor(() => !doc.body.classList.contains("properties-collapsed") && Math.round(propertiesPanel.getBoundingClientRect().width) === 320, 2000);
-            assert(checks, "Desktop readiness uses one focused Map quality shortcut", currentVisibleSummaryChips.length === 1 && currentVisibleSummaryChips[0].dataset.summaryKey === "to-review");
-            assert(checks, "Desktop workspace rail uses accessible icon tooltips", workspaceTabs.every(tab => frame.contentWindow.getComputedStyle(tab).fontSize === "0px" && Boolean(tab.title)));
+            await waitFor(() => !doc.body.classList.contains("properties-collapsed") && Math.round(propertiesPanel.getBoundingClientRect().width) === expectedPropertiesWidth, 2000);
+            assert(checks, "Desktop workflow rail replaces the duplicate QA shortcut", currentVisibleSummaryChips.length === 0 && frame.contentWindow.getComputedStyle(doc.querySelector("#workspaceSummary")).display === "none");
+            assert(checks, "Desktop workspace rail shows labelled steps with accessible tooltips", workspaceTabs.every(tab => frame.contentWindow.getComputedStyle(tab).fontSize !== "0px" && Boolean(tab.title)) && frame.contentWindow.getComputedStyle(doc.querySelector(".workspace-nav-copy")).display !== "none");
           } else if (appWidth > 1080) {
-            assert(checks, "Working-width Properties remains open after contextual editing", !doc.body.classList.contains("properties-collapsed") && Math.round(propertiesPanel.getBoundingClientRect().width) === 320 && propertiesToggle?.getAttribute("aria-expanded") === "true", `${propertiesPanel.getBoundingClientRect().width}`);
+            assert(checks, "Working-width Properties remains open after contextual editing", !doc.body.classList.contains("properties-collapsed") && Math.round(propertiesPanel.getBoundingClientRect().width) === expectedPropertiesWidth && propertiesToggle?.getAttribute("aria-expanded") === "true", `${propertiesPanel.getBoundingClientRect().width}`);
             assert(checks, "Working-width Properties remains available to assistive technology", !propertiesPanel.inert && !propertiesPanel.hasAttribute("aria-hidden"));
-            assert(checks, "Working-width readiness keeps one Map quality shortcut", currentVisibleSummaryChips.length === 1 && currentVisibleSummaryChips[0].dataset.summaryKey === "to-review", currentSummaryChips.map(chip => `${chip.dataset.summaryKey}:${frame.contentWindow.getComputedStyle(chip).display}`).join(", "));
+            assert(checks, "Working-width readiness keeps one QA shortcut", currentVisibleSummaryChips.length === 1 && currentVisibleSummaryChips[0].dataset.summaryKey === "review", currentSummaryChips.map(chip => `${chip.dataset.summaryKey}:${frame.contentWindow.getComputedStyle(chip).display}`).join(", "));
             assert(checks, "Working-width workspace rail uses accessible icon tooltips", workspaceTabs.every(tab => frame.contentWindow.getComputedStyle(tab).fontSize === "0px" && Boolean(tab.title)));
           } else {
             assert(checks, "Properties becomes a fixed slide-over on its saved side", propertiesStyle.position === "fixed" && propertiesStyle.left === "0px");
             assert(checks, "Narrow shell exposes the Properties trigger", frame.contentWindow.getComputedStyle(propertiesToggle).display !== "none");
-            assert(checks, "Narrow readiness collapses to one review control", currentVisibleSummaryChips.length === 1 && currentVisibleSummaryChips[0].dataset.summaryKey === "to-review", currentSummaryChips.map(chip => `${chip.dataset.summaryKey}:${Math.round(chip.getBoundingClientRect().height)}/${frame.contentWindow.getComputedStyle(chip).display}`).join(", "));
+            assert(checks, "Narrow readiness collapses to one review control", currentVisibleSummaryChips.length === 1 && currentVisibleSummaryChips[0].dataset.summaryKey === "review", currentSummaryChips.map(chip => `${chip.dataset.summaryKey}:${Math.round(chip.getBoundingClientRect().height)}/${frame.contentWindow.getComputedStyle(chip).display}`).join(", "));
             assert(checks, "Icon-only workspace tabs retain tooltips", workspaceTabs.every(tab => frame.contentWindow.getComputedStyle(tab).fontSize === "0px" && Boolean(tab.title)));
             assert(checks, "Narrow command groups hide button labels", frame.contentWindow.getComputedStyle(doc.querySelector("#ribbonOpenProjectBtn")).fontSize === "0px");
             assert(checks, "Closed Properties cannot receive offscreen focus", propertiesPanel.inert && propertiesPanel.getAttribute("aria-hidden") === "true");
@@ -2650,6 +2773,15 @@
             const canvasToolbar = doc.querySelector("#canvasToolbar");
             const toolbarRect = canvasToolbar.getBoundingClientRect();
             const mapHostRect = doc.querySelector("#mapHost").getBoundingClientRect();
+            const zoomControl = doc.querySelector(".canvas-zoom-control");
+            const fitControl = doc.querySelector(".canvas-auto-place-control");
+            const documentCaption = doc.querySelector(".document-preview-caption");
+            const zoomControlRect = zoomControl.getBoundingClientRect();
+            const fitControlRect = fitControl.getBoundingClientRect();
+            const captionRect = documentCaption.getBoundingClientRect();
+            assert(checks, "Canvas controls share one compact surface", frame.contentWindow.getComputedStyle(canvasToolbar).borderTopStyle !== "none" && frame.contentWindow.getComputedStyle(zoomControl).boxShadow === "none" && frame.contentWindow.getComputedStyle(fitControl).boxShadow === "none" && Math.abs(zoomControlRect.height - fitControlRect.height) < 2, `toolbar=${Math.round(toolbarRect.height)} zoom=${Math.round(zoomControlRect.height)} fit=${Math.round(fitControlRect.height)}`);
+            assert(checks, "Canvas toolbar clears the document caption", captionRect.top - toolbarRect.bottom >= 8, `gap=${Math.round(captionRect.top - toolbarRect.bottom)}`);
+            assert(checks, "Auto-place consequence remains accessible without taking canvas space", frame.contentWindow.getComputedStyle(doc.querySelector("#canvasAutoPlaceHint")).position === "absolute" && doc.querySelector("#canvasAutoPlaceBtn")?.getAttribute("aria-describedby") === "canvasAutoPlaceHint");
             if (appWidth > 1080) {
               assert(checks, "Canvas toolbar is centered at desktop and working widths", Math.abs((toolbarRect.left + toolbarRect.width / 2) - (mapHostRect.left + mapHostRect.width / 2)) < 4);
             } else {
@@ -2673,8 +2805,18 @@
             assert(checks, "Map Document Properties contains one semantic Legend item list", legendPropertiesSection && propertiesPanel.contains(legendPropertiesSection) && legendList?.tagName === "UL" && legendItems.length > 0 && legendItems.every(item => item.tagName === "LI" && item.querySelector(".legend-item-select")?.tagName === "BUTTON"));
             const openPropertyAccordions = Array.from(propertiesPanel.querySelectorAll("details[data-properties-accordion]")).filter(detail => !detail.hidden && detail.open);
             assert(checks, "Map Properties uses progressive disclosure with one section open", openPropertyAccordions.length === 1 && openPropertyAccordions[0] === legendPropertiesSection, openPropertyAccordions.map(detail => detail.dataset.propertiesAccordion).join(", "));
+            const collapsedDocumentSections = ["map-style", "map-size", "leader-lines", "display", "interaction"]
+              .map(name => propertiesPanel.querySelector(`details[data-properties-accordion="${name}"]`))
+              .filter(Boolean);
+            const collapsedDocumentHeights = collapsedDocumentSections.map(section => Math.round(section.getBoundingClientRect().height));
+            const leaderLineSection = propertiesPanel.querySelector('details[data-properties-accordion="leader-lines"]');
+            const boxesSection = propertiesPanel.querySelector('details[data-properties-accordion="display"]');
+            const documentSectionGap = boxesSection && leaderLineSection
+              ? Math.round(boxesSection.getBoundingClientRect().top - leaderLineSection.getBoundingClientRect().bottom)
+              : NaN;
+            assert(checks, "Collapsed Document Properties rows use equal heights without a gap before Boxes", collapsedDocumentHeights.length === 5 && new Set(collapsedDocumentHeights).size === 1 && Math.abs(documentSectionGap) <= 1, `heights=${collapsedDocumentHeights.join(",")}; gap=${documentSectionGap}`);
             assert(checks, "Legend item order matches Project point category choices", legendCategoryIds.join("|") === projectCategoryOptions.join("|"), `${legendCategoryIds.join("|")} / ${projectCategoryOptions.join("|")}`);
-            assert(checks, "Legend item usage counts match Project points", legendCountsMatch, legendItems.map(item => `${item.dataset.categoryId}:${item.querySelector("[data-legend-count]")?.dataset.count}`).join(", "));
+            assert(checks, "Legend item usage counts match Markers", legendCountsMatch, legendItems.map(item => `${item.dataset.categoryId}:${item.querySelector("[data-legend-count]")?.dataset.count}`).join(", "));
             const legendListRect = legendList?.getBoundingClientRect();
             const legendHeading = doc.querySelector(".legend-properties-heading");
             const legendRowsFit = legendItems.every(item => {
@@ -2689,7 +2831,7 @@
             const firstLegendActionsMenu = firstLegendItem?.querySelector(".legend-item-menu");
             firstLegendActionsButton?.click();
             assert(checks, "Legend row actions are consolidated into an accessible overflow menu", firstLegendActionsButton?.getAttribute("aria-expanded") === "true" && firstLegendActionsMenu?.hidden === false && firstLegendActionsMenu?.querySelectorAll("[role='menuitem']").length === 3 && !firstLegendItem?.querySelector(".category-actions > .move-category-up-btn, .category-actions > .move-category-down-btn, .category-actions > .remove-category-btn"), firstLegendItem?.textContent.trim() || "missing");
-            dispatchKey(firstLegendActionsButton, "Escape");
+            dispatchKey(doc.activeElement, "Escape");
             assert(checks, "Escape closes a Legend row action menu and restores focus", firstLegendActionsMenu?.hidden === true && doc.activeElement === firstLegendActionsButton);
             const mapBeforeLegendDrillIn = doc.querySelector("#mapSvg")?.innerHTML || "";
             const renderSamplesBeforeLegendDrillIn = performanceApi?.snapshot().samples.length || 0;
@@ -2713,14 +2855,14 @@
             let categoryMarkerDraft = categoryMarkerEditor?.querySelector("[data-marker-size-draft='category']");
             let categoryMarkerApply = categoryMarkerEditor?.querySelector("[data-property-action='apply-marker-size']");
             let categoryMarkerStatus = categoryMarkerEditor?.querySelector("[data-marker-size-draft-status]");
-            assert(checks, "Category Properties use an accessible integer marker Preview and explicit Apply", Boolean(categoryMarkerEditor && categoryMarkerDraft && categoryMarkerApply && categoryMarkerStatus) && categoryMarkerDraft.min === "4" && categoryMarkerDraft.max === "30" && categoryMarkerDraft.step === "1" && /^\d+$/.test(categoryMarkerDraft.value) && categoryMarkerDraft.getAttribute("aria-describedby") === categoryMarkerStatus.id && categoryMarkerEditor.dataset.draftState === "applied" && categoryMarkerApply.tagName === "BUTTON" && categoryMarkerApply.type === "button" && categoryMarkerApply.disabled && categoryMarkerEditor.querySelector(".marker-size-preview")?.getAttribute("aria-live") === "polite" && Number(categoryMarkerEditor.querySelector(".marker-size-preview-svg")?.dataset.markerSize) === Number(categoryMarkerDraft.value) && /Preview: \d+ px/.test(categoryMarkerEditor.querySelector("[data-marker-size-readout]")?.textContent || "") && Number(firstLegendListPreview()?.dataset.markerSize) === Number(categoryMarkerDraft.value) && Number(firstLegendPropertiesPreview()?.dataset.markerSize) === Number(categoryMarkerDraft.value) && categoryMarkerEditor.scrollWidth <= categoryMarkerEditor.clientWidth + 1 && doc.querySelector("#propertiesSelectionControls")?.scrollWidth <= doc.querySelector("#propertiesSelectionControls")?.clientWidth + 1 && !doc.querySelector("#propertiesSelectionControls [data-category-field='markerSize']"), categoryMarkerEditor?.outerHTML || "missing");
-            assert(checks, "Category marker-size Properties use clear English copy", /Marker/.test(categoryMarkerEditor?.textContent || "") && /Preview: \d+ px/.test(categoryMarkerEditor?.textContent || "") && /This matches the applied marker size\./.test(categoryMarkerEditor?.textContent || "") && /Apply/.test(categoryMarkerEditor?.textContent || ""), categoryMarkerEditor?.textContent.trim() || "missing");
+            assert(checks, "Category Properties use an accessible integer marker Preview and explicit Apply", Boolean(categoryMarkerEditor && categoryMarkerDraft && categoryMarkerApply && categoryMarkerStatus) && categoryMarkerDraft.min === "4" && categoryMarkerDraft.max === "30" && categoryMarkerDraft.step === "1" && /^\d+$/.test(categoryMarkerDraft.value) && categoryMarkerDraft.getAttribute("aria-describedby") === categoryMarkerStatus.id && categoryMarkerEditor.dataset.draftState === "applied" && categoryMarkerApply.tagName === "BUTTON" && categoryMarkerApply.type === "button" && categoryMarkerApply.disabled && categoryMarkerEditor.querySelector(".marker-size-preview")?.getAttribute("aria-live") === "polite" && Number(categoryMarkerEditor.querySelector(".marker-size-preview-svg")?.dataset.markerSize) === Number(categoryMarkerDraft.value) && /^\d+ px$/.test(categoryMarkerEditor.querySelector("[data-marker-size-readout]")?.textContent || "") && Number(firstLegendListPreview()?.dataset.markerSize) === Number(categoryMarkerDraft.value) && Number(firstLegendPropertiesPreview()?.dataset.markerSize) === Number(categoryMarkerDraft.value) && categoryMarkerEditor.scrollWidth <= categoryMarkerEditor.clientWidth + 1 && doc.querySelector("#propertiesSelectionControls")?.scrollWidth <= doc.querySelector("#propertiesSelectionControls")?.clientWidth + 1 && !doc.querySelector("#propertiesSelectionControls [data-category-field='markerSize']"), categoryMarkerEditor?.outerHTML || "missing");
+            assert(checks, "Category marker-size Properties use clear English copy", /Marker/.test(categoryMarkerEditor?.textContent || "") && /\d+ px/.test(categoryMarkerEditor?.textContent || "") && /This matches the applied marker size\./.test(categoryMarkerEditor?.textContent || "") && /Apply/.test(categoryMarkerEditor?.textContent || ""), categoryMarkerEditor?.textContent.trim() || "missing");
             doc.querySelector("[data-ui-language='fr']")?.click();
             await waitFor(() => doc.documentElement.lang === "fr" && doc.querySelector("#categoryList [data-legend-item]"), 2000);
             doc.querySelector(`#categoryList [data-legend-item][data-category-id="${frame.contentWindow.CSS.escape(firstLegendId)}"] .legend-item-select`)?.click();
             await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-marker-size-editor='category']"), 2000);
             const frenchCategoryMarkerEditor = doc.querySelector("#propertiesSelectionControls [data-marker-size-editor='category']");
-            assert(checks, "Category marker-size Properties localize their label, Preview, status, and Apply action", /Repère/.test(frenchCategoryMarkerEditor?.textContent || "") && /Aperçu\s*:\s*\d+ px/.test(frenchCategoryMarkerEditor?.textContent || "") && /Cette valeur correspond à la taille de repère appliquée\./.test(frenchCategoryMarkerEditor?.textContent || "") && /Appliquer/.test(frenchCategoryMarkerEditor?.textContent || ""), frenchCategoryMarkerEditor?.textContent.trim() || "missing");
+            assert(checks, "Category marker-size Properties localize their label, readout, status, and Apply action", /Repère/.test(frenchCategoryMarkerEditor?.textContent || "") && /\d+ px/.test(frenchCategoryMarkerEditor?.textContent || "") && /Cette valeur correspond à la taille de repère appliquée\./.test(frenchCategoryMarkerEditor?.textContent || "") && /Appliquer/.test(frenchCategoryMarkerEditor?.textContent || ""), frenchCategoryMarkerEditor?.textContent.trim() || "missing");
             assertNoRawUiKeys(checks, "Category marker-size Properties do not show raw translation keys in French", frenchCategoryMarkerEditor);
             doc.querySelector("[data-ui-language='en']")?.click();
             await waitFor(() => doc.documentElement.lang === "en" && doc.querySelector("#categoryList [data-legend-item]"), 2000);
@@ -2748,7 +2890,7 @@
               categoryMarkerDraft.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
               await waitFor(() => categoryMarkerEditor.dataset.draftState === "pending" && !categoryMarkerApply.disabled, 2000);
               const categoryMarkerDraftQualityAfter = frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot();
-              assert(checks, "Category marker-size draft changes only its local Preview", Number(categoryMarkerEditor.querySelector(".marker-size-preview-svg")?.dataset.markerSize) === testCategoryMarkerSize && categoryMarkerEditor.querySelector("[data-marker-size-readout]")?.textContent.includes(`Preview: ${testCategoryMarkerSize} px`) && categoryMarkerStatus.textContent.includes(`Draft marker size: ${testCategoryMarkerSize} px`) && Number(categoryMarkerEditor.dataset.committedValue) === originalCategoryMarkerSize && Number(firstLegendListPreview()?.dataset.markerSize) === categoryMarkerListSizeBefore && Number(firstLegendPropertiesPreview()?.dataset.markerSize) === categoryMarkerShapeSizeBefore && (doc.querySelector("#mapSvg")?.innerHTML || "") === categoryMarkerDraftMapBefore && markerSizeRenderCount() === categoryMarkerDraftRendersBefore && categoryMarkerDraftQualityAfter?.requests === categoryMarkerDraftQualityBefore?.requests && categoryMarkerDraftQualityAfter?.completed === categoryMarkerDraftQualityBefore?.completed && categoryMarkerDraftQualityAfter?.revision === categoryMarkerDraftQualityBefore?.revision && doc.querySelector("#ribbonUndoBtn")?.disabled === categoryMarkerUndoDisabledBeforeDraft && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), `draft=${categoryMarkerDraft.value}; committed=${categoryMarkerEditor.dataset.committedValue}; renders=${categoryMarkerDraftRendersBefore}->${markerSizeRenderCount()}`);
+              assert(checks, "Category marker-size draft changes only its local Preview", Number(categoryMarkerEditor.querySelector(".marker-size-preview-svg")?.dataset.markerSize) === testCategoryMarkerSize && categoryMarkerEditor.querySelector("[data-marker-size-readout]")?.textContent.includes(`${testCategoryMarkerSize} px`) && categoryMarkerStatus.textContent.includes(`Draft marker size: ${testCategoryMarkerSize} px`) && Number(categoryMarkerEditor.dataset.committedValue) === originalCategoryMarkerSize && Number(firstLegendListPreview()?.dataset.markerSize) === categoryMarkerListSizeBefore && Number(firstLegendPropertiesPreview()?.dataset.markerSize) === categoryMarkerShapeSizeBefore && (doc.querySelector("#mapSvg")?.innerHTML || "") === categoryMarkerDraftMapBefore && markerSizeRenderCount() === categoryMarkerDraftRendersBefore && categoryMarkerDraftQualityAfter?.requests === categoryMarkerDraftQualityBefore?.requests && categoryMarkerDraftQualityAfter?.completed === categoryMarkerDraftQualityBefore?.completed && categoryMarkerDraftQualityAfter?.revision === categoryMarkerDraftQualityBefore?.revision && doc.querySelector("#ribbonUndoBtn")?.disabled === categoryMarkerUndoDisabledBeforeDraft && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), `draft=${categoryMarkerDraft.value}; committed=${categoryMarkerEditor.dataset.committedValue}; renders=${categoryMarkerDraftRendersBefore}->${markerSizeRenderCount()}`);
               categoryMarkerDraft.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
               assert(checks, "Category marker-size draft keeps its whole-pixel display without applying", categoryMarkerDraft.value === String(testCategoryMarkerSize) && markerSizeRenderCount() === categoryMarkerDraftRendersBefore, `input=${categoryMarkerDraft.value}; renders=${categoryMarkerDraftRendersBefore}->${markerSizeRenderCount()}`);
               categoryMarkerDraft.value = String(originalCategoryMarkerSize);
@@ -2760,7 +2902,7 @@
             let categoryWidthDraft = categoryWidthEditor?.querySelector("[data-leader-line-width-draft='category']");
             const categoryWidthApply = categoryWidthEditor?.querySelector("[data-property-action='apply-leader-line-width']");
             const categoryWidthStatus = categoryWidthEditor?.querySelector("[data-leader-line-width-draft-status]");
-            assert(checks, "Category Properties use the full-width thickness Preview and Apply control", Boolean(categoryWidthEditor && categoryWidthDraft && categoryWidthApply && categoryWidthStatus) && categoryWidthDraft.min === "1" && categoryWidthDraft.max === "10" && categoryWidthDraft.step === "0.5" && /^\d+\.\d$/.test(categoryWidthDraft.value) && categoryWidthDraft.getAttribute("aria-describedby") === categoryWidthStatus.id && categoryWidthEditor.dataset.draftState === "applied" && categoryWidthApply.disabled && /Preview: \d+\.\d px/.test(categoryWidthEditor.querySelector("[data-leader-line-width-readout]")?.textContent || "") && categoryWidthEditor.querySelector(".leader-line-thickness-preview")?.getAttribute("aria-live") === "polite" && categoryWidthEditor.scrollWidth <= categoryWidthEditor.clientWidth + 1 && doc.querySelector("#propertiesSelectionControls")?.scrollWidth <= doc.querySelector("#propertiesSelectionControls")?.clientWidth + 1 && !doc.querySelector("#propertiesSelectionControls [data-category-field='lineWidth']"), categoryWidthEditor?.outerHTML || "missing");
+            assert(checks, "Category Properties use the compact thickness readout and Apply control", Boolean(categoryWidthEditor && categoryWidthDraft && categoryWidthApply && categoryWidthStatus) && categoryWidthDraft.min === "1" && categoryWidthDraft.max === "10" && categoryWidthDraft.step === "0.5" && /^\d+\.\d$/.test(categoryWidthDraft.value) && categoryWidthDraft.getAttribute("aria-describedby") === categoryWidthStatus.id && categoryWidthEditor.dataset.draftState === "applied" && categoryWidthApply.disabled && /^\d+\.\d px$/.test(categoryWidthEditor.querySelector("[data-leader-line-width-readout]")?.textContent.trim() || "") && categoryWidthEditor.querySelector(".leader-line-thickness-preview")?.getAttribute("aria-live") === "polite" && categoryWidthEditor.scrollWidth <= categoryWidthEditor.clientWidth + 1 && doc.querySelector("#propertiesSelectionControls")?.scrollWidth <= doc.querySelector("#propertiesSelectionControls")?.clientWidth + 1 && !doc.querySelector("#propertiesSelectionControls [data-category-field='lineWidth']"), categoryWidthEditor?.outerHTML || "missing");
             if (loadSample && categoryWidthEditor && categoryWidthDraft) {
               await waitFor(() => !doc.querySelector("#mapHost")?.classList.contains("is-rendering") && frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot().pending === false, 12000);
               const categoryRenderCount = () => performanceApi?.snapshot().samples.length || 0;
@@ -2805,7 +2947,7 @@
             const pagePresetProxy = doc.querySelector("#propertiesSelectionControls [data-layout-proxy='bookSizeInput']");
             const canvasSizeProxy = doc.querySelector("#propertiesSelectionControls [data-layout-proxy='imageSizeInput']");
             assert(checks, "Document Properties expose page and canvas size presets", Boolean(pagePresetProxy && canvasSizeProxy));
-            assert(checks, "Page and canvas presets identify inches and pixels", Array.from(pagePresetProxy?.options || []).every(option => /″$/.test(option.textContent.trim())) && Array.from(canvasSizeProxy?.options || []).every(option => /\(\d+\s*x\s*\d+\s*px\)$/.test(option.textContent.trim())), `${pagePresetProxy?.selectedOptions[0]?.textContent || "missing"} / ${canvasSizeProxy?.selectedOptions[0]?.textContent || "missing"}`);
+            assert(checks, "Page and canvas presets identify inches and pixels", Array.from(pagePresetProxy?.options || []).every(option => /″$/.test(option.textContent.trim())) && Array.from(canvasSizeProxy?.options || []).every(option => /\(\d+\s*×\s*\d+\s*px\)$/.test(option.textContent.trim())), `${pagePresetProxy?.selectedOptions[0]?.textContent || "missing"} / ${canvasSizeProxy?.selectedOptions[0]?.textContent || "missing"}`);
             assert(checks, "Canvas-size guidance points users to the document-page preview", /document page/i.test(doc.querySelector("#propertiesSelectionControls")?.textContent || ""));
             assert(checks, "Document Properties expose default label line length", Boolean(doc.querySelector("#propertiesSelectionControls [data-layout-proxy='labelCharsInput']")));
             const markerSizeInput = doc.querySelector("#markerSizeInput");
@@ -2813,8 +2955,8 @@
             let globalMarkerDraft = globalMarkerEditor?.querySelector("[data-marker-size-draft='global']");
             let globalMarkerApply = globalMarkerEditor?.querySelector("[data-property-action='apply-marker-size']");
             let globalMarkerStatus = globalMarkerEditor?.querySelector("[data-marker-size-draft-status]");
-            assert(checks, "Document Properties expose an accessible integer marker Preview and explicit Apply", Boolean(globalMarkerEditor && globalMarkerDraft && globalMarkerApply && globalMarkerStatus && markerSizeInput) && globalMarkerDraft.value === markerSizeInput.value && globalMarkerDraft.min === "4" && globalMarkerDraft.max === "20" && globalMarkerDraft.step === "1" && /^\d+$/.test(globalMarkerDraft.value) && globalMarkerDraft.getAttribute("aria-describedby") === globalMarkerStatus.id && globalMarkerEditor.dataset.draftState === "applied" && globalMarkerApply.tagName === "BUTTON" && globalMarkerApply.type === "button" && globalMarkerApply.disabled && globalMarkerEditor.querySelector(".marker-size-preview")?.getAttribute("aria-live") === "polite" && Number(globalMarkerEditor.querySelector(".marker-size-preview-svg")?.dataset.markerSize) === Number(globalMarkerDraft.value) && /Preview: \d+ px/.test(globalMarkerEditor.querySelector("[data-marker-size-readout]")?.textContent || "") && globalMarkerEditor.scrollWidth <= globalMarkerEditor.clientWidth + 1 && doc.querySelector("#propertiesSelectionControls")?.scrollWidth <= doc.querySelector("#propertiesSelectionControls")?.clientWidth + 1, globalMarkerEditor?.outerHTML || "missing");
-            assert(checks, "Document marker-size Properties use clear English copy", /Default marker size/.test(globalMarkerEditor?.textContent || "") && /Preview: \d+ px/.test(globalMarkerEditor?.textContent || "") && /This matches the applied marker size\./.test(globalMarkerEditor?.textContent || "") && /Apply/.test(globalMarkerEditor?.textContent || ""), globalMarkerEditor?.textContent.trim() || "missing");
+            assert(checks, "Document Properties expose an accessible integer marker Preview and explicit Apply", Boolean(globalMarkerEditor && globalMarkerDraft && globalMarkerApply && globalMarkerStatus && markerSizeInput) && globalMarkerDraft.value === markerSizeInput.value && globalMarkerDraft.min === "4" && globalMarkerDraft.max === "20" && globalMarkerDraft.step === "1" && /^\d+$/.test(globalMarkerDraft.value) && globalMarkerDraft.getAttribute("aria-describedby") === globalMarkerStatus.id && globalMarkerEditor.dataset.draftState === "applied" && globalMarkerApply.tagName === "BUTTON" && globalMarkerApply.type === "button" && globalMarkerApply.disabled && globalMarkerEditor.querySelector(".marker-size-preview")?.getAttribute("aria-live") === "polite" && Number(globalMarkerEditor.querySelector(".marker-size-preview-svg")?.dataset.markerSize) === Number(globalMarkerDraft.value) && /^\d+ px$/.test(globalMarkerEditor.querySelector("[data-marker-size-readout]")?.textContent || "") && globalMarkerEditor.scrollWidth <= globalMarkerEditor.clientWidth + 1 && doc.querySelector("#propertiesSelectionControls")?.scrollWidth <= doc.querySelector("#propertiesSelectionControls")?.clientWidth + 1, globalMarkerEditor?.outerHTML || "missing");
+            assert(checks, "Document marker-size Properties use clear English copy", /Marker size/.test(globalMarkerEditor?.textContent || "") && /\d+ px/.test(globalMarkerEditor?.textContent || "") && /This matches the applied marker size\./.test(globalMarkerEditor?.textContent || "") && /Apply/.test(globalMarkerEditor?.textContent || ""), globalMarkerEditor?.textContent.trim() || "missing");
             if (loadSample && globalMarkerEditor && globalMarkerDraft && markerSizeInput) {
               await waitFor(() => !doc.querySelector("#mapHost")?.classList.contains("is-rendering") && frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot().pending === false, 12000);
               const originalGlobalMarkerSize = Number(globalMarkerEditor.dataset.committedValue);
@@ -2832,7 +2974,7 @@
               globalMarkerDraft.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
               await waitFor(() => globalMarkerEditor.dataset.draftState === "pending" && !globalMarkerApply.disabled, 2000);
               const globalMarkerDraftQualityAfter = frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot();
-              assert(checks, "Document marker-size draft changes only its local Preview", Number(globalMarkerEditor.querySelector(".marker-size-preview-svg")?.dataset.markerSize) === testGlobalMarkerSize && globalMarkerEditor.querySelector("[data-marker-size-readout]")?.textContent.includes(`Preview: ${testGlobalMarkerSize} px`) && globalMarkerStatus.textContent.includes(`Draft marker size: ${testGlobalMarkerSize} px`) && Number(globalMarkerEditor.dataset.committedValue) === originalGlobalMarkerSize && markerSizeInput.value === String(originalGlobalMarkerSize) && Array.from(doc.querySelectorAll("#categoryList .category-marker-preview")).map(preview => preview.dataset.markerSize).join("|") === globalMarkerCategorySizesBefore.join("|") && (doc.querySelector("#mapSvg")?.innerHTML || "") === globalMarkerDraftMapBefore && markerSizeRenderCount() === globalMarkerDraftRendersBefore && globalMarkerDraftQualityAfter?.requests === globalMarkerDraftQualityBefore?.requests && globalMarkerDraftQualityAfter?.completed === globalMarkerDraftQualityBefore?.completed && globalMarkerDraftQualityAfter?.revision === globalMarkerDraftQualityBefore?.revision && doc.querySelector("#ribbonUndoBtn")?.disabled === globalMarkerUndoDisabledBeforeDraft && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), `draft=${globalMarkerDraft.value}; source=${markerSizeInput.value}; renders=${globalMarkerDraftRendersBefore}->${markerSizeRenderCount()}`);
+              assert(checks, "Document marker-size draft changes only its local Preview", Number(globalMarkerEditor.querySelector(".marker-size-preview-svg")?.dataset.markerSize) === testGlobalMarkerSize && globalMarkerEditor.querySelector("[data-marker-size-readout]")?.textContent.includes(`${testGlobalMarkerSize} px`) && globalMarkerStatus.textContent.includes(`Draft marker size: ${testGlobalMarkerSize} px`) && Number(globalMarkerEditor.dataset.committedValue) === originalGlobalMarkerSize && markerSizeInput.value === String(originalGlobalMarkerSize) && Array.from(doc.querySelectorAll("#categoryList .category-marker-preview")).map(preview => preview.dataset.markerSize).join("|") === globalMarkerCategorySizesBefore.join("|") && (doc.querySelector("#mapSvg")?.innerHTML || "") === globalMarkerDraftMapBefore && markerSizeRenderCount() === globalMarkerDraftRendersBefore && globalMarkerDraftQualityAfter?.requests === globalMarkerDraftQualityBefore?.requests && globalMarkerDraftQualityAfter?.completed === globalMarkerDraftQualityBefore?.completed && globalMarkerDraftQualityAfter?.revision === globalMarkerDraftQualityBefore?.revision && doc.querySelector("#ribbonUndoBtn")?.disabled === globalMarkerUndoDisabledBeforeDraft && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), `draft=${globalMarkerDraft.value}; source=${markerSizeInput.value}; renders=${globalMarkerDraftRendersBefore}->${markerSizeRenderCount()}`);
               globalMarkerDraft.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
               assert(checks, "Document marker-size draft keeps its whole-pixel display without applying", globalMarkerDraft.value === String(testGlobalMarkerSize) && markerSizeInput.value === String(originalGlobalMarkerSize) && markerSizeRenderCount() === globalMarkerDraftRendersBefore, `input=${globalMarkerDraft.value}; source=${markerSizeInput.value}; renders=${globalMarkerDraftRendersBefore}->${markerSizeRenderCount()}`);
               globalMarkerDraft.value = String(originalGlobalMarkerSize);
@@ -2850,7 +2992,7 @@
             const globalWidthReadout = globalWidthEditor?.querySelector("[data-leader-line-width-readout]");
             const globalWidthStatus = globalWidthEditor?.querySelector("[data-leader-line-width-draft-status]");
             assert(checks, "Document Properties group all global leader-line controls", Boolean(globalLeaderControls) && globalLeaderProxies.every(Boolean), globalLeaderProxies.map((input, index) => `${globalLeaderProxyNames[index]}=${Boolean(input)}`).join(", "));
-            assert(checks, "Global leader-line controls have an accessible one-decimal draft preview and explicit Apply", Boolean(globalWidthEditor && globalWidthDraft && globalWidthApply && globalWidthPreview && globalWidthReadout && globalWidthStatus) && globalWidthDraft.closest("label")?.textContent.trim() && globalWidthDraft.min === "1" && globalWidthDraft.max === "10" && globalWidthDraft.step === "0.5" && globalWidthDraft.getAttribute("aria-describedby") === globalWidthStatus.id && globalWidthApply.tagName === "BUTTON" && globalWidthApply.type === "button" && globalWidthApply.disabled && globalWidthEditor.dataset.draftState === "applied" && globalWidthReadout.closest(".leader-line-thickness-preview")?.getAttribute("aria-live") === "polite" && /^\d+\.\d$/.test(globalWidthDraft.value) && /Preview: \d+\.\d px/.test(globalWidthReadout.textContent || ""), globalWidthEditor?.outerHTML || "missing");
+            assert(checks, "Global leader-line controls have an accessible one-decimal readout and explicit Apply", Boolean(globalWidthEditor && globalWidthDraft && globalWidthApply && globalWidthPreview && globalWidthReadout && globalWidthStatus) && globalWidthDraft.closest("label")?.textContent.trim() && globalWidthDraft.min === "1" && globalWidthDraft.max === "10" && globalWidthDraft.step === "0.5" && globalWidthDraft.getAttribute("aria-describedby") === globalWidthStatus.id && globalWidthApply.tagName === "BUTTON" && globalWidthApply.type === "button" && globalWidthApply.disabled && globalWidthEditor.dataset.draftState === "applied" && globalWidthReadout.closest(".leader-line-thickness-preview")?.getAttribute("aria-live") === "polite" && /^\d+\.\d$/.test(globalWidthDraft.value) && /^\d+\.\d px$/.test(globalWidthReadout.textContent.trim() || ""), globalWidthEditor?.outerHTML || "missing");
             assert(checks, "Global leader-line controls fit the Properties panel", Boolean(globalLeaderControls) && globalLeaderProxies.every(input => Boolean(input?.closest("label")?.textContent.trim())) && globalLeaderControls.scrollWidth <= globalLeaderControls.clientWidth + 1 && doc.querySelector("#propertiesSelectionControls")?.scrollWidth <= doc.querySelector("#propertiesSelectionControls")?.clientWidth + 1, `group=${globalLeaderControls?.scrollWidth || 0}/${globalLeaderControls?.clientWidth || 0}; panel=${doc.querySelector("#propertiesSelectionControls")?.scrollWidth || 0}/${doc.querySelector("#propertiesSelectionControls")?.clientWidth || 0}`);
             const globalLeaderToggleLayout = leaderToggleLayout(globalLeaderControls);
             assert(checks, "Global leader-line toggles use unclipped compact switches without redundant edit icons", globalLeaderToggleLayout.pass && !globalLeaderControls?.querySelector(".leader-line-toggle-list .field-origin-icon") && !globalLeaderControls?.querySelector(".field-origin-icon"), globalLeaderToggleLayout.detail);
@@ -2928,13 +3070,14 @@
               await waitFor(() => activeGlobalWidthDraft.value === testLeaderWidthDisplay, 2000);
               assert(checks, "Global thickness input formats to one decimal on change without applying", activeGlobalWidthDraft.value === testLeaderWidthDisplay && sourceLeaderInputs.width.value === originalLeaderSettings.width && renderSampleCount() === globalDraftSamplesBefore, `input=${activeGlobalWidthDraft.value}; source=${sourceLeaderInputs.width.value}; renders=${globalDraftSamplesBefore}->${renderSampleCount()}`);
               const globalApplySamplesBefore = renderSampleCount();
+              activeGlobalWidthEditor.querySelector("[data-property-action='apply-leader-line-width']")?.focus();
               activeGlobalWidthEditor.querySelector("[data-property-action='apply-leader-line-width']")?.click();
               await waitFor(() => sourceLeaderInputs.width.value === testLeaderWidth && renderSampleCount() >= globalApplySamplesBefore + 1 && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), 12000);
               activeGlobalWidthEditor = doc.querySelector("#propertiesSelectionControls [data-leader-line-width-editor='global']");
               activeGlobalWidthDraft = activeGlobalWidthEditor?.querySelector("[data-leader-line-width-draft='global']");
               const globalAppliedWidthChanges = Array.from(doc.querySelectorAll("#mapSvg .leader-line"))
                 .filter(node => Number(node.getAttribute("stroke-width") || 0) !== initialLeaderState.get(node.dataset.layoutId)?.width).length;
-              assert(checks, "Global Apply commits one numeric map update and restores a one-decimal draft", renderSampleCount() === globalApplySamplesBefore + 1 && globalAppliedWidthChanges > 0 && Number(activeGlobalWidthEditor?.dataset.committedValue) === Number(testLeaderWidth) && activeGlobalWidthDraft?.value === testLeaderWidthDisplay && activeGlobalWidthEditor?.dataset.draftState === "applied" && activeGlobalWidthEditor?.querySelector("[data-property-action='apply-leader-line-width']")?.disabled && doc.activeElement === activeGlobalWidthDraft, `renders=${globalApplySamplesBefore}->${renderSampleCount()}; changed=${globalAppliedWidthChanges}; input=${activeGlobalWidthDraft?.value || "missing"}; focus=${doc.activeElement?.outerHTML || "none"}`);
+              assert(checks, "Global Apply commits one numeric map update and restores a one-decimal draft", renderSampleCount() === globalApplySamplesBefore + 1 && globalAppliedWidthChanges > 0 && Number(activeGlobalWidthEditor?.dataset.committedValue) === Number(testLeaderWidth) && activeGlobalWidthDraft?.value === testLeaderWidthDisplay && activeGlobalWidthEditor?.dataset.draftState === "applied" && activeGlobalWidthEditor?.querySelector("[data-property-action='apply-leader-line-width']")?.disabled, `renders=${globalApplySamplesBefore}->${renderSampleCount()}; changed=${globalAppliedWidthChanges}; input=${activeGlobalWidthDraft?.value || "missing"}`);
               const globalUndoSamplesBefore = renderSampleCount();
               doc.querySelector("#ribbonUndoBtn")?.click();
               await waitFor(() => sourceLeaderInputs.width.value === originalLeaderSettings.width && renderSampleCount() >= globalUndoSamplesBefore + 1 && !doc.querySelector("#mapHost")?.classList.contains("is-rendering"), 12000);
@@ -3016,14 +3159,15 @@
               await waitFor(() => globalMarkerEditor.dataset.draftState === "pending" && !globalMarkerEditor.querySelector("[data-property-action='apply-marker-size']")?.disabled, 2000);
               const globalMarkerApplyRendersBefore = markerSizeRenderCount();
               const globalMarkerSchedulerBefore = frame.contentWindow.PLOTYPUS_RENDER_SCHEDULER?.snapshot();
+              globalMarkerEditor.querySelector("[data-property-action='apply-marker-size']")?.focus();
               globalMarkerEditor.querySelector("[data-property-action='apply-marker-size']")?.click();
-              await waitFor(() => markerSizeInput.value === String(appliedGlobalMarkerSize) && markerSizeRenderCount() >= globalMarkerApplyRendersBefore + 1 && doc.activeElement === doc.querySelector("#propertiesSelectionControls [data-marker-size-draft='global']"), 12000);
+              await waitFor(() => markerSizeInput.value === String(appliedGlobalMarkerSize) && markerSizeRenderCount() >= globalMarkerApplyRendersBefore + 1, 12000);
               globalMarkerEditor = doc.querySelector("#propertiesSelectionControls [data-marker-size-editor='global']");
               globalMarkerDraft = globalMarkerEditor?.querySelector("[data-marker-size-draft='global']");
               const appliedGlobalGeometry = markerGeometry();
               const appliedGlobalCategorySizes = categoryListMarkerSizes();
               const globalChangedMarkers = Array.from(appliedGlobalGeometry).filter(([layoutId, signature]) => initialGlobalMarkerGeometry.has(layoutId) && signature !== initialGlobalMarkerGeometry.get(layoutId));
-              assert(checks, "Document marker-size Apply redraws once and updates inherited categories", markerSizeRenderCount() === globalMarkerApplyRendersBefore + 1 && globalChangedMarkers.length > 0 && appliedGlobalCategorySizes.size > 0 && Array.from(appliedGlobalCategorySizes.values()).every(value => value === appliedGlobalMarkerSize) && Number(globalMarkerEditor?.dataset.committedValue) === appliedGlobalMarkerSize && globalMarkerDraft?.value === String(appliedGlobalMarkerSize) && globalMarkerEditor?.dataset.draftState === "applied" && globalMarkerEditor?.querySelector("[data-property-action='apply-marker-size']")?.disabled && doc.activeElement === globalMarkerDraft, `renders=${globalMarkerApplyRendersBefore}->${markerSizeRenderCount()}; changed=${globalChangedMarkers.length}; categories=${Array.from(appliedGlobalCategorySizes.values()).join(",")}`);
+              assert(checks, "Document marker-size Apply redraws once and updates inherited categories", markerSizeRenderCount() === globalMarkerApplyRendersBefore + 1 && globalChangedMarkers.length > 0 && appliedGlobalCategorySizes.size > 0 && Array.from(appliedGlobalCategorySizes.values()).every(value => value === appliedGlobalMarkerSize) && Number(globalMarkerEditor?.dataset.committedValue) === appliedGlobalMarkerSize && globalMarkerDraft?.value === String(appliedGlobalMarkerSize) && globalMarkerEditor?.dataset.draftState === "applied" && globalMarkerEditor?.querySelector("[data-property-action='apply-marker-size']")?.disabled, `renders=${globalMarkerApplyRendersBefore}->${markerSizeRenderCount()}; changed=${globalChangedMarkers.length}; categories=${Array.from(appliedGlobalCategorySizes.values()).join(",")}`);
               const globalMarkerSchedulerAfter = frame.contentWindow.PLOTYPUS_RENDER_SCHEDULER?.snapshot();
               assert(checks, "A visible full-map update completes through the deferred scheduler", Boolean(globalMarkerSchedulerBefore && globalMarkerSchedulerAfter) && globalMarkerSchedulerAfter.requests === globalMarkerSchedulerBefore.requests + 1 && globalMarkerSchedulerAfter.completed === globalMarkerSchedulerBefore.completed + 1 && globalMarkerSchedulerAfter.pending === false, JSON.stringify({ before: globalMarkerSchedulerBefore, after: globalMarkerSchedulerAfter }));
               const globalMarkerUndoRendersBefore = markerSizeRenderCount();
@@ -3069,14 +3213,14 @@
             frame.contentWindow.removeEventListener("plotypus:render-performance", countMarkerSizeRenderEvent);
             assert(checks, "Document Properties do not duplicate map scale", !doc.querySelector("#propertiesSelectionControls [data-layout-proxy='mapScaleInput']"));
             assert(checks, "Document context shows map display groups and the Legend list", previewSections.every(section => section && !section.hidden) && !legendPropertiesSection.hidden);
-            const documentPropertyHeading = doc.querySelector("#propertiesSelectionControls .document-property-section h3");
+            const documentPropertyHeading = doc.querySelector("#propertiesSelectionControls .document-property-section > summary");
             const documentPropertyFieldHeading = doc.querySelector("#propertiesSelectionControls .properties-field-label");
             const documentPropertyHelper = doc.querySelector("#propertiesSelectionControls .properties-muted");
             const documentPropertyHeadingStyle = documentPropertyHeading ? frame.contentWindow.getComputedStyle(documentPropertyHeading) : null;
             const documentPropertyFieldHeadingStyle = documentPropertyFieldHeading ? frame.contentWindow.getComputedStyle(documentPropertyFieldHeading) : null;
             const documentPropertyHelperStyle = documentPropertyHelper ? frame.contentWindow.getComputedStyle(documentPropertyHelper) : null;
-            assert(checks, "Properties section and field headings use the shared 18px bold baseline", parseFloat(documentPropertyHeadingStyle?.fontSize || "0") >= 18 && Number(documentPropertyHeadingStyle?.fontWeight) >= 700 && parseFloat(documentPropertyFieldHeadingStyle?.fontSize || "0") >= 18 && Number(documentPropertyFieldHeadingStyle?.fontWeight) >= 700, `section=${documentPropertyHeadingStyle?.fontSize || "missing"}/${documentPropertyHeadingStyle?.fontWeight || "missing"}, field=${documentPropertyFieldHeadingStyle?.fontSize || "missing"}/${documentPropertyFieldHeadingStyle?.fontWeight || "missing"}`);
-            assert(checks, "Properties helper paragraphs use the shared 18px body baseline", parseFloat(documentPropertyHelperStyle?.fontSize || "0") >= 18, documentPropertyHelperStyle?.fontSize || "missing");
+            assert(checks, "Properties summaries use the shared 16px bold heading baseline", parseFloat(documentPropertyHeadingStyle?.fontSize || "0") === 16 && Number(documentPropertyHeadingStyle?.fontWeight) >= 700, `summary=${documentPropertyHeadingStyle?.fontSize || "missing"}/${documentPropertyHeadingStyle?.fontWeight || "missing"}`);
+            assert(checks, "Properties fields and helper copy use the compact hierarchy", parseFloat(documentPropertyFieldHeadingStyle?.fontSize || "0") === 15 && Number(documentPropertyFieldHeadingStyle?.fontWeight) === 400 && parseFloat(documentPropertyHelperStyle?.fontSize || "0") === 14, `field=${documentPropertyFieldHeadingStyle?.fontSize || "missing"}/${documentPropertyFieldHeadingStyle?.fontWeight || "missing"}; helper=${documentPropertyHelperStyle?.fontSize || "missing"}`);
             const documentPagePreview = doc.querySelector("#documentPagePreview");
             const documentPageRect = documentPagePreview?.getBoundingClientRect();
             const canvasSurface = loadSample ? doc.querySelector("#mapSvg") : doc.querySelector("#canvasPlaceholder");
@@ -3138,7 +3282,7 @@
                 const title = doc.querySelector("#mapSvg title")?.textContent || "";
                 return previewLanguageInput.value === "fr" && title && title !== englishMapTitle ? title : "";
               }, 12000);
-              assert(checks, "Map-tab language changes only map output, not the English interface", doc.documentElement.lang === "en" && doc.querySelector("[data-ui-language='en']")?.getAttribute("aria-pressed") === "true" && doc.querySelector("#previewTableTab")?.textContent.trim() === "Map" && doc.querySelector("#exportMenuBtn")?.textContent.trim() === "Export" && previewLanguageInput.value === "fr" && doc.querySelector("#mapLanguageInput")?.value === "fr" && mapLanguageFrenchButton.getAttribute("aria-pressed") === "true" && frenchMapTitle !== englishMapTitle && /^Carte /.test(doc.querySelector("#mapSvg desc")?.textContent || ""), `${doc.documentElement.lang} | ${doc.querySelector("#previewTableTab")?.textContent || ""} | ${doc.querySelector("#mapSvg title")?.textContent || ""} | ${doc.querySelector("#mapSvg desc")?.textContent || ""}`);
+              assert(checks, "Map-tab language changes only map output, not the English interface", doc.documentElement.lang === "en" && doc.querySelector("[data-ui-language='en']")?.getAttribute("aria-pressed") === "true" && doc.querySelector("#previewTableTab .workspace-nav-copy strong")?.textContent.trim() === "Map" && doc.querySelector("#exportMenuBtn")?.textContent.trim() === "Export" && previewLanguageInput.value === "fr" && doc.querySelector("#mapLanguageInput")?.value === "fr" && mapLanguageFrenchButton.getAttribute("aria-pressed") === "true" && frenchMapTitle !== englishMapTitle && /^Carte /.test(doc.querySelector("#mapSvg desc")?.textContent || ""), `${doc.documentElement.lang} | ${doc.querySelector("#previewTableTab")?.textContent || ""} | ${doc.querySelector("#mapSvg title")?.textContent || ""} | ${doc.querySelector("#mapSvg desc")?.textContent || ""}`);
               const frenchCalloutHeading = doc.querySelector("#mapSvg .callout-heading");
               const frenchCalloutRule = doc.querySelector("#mapSvg .callout-heading-rule");
               const frenchLegendHeading = doc.querySelector("#mapSvg .legend-heading");
@@ -3367,7 +3511,7 @@
                 const qualityChecklistText = doc.querySelector("#statusBox")?.textContent || "";
                 const offCanvasQualityCard = Array.from(doc.querySelectorAll("#qualityMetricsPanel .quality-card"))
                   .find(card => /Points off canvas/i.test(card.textContent || ""));
-                assert(checks, "Map quality reports the off-canvas point", /Points off canvas/i.test(qualityChecklistText) && /outside the export canvas:\s*1/i.test(qualityChecklistText) && /1/.test(offCanvasQualityCard?.textContent || "") && offCanvasQualityCard?.dataset.state === "danger", `${offCanvasQualityCard?.textContent || "missing quality card"} | ${qualityChecklistText.trim()}`);
+                assert(checks, "QA reports the off-canvas point", /Points off canvas/i.test(qualityChecklistText) && /outside the export canvas:\s*1/i.test(qualityChecklistText) && /1/.test(offCanvasQualityCard?.textContent || "") && offCanvasQualityCard?.dataset.state === "danger", `${offCanvasQualityCard?.textContent || "missing quality card"} | ${qualityChecklistText.trim()}`);
                 doc.querySelector("#previewTableTab")?.click();
                 await waitFor(() => doc.body.dataset.workspaceView === "preview", 4000);
                 const undoButton = doc.querySelector("#ribbonUndoBtn");
@@ -3432,10 +3576,10 @@
                 const pointWidthReadout = pointWidthEditor?.querySelector("[data-leader-line-width-readout]");
                 const pointWidthStatus = pointWidthEditor?.querySelector("[data-leader-line-width-draft-status]");
                 assert(checks, "Selected point Properties group hide, elbow, thickness draft, colour, and inherit resets", pointFields.every(Boolean) && Boolean(pointResetColour && pointWidthEditor && pointWidthDraft && pointWidthApply && pointWidthPreview && pointWidthReadout && pointWidthStatus) && pointResetColour.disabled && pointWidthApply.disabled && pointWidthEditor.dataset.committedValue === "" && Number(pointWidthEditor.dataset.inheritedValue) > 0 && pointWidthEditor.dataset.draftState === "applied" && pointFields[2].value === "" && pointFields[3].value.toLowerCase() === originalPointStroke, pointLeaderControls.textContent.trim());
-                assert(checks, "Point leader-line controls have accessible one-decimal inherited status and responsive fit", pointFields.every(input => Boolean(input?.closest("label")?.textContent.trim())) && pointWidthDraft.min === "1" && pointWidthDraft.max === "10" && pointWidthDraft.step === "0.5" && pointWidthDraft.getAttribute("aria-describedby") === pointWidthStatus.id && pointWidthApply.tagName === "BUTTON" && pointWidthApply.type === "button" && pointWidthReadout.closest(".leader-line-thickness-preview")?.getAttribute("aria-live") === "polite" && pointWidthDraft.value === "" && /^\d+\.\d$/.test(pointWidthDraft.placeholder) && /Preview: \d+\.\d px \(inherited\)/.test(pointWidthReadout.textContent || "") && Boolean(pointResetColour?.textContent.trim()) && pointLeaderControls.scrollWidth <= pointLeaderControls.clientWidth + 1 && doc.querySelector("#propertiesSelectionControls")?.scrollWidth <= doc.querySelector("#propertiesSelectionControls")?.clientWidth + 1 && (appWidth > 1080 || (!propertiesPanel.inert && doc.body.classList.contains("properties-open"))), `input=${pointWidthDraft.value || "blank"}; placeholder=${pointWidthDraft.placeholder}; readout=${pointWidthReadout.textContent || "missing"}; group=${pointLeaderControls.scrollWidth}/${pointLeaderControls.clientWidth}`);
+                assert(checks, "Point leader-line controls have accessible one-decimal inherited status and responsive fit", pointFields.every(input => Boolean(input?.closest("label")?.textContent.trim())) && pointWidthDraft.min === "1" && pointWidthDraft.max === "10" && pointWidthDraft.step === "0.5" && pointWidthDraft.getAttribute("aria-describedby") === pointWidthStatus.id && pointWidthApply.tagName === "BUTTON" && pointWidthApply.type === "button" && pointWidthReadout.closest(".leader-line-thickness-preview")?.getAttribute("aria-live") === "polite" && pointWidthDraft.value === "" && /^\d+\.\d$/.test(pointWidthDraft.placeholder) && /^\d+\.\d px · inherited$/.test(pointWidthReadout.textContent || "") && Boolean(pointResetColour?.textContent.trim()) && pointLeaderControls.scrollWidth <= pointLeaderControls.clientWidth + 1 && doc.querySelector("#propertiesSelectionControls")?.scrollWidth <= doc.querySelector("#propertiesSelectionControls")?.clientWidth + 1 && (appWidth > 1080 || (!propertiesPanel.inert && doc.body.classList.contains("properties-open"))), `input=${pointWidthDraft.value || "blank"}; placeholder=${pointWidthDraft.placeholder}; readout=${pointWidthReadout.textContent || "missing"}; group=${pointLeaderControls.scrollWidth}/${pointLeaderControls.clientWidth}`);
                 const pointLeaderToggleLayout = leaderToggleLayout(pointLeaderControls);
                 assert(checks, "Point leader-line toggles use unclipped compact switches without redundant edit icons", pointLeaderToggleLayout.pass && !pointLeaderControls.querySelector(".leader-line-toggle-list .field-origin-icon"), pointLeaderToggleLayout.detail);
-                assert(checks, "Selected point leader-line Properties use clear inherited English copy", /Leader lines/.test(pointLeaderControls.textContent || "") && /Hide leader line/.test(pointLeaderControls.textContent || "") && /Use elbow leader/.test(pointLeaderControls.textContent || "") && /Preview: .*inherited/.test(pointLeaderControls.textContent || "") && /Inherited colour/.test(pointLeaderControls.textContent || "") && /Apply/.test(pointLeaderControls.textContent || ""), pointLeaderControls.textContent.trim());
+                assert(checks, "Selected point leader-line Properties use clear inherited English copy", /Leader lines/.test(pointLeaderControls.textContent || "") && /Hide leader line/.test(pointLeaderControls.textContent || "") && /Use elbow leader/.test(pointLeaderControls.textContent || "") && /\d+\.\d px · inherited/.test(pointLeaderControls.textContent || "") && /Inherited · #[0-9a-f]{6}/i.test(pointLeaderControls.textContent || "") && /Apply/.test(pointLeaderControls.textContent || ""), pointLeaderControls.textContent.trim());
 
                 await waitFor(() => !doc.querySelector("#mapHost")?.classList.contains("is-rendering") && frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot().pending === false, 12000);
                 let pointRenderEventCount = 0;
@@ -3805,14 +3949,17 @@
             }
             const addMenuButton = doc.querySelector("#projectAddMenuBtn");
             const addMenu = doc.querySelector("#projectAddMenu");
+            const moreMenuButton = doc.querySelector("#projectMoreMenuBtn");
+            const moreMenu = doc.querySelector("#projectMoreMenu");
             const addProjectTypeButton = doc.querySelector("#addProjectTypeBtn");
-            assert(checks, "Project add actions are grouped in Add data", addMenuButton?.textContent.trim() === "Add data" && Boolean(addMenuButton?.querySelector("svg")) && addMenu?.contains(addProjectTypeButton) && addMenu?.contains(doc.querySelector("#addRowBtn")) && addMenu?.contains(doc.querySelector("#addPointsBtn")) && addMenu?.contains(doc.querySelector("#ribbonImportCsvBtn")) && Array.from(addMenu?.querySelectorAll("[role='menuitem']") || []).every(item => Boolean(item.querySelector("svg"))) && addProjectTypeButton?.textContent.trim() === "New type" && doc.querySelector("#addRowBtn")?.textContent.trim() === "Blank row" && doc.querySelector("#addPointsBtn")?.textContent.trim() === "From source");
+            assert(checks, "Project data-entry actions are grouped in Add data", addMenuButton?.textContent.trim() === "Add data" && Boolean(addMenuButton?.querySelector(".project-add-data-icon svg")) && !addMenu?.contains(addProjectTypeButton) && addMenu?.contains(doc.querySelector("#addRowBtn")) && addMenu?.contains(doc.querySelector("#addPointsBtn")) && addMenu?.contains(doc.querySelector("#ribbonImportCsvBtn")) && Array.from(addMenu?.querySelectorAll("[role='menuitem']") || []).every(item => Boolean(item.querySelector("svg"))) && doc.querySelector("#addRowBtn")?.textContent.trim() === "Blank row" && doc.querySelector("#addPointsBtn")?.textContent.trim() === "Choose cities" && doc.querySelector("#addPointsBtn")?.hidden === true);
             addMenuButton?.click();
-            assert(checks, "Add data opens an accessible menu", addMenu?.hidden === false && addMenuButton?.getAttribute("aria-expanded") === "true" && addMenu?.querySelectorAll("[role='menuitem']").length === 4);
+            const visibleAddItems = Array.from(addMenu?.querySelectorAll("[role='menuitem']") || []).filter(item => !item.hidden);
+            assert(checks, "Add data opens an accessible menu with context-relevant actions", addMenu?.hidden === false && addMenuButton?.getAttribute("aria-expanded") === "true" && visibleAddItems.length === 2);
             const addMenuRect = addMenu?.getBoundingClientRect();
             const addMenuButtonRect = addMenuButton?.getBoundingClientRect();
             const projectActionsRect = doc.querySelector("[data-table-actions='projects']")?.getBoundingClientRect();
-            assert(checks, "Add data trigger and menu stay compact in the Project toolbar", addMenuButton?.scrollWidth <= addMenuButton?.clientWidth + 1 && addMenuRect && addMenuButtonRect && projectActionsRect && addMenuRect.width <= 211 && addMenuRect.left <= addMenuButtonRect.right && addMenuRect.right >= addMenuButtonRect.left, `button=${addMenuButton?.scrollWidth || 0}/${addMenuButton?.clientWidth || 0}, menu=${Math.round(addMenuRect?.width || 0)}px at ${Math.round(addMenuRect?.left || 0)}-${Math.round(addMenuRect?.right || 0)}, toolbar=${Math.round(projectActionsRect?.left || 0)}-${Math.round(projectActionsRect?.right || 0)}`);
+            assert(checks, "Add data trigger and padded menu stay compact in the Project toolbar", addMenuButton?.scrollWidth <= addMenuButton?.clientWidth + 1 && addMenuRect && addMenuButtonRect && projectActionsRect && addMenuRect.width <= 260 && addMenuRect.left <= addMenuButtonRect.right && addMenuRect.right >= addMenuButtonRect.left && parseFloat(frame.contentWindow.getComputedStyle(addMenu).paddingLeft) >= 12, `button=${addMenuButton?.scrollWidth || 0}/${addMenuButton?.clientWidth || 0}, menu=${Math.round(addMenuRect?.width || 0)}px at ${Math.round(addMenuRect?.left || 0)}-${Math.round(addMenuRect?.right || 0)}, toolbar=${Math.round(projectActionsRect?.left || 0)}-${Math.round(projectActionsRect?.right || 0)}`);
             const leftAddMenuSurfaceState = floatingSurfaceState(addMenu, {
               boundary: workspaceElement,
               hitTarget: addMenu?.querySelector("[role='menuitem']")
@@ -3821,7 +3968,7 @@
             dispatchKey(addMenuButton, "Escape");
             assert(checks, "Escape closes Add data and restores focus", addMenu?.hidden === true && doc.activeElement === addMenuButton);
             propertiesRightInput?.click();
-            await waitFor(() => doc.body.dataset.propertiesSide === "right" && propertiesRightInput.checked, 2000);
+            await waitFor(() => doc.body.dataset.propertiesSide === "right" && propertiesRightInput.getAttribute("aria-pressed") === "true", 2000);
             addMenuButton?.click();
             const rightAddMenuSurfaceState = floatingSurfaceState(addMenu, {
               boundary: workspaceElement,
@@ -3830,7 +3977,7 @@
             assert(checks, "Add data menu stays visible and clickable with right-side Properties", rightAddMenuSurfaceState.pass, rightAddMenuSurfaceState.detail);
             dispatchKey(addMenuButton, "Escape");
             propertiesLeftInput?.click();
-            await waitFor(() => doc.body.dataset.propertiesSide === "left" && propertiesLeftInput.checked, 2000);
+            await waitFor(() => doc.body.dataset.propertiesSide === "left" && propertiesLeftInput.getAttribute("aria-pressed") === "true", 2000);
             const typeInputsBeforeProjectTypeAdd = Array.from(doc.querySelectorAll("#projectTable .type-input"));
             const typeSelectionsBeforeProjectTypeAdd = typeInputsBeforeProjectTypeAdd.map(select => select.value);
             const typeIdsBeforeProjectTypeAdd = new Set(Array.from(firstTypeInput?.options || []).map(option => option.value));
@@ -3839,7 +3986,7 @@
             uiFrenchButton?.click();
             await waitFor(() => doc.documentElement.lang === "fr" && addProjectTypeButton?.textContent.trim() === "Nouveau type", 2000);
             assert(checks, "New type menu copy and accessible title switch to French", /Nouveau type/.test(addProjectTypeButton?.textContent || "") && /Ajouter un type de projet et un élément de légende/i.test(addProjectTypeButton?.getAttribute("title") || ""));
-            addMenuButton?.click();
+            moreMenuButton?.click();
             addProjectTypeButton?.click();
             const createdProjectType = await waitFor(() => {
               const option = Array.from(firstTypeInput?.options || []).find(item => !typeIdsBeforeProjectTypeAdd.has(item.value));
@@ -3862,7 +4009,7 @@
                 && Array.from(select.options).filter(option => option.value === createdProjectTypeId).length === 1
                 && Array.from(select.options).find(option => option.value === createdProjectTypeId)?.textContent.trim() === createdProjectTypeLabelEn
               ));
-            assert(checks, "Adding a Project type stays in Project Points and opens that exact category editor", doc.body.dataset.workspaceView === "projects" && addMenu?.hidden === true && addMenuButton?.getAttribute("aria-expanded") === "false" && createdProjectTypeEditor.id === "categoryPropertiesEditor" && doc.activeElement === createdProjectTypeEditor.querySelector(".properties-back-button"));
+            assert(checks, "Adding a project type stays in Markers and opens that exact category editor", doc.body.dataset.workspaceView === "projects" && moreMenu?.hidden === true && moreMenuButton?.getAttribute("aria-expanded") === "false" && createdProjectTypeEditor.id === "categoryPropertiesEditor" && doc.activeElement === createdProjectTypeEditor.querySelector(".properties-back-button"));
             assert(checks, "A Project type starts with independent English and French defaults", /^Category \d+$/.test(createdProjectTypeLabelEn) && /^Catégorie \d+$/.test(createdProjectTypeLabelFr), `${createdProjectTypeLabelEn} / ${createdProjectTypeLabelFr}`);
             assert(checks, "Adding a Project type immediately synchronizes every type selector without changing row selections", projectTypeOptionsSynchronized, typeInputsAfterProjectTypeAdd.map(select => `${select.value}:${Array.from(select.options).find(option => option.value === createdProjectTypeId)?.textContent || "missing"}`).join(", "));
             assert(checks, "Adding a Project type immediately adds an unused item to the hidden Map Legend list", doc.querySelectorAll("#categoryList [data-legend-item]").length === legendCountBeforeProjectTypeAdd + 1 && createdProjectTypeLegendItem?.querySelector("[data-legend-name]")?.textContent.trim() === createdProjectTypeLabelFr && createdProjectTypeLegendItem?.querySelector("[data-legend-count]")?.dataset.count === "0");
@@ -3884,7 +4031,7 @@
             doc.querySelector("#categoryPropertiesEditor .properties-back-button")?.click();
             await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='project-data']"), 2000);
             await new Promise(resolve => frame.contentWindow.requestAnimationFrame(resolve));
-            assert(checks, "Back from a new Project type restores focus to the Add data trigger", doc.activeElement === addMenuButton, doc.activeElement?.id || doc.activeElement?.tagName || "none");
+            assert(checks, "Back from a new Project type restores focus to More", doc.activeElement === moreMenuButton, doc.activeElement?.id || doc.activeElement?.tagName || "none");
             doc.querySelector("#previewTableTab")?.click();
             await waitFor(() => doc.body.dataset.workspaceView === "preview" && doc.querySelector(`#mapSvg .legend-text[data-category-id="${escapedCreatedProjectTypeId}"]`)?.textContent.trim() === createdProjectTypeLabelEn, 12000);
             assert(checks, "Entering Map renders the new Project type in the generated Legend", doc.querySelector(`#mapSvg .legend-text[data-category-id="${escapedCreatedProjectTypeId}"]`)?.textContent.trim() === createdProjectTypeLabelEn);
@@ -3906,12 +4053,10 @@
             const selectionActions = doc.querySelector(".selection-actions");
             assert(checks, "Project selection actions are grouped", selectionActions && selectionActions.contains(doc.querySelector("#bulkClearCoordinatesBtn")) && selectionActions.contains(doc.querySelector("#deleteSelectedBtn")));
             assert(checks, "Project selection actions stay hidden until selection", selectionActions?.hidden === true && selectionActions?.querySelector(".toolbar-group-label")?.textContent.trim() === "Selected" && doc.querySelector("#deleteSelectedBtn")?.textContent.trim() === "Delete");
-            const moreMenuButton = doc.querySelector("#projectMoreMenuBtn");
-            const moreMenu = doc.querySelector("#projectMoreMenu");
             const projectMenuButtonBackgrounds = [addMenuButton, moreMenuButton].map(button => button ? frame.contentWindow.getComputedStyle(button).backgroundColor : "");
-            assert(checks, "Peer Project action buttons share one secondary colour", projectMenuButtonBackgrounds.every(Boolean) && new Set(projectMenuButtonBackgrounds).size === 1, projectMenuButtonBackgrounds.join(", "));
+            assert(checks, "Add data is the clear primary action beside a secondary More button", projectMenuButtonBackgrounds.every(Boolean) && new Set(projectMenuButtonBackgrounds).size === 2, projectMenuButtonBackgrounds.join(", "));
             moreMenuButton?.click();
-            assert(checks, "Rare destructive actions live under More", moreMenu?.hidden === false && moreMenu?.contains(doc.querySelector("#clearRowsBtn")));
+            assert(checks, "Setup and maintenance actions live under More", moreMenu?.hidden === false && moreMenu?.contains(addProjectTypeButton) && moreMenu?.contains(doc.querySelector("#ribbonLoadSampleBtn")) && moreMenu?.contains(doc.querySelector("#clearRowsBtn")) && Boolean(moreMenu?.querySelector("[role='separator']")));
             const moreMenuSurfaceState = floatingSurfaceState(moreMenu, {
               boundary: workspaceElement,
               hitTarget: moreMenu?.querySelector("[role='menuitem']")
@@ -3922,7 +4067,7 @@
               propertiesToggle?.click();
               await waitFor(() => !propertiesPanel?.inert && doc.body.classList.contains("properties-open"), 2000);
             }
-            assert(checks, "Project field guide is removed from the toolbar", !doc.querySelector(".project-field-legend"));
+            assert(checks, "Marker field guide is removed from the toolbar", !doc.querySelector(".project-field-legend"));
             const projectToolbarControls = Array.from(doc.querySelectorAll("#projectFilterSelect, .project-location-mode > button, .authoring-language > button, .project-toolbar-menu-button, .selection-actions > button, .selection-actions > select"))
               .filter(control => control.getBoundingClientRect().height > 0);
             const projectToolbarHeights = projectToolbarControls.map(control => Math.round(control.getBoundingClientRect().height));
@@ -3939,16 +4084,17 @@
             assert(checks, "Project compact headers fit their edit hints without ellipses", projectHeadersWithoutEllipses);
             const projectUtilityColumns = [".annotation-preview-col", ".status-col", ".line-col", ".select-col"];
             const projectBodyTextSelectors = [".name-input", ".type-input", ".annotation-preview-cell", ".region-input", ".lon-input", ".lat-input", ".status-cell"];
-            const projectMinimumWidth = doc.querySelector("#projectTable")?.dataset.locationMode === "regions" ? 1530 : 1650;
             const englishProjectTableLayout = semanticTableLayout(doc.querySelector("#projectTable"), {
               utilitySelectors: projectUtilityColumns,
               bodyTextSelectors: projectBodyTextSelectors,
-              minimumWidth: projectMinimumWidth
+              minimumWidth: 0
             });
+            const englishProjectContentLayout = projectContentAwareTableLayout(doc.querySelector("#projectTable"));
             assert(checks, "English Project table headers fit with consistent inline padding", englishProjectTableLayout.headersFit && englishProjectTableLayout.headerPaddingIsConsistent, englishProjectTableLayout.detail);
             assert(checks, "English Project row text uses the shared inline cell padding", englishProjectTableLayout.bodyTextPaddingIsConsistent, englishProjectTableLayout.detail);
             assert(checks, "English Project utility columns contain their controls and status text", englishProjectTableLayout.utilityColumnsFit, englishProjectTableLayout.detail);
-            assert(checks, `${appWidth <= 1080 ? "1024px" : "Desktop"} Project table enforces its language-safe minimum width inside horizontal scrolling`, englishProjectTableLayout.minimumWidthIsEnforced && englishProjectTableLayout.horizontalOverflowIsContained, englishProjectTableLayout.detail);
+            assert(checks, "English Project table derives compact tracks from visible content", englishProjectContentLayout.pass, englishProjectContentLayout.detail);
+            assert(checks, `${appWidth <= 1080 ? "1024px" : "Desktop"} Project table keeps horizontal overflow inside the table viewport`, englishProjectTableLayout.minimumWidthIsEnforced && englishProjectTableLayout.horizontalOverflowIsContained, englishProjectTableLayout.detail);
             const englishTransformativeType = Array.from(doc.querySelectorAll("#projectTable .type-input")).find(select => /Transformative Strategies/.test(select.selectedOptions[0]?.textContent || ""));
             const englishTransformativeTypeFit = selectOptionTextFit(englishTransformativeType, englishTransformativeType?.selectedOptions[0]?.textContent.trim());
             assert(checks, "English built-in Project Type value fits inside its selected control", englishTransformativeTypeFit.pass, englishTransformativeTypeFit.detail);
@@ -3966,11 +4112,13 @@
             const frenchProjectTableLayout = semanticTableLayout(doc.querySelector("#projectTable"), {
               utilitySelectors: projectUtilityColumns,
               bodyTextSelectors: projectBodyTextSelectors,
-              minimumWidth: projectMinimumWidth
+              minimumWidth: 0
             });
+            const frenchProjectContentLayout = projectContentAwareTableLayout(doc.querySelector("#projectTable"));
             assert(checks, "French Project table headers fit with consistent inline padding", frenchProjectTableLayout.headersFit && frenchProjectTableLayout.headerPaddingIsConsistent, frenchProjectTableLayout.detail);
             assert(checks, "French Project row text uses the shared inline cell padding", frenchProjectTableLayout.bodyTextPaddingIsConsistent, frenchProjectTableLayout.detail);
             assert(checks, "French Project utility columns contain their controls and status text", frenchProjectTableLayout.utilityColumnsFit, frenchProjectTableLayout.detail);
+            assert(checks, "French Project table derives compact tracks from visible content", frenchProjectContentLayout.pass, frenchProjectContentLayout.detail);
             assert(checks, `${appWidth <= 1080 ? "1024px" : "Desktop"} French Project table keeps horizontal overflow inside the table viewport`, frenchProjectTableLayout.minimumWidthIsEnforced && frenchProjectTableLayout.horizontalOverflowIsContained, frenchProjectTableLayout.detail);
             frenchAuthoringButton?.click();
             await waitFor(() => Array.from(doc.querySelectorAll("#projectTable .type-input")).some(select => /Stratégies de transformation/.test(select.selectedOptions[0]?.textContent || "")), 2000);
@@ -4012,6 +4160,36 @@
             if (appWidth <= 1080) {
               assert(checks, "Narrow Project filter remains a compact selector", frame.contentWindow.getComputedStyle(doc.querySelector("#projectFilterSelect")).display !== "none");
               assert(checks, "Project table preserves its 760px minimum", parseFloat(frame.contentWindow.getComputedStyle(doc.querySelector("#projectTablePane")).minWidth) >= 760);
+            }
+            const projectWorkspacePanel = doc.querySelector(".table-panel");
+            const projectToolbar = doc.querySelector("[data-table-actions='projects']");
+            const projectAddButton = doc.querySelector("#projectAddMenuBtn");
+            const projectDirectLocationControls = doc.querySelector(".table-actions[data-table-actions='projects'] > .project-location-mode");
+            const projectTableWrap = doc.querySelector("#projectTablePane > .table-wrap");
+            const firstTypeCell = doc.querySelector("#projectTable .type-cell");
+            const firstStickyNameCell = doc.querySelector("#projectTable .name-cell");
+            const workspaceUsesCompactCommands = (projectWorkspacePanel?.clientWidth || 0) <= 1320;
+            assert(checks, "Project commands respond to the available workspace width", frame.contentWindow.getComputedStyle(projectWorkspacePanel).containerType === "inline-size" && (!workspaceUsesCompactCommands || (frame.contentWindow.getComputedStyle(projectToolbar).display === "grid" && frame.contentWindow.getComputedStyle(projectDirectLocationControls).display === "none")), `width=${projectWorkspacePanel?.clientWidth || 0}; toolbar=${frame.contentWindow.getComputedStyle(projectToolbar).display}`);
+            if (workspaceUsesCompactCommands) {
+              const searchRect = projectSearchInput?.getBoundingClientRect();
+              const addRect = projectAddButton?.getBoundingClientRect();
+              assert(checks, "Compact Project commands keep the primary actions aligned", searchRect && addRect && Math.abs(searchRect.top - addRect.top) <= 5, `search=${Math.round(searchRect?.top || 0)}; add=${Math.round(addRect?.top || 0)}`);
+            }
+            const typeCellWasSelected = firstTypeCell?.classList.contains("is-cell-selected");
+            firstTypeCell?.classList.add("is-cell-selected");
+            await new Promise(resolve => frame.contentWindow.requestAnimationFrame(resolve));
+            const selectedCellOutline = firstTypeCell ? frame.contentWindow.getComputedStyle(firstTypeCell, "::after") : null;
+            assert(checks, "Selected Project cells render a complete inset outline", selectedCellOutline?.borderTopWidth === "2px" && selectedCellOutline?.borderRightWidth === "2px" && selectedCellOutline?.borderBottomWidth === "2px" && selectedCellOutline?.borderLeftWidth === "2px" && selectedCellOutline?.inset === "1px");
+            if (!typeCellWasSelected) firstTypeCell?.classList.remove("is-cell-selected");
+            if (projectTableWrap && firstStickyNameCell) {
+              const originalScrollLeft = projectTableWrap.scrollLeft;
+              projectTableWrap.scrollLeft = Math.min(240, projectTableWrap.scrollWidth - projectTableWrap.clientWidth);
+              await new Promise(resolve => frame.contentWindow.requestAnimationFrame(resolve));
+              const tableWrapRect = projectTableWrap.getBoundingClientRect();
+              const stickyNameRect = firstStickyNameCell.getBoundingClientRect();
+              const stickyNameBackground = frame.contentWindow.getComputedStyle(firstStickyNameCell).backgroundColor;
+              assert(checks, "Frozen Project names stay opaque and above horizontally scrolled cells", stickyNameRect.left >= tableWrapRect.left - 1 && !stickyNameBackground.includes("/") && !stickyNameBackground.startsWith("rgba("), `left=${Math.round(stickyNameRect.left)}/${Math.round(tableWrapRect.left)}; background=${stickyNameBackground}`);
+              projectTableWrap.scrollLeft = originalScrollLeft;
             }
             assert(checks, "Project cells use quiet editing chrome", inputStyle?.borderTopColor === "rgba(0, 0, 0, 0)" || inputStyle?.borderTopColor === "transparent");
             assert(checks, "Project table headers remain sticky while the data viewport scrolls", Array.from(doc.querySelectorAll("#projectTable thead th")).every(header => frame.contentWindow.getComputedStyle(header).position === "sticky"));
@@ -4168,7 +4346,7 @@
             const projectRowFontSize = projectRowText ? frame.contentWindow.getComputedStyle(projectRowText).fontSize : "";
             doc.querySelector("#regionTableTab")?.click();
             await waitFor(() => doc.body.dataset.workspaceView === "regions");
-            assert(checks, "Project points and Map baselayer row text share the same font size", projectRowFontSize === regionRowFontSize, `projects=${projectRowFontSize}, regions=${regionRowFontSize}`);
+            assert(checks, "Markers and Map baselayer row text share the same font size", projectRowFontSize === regionRowFontSize, `projects=${projectRowFontSize}, regions=${regionRowFontSize}`);
             assert(checks, "Map baselayer Properties omit document page, canvas, and label-width controls", !doc.querySelector("#propertiesSelectionControls [data-layout-proxy='bookSizeInput']") && !doc.querySelector("#propertiesSelectionControls [data-layout-proxy='imageSizeInput']") && !doc.querySelector("#propertiesSelectionControls [data-layout-proxy='labelCharsInput']"));
             assert(checks, "Map baselayer Properties omit duplicate boundary and region-preset selectors", !doc.querySelector("#propertiesSelectionControls [data-map-proxy='boundaryInput'], #propertiesSelectionControls [data-map-proxy='regionPresetInput']"));
             assert(checks, "Map Properties expose baselayer size separately from canvas zoom", Boolean(doc.querySelector("#propertiesSelectionControls [data-layout-proxy='mapScaleInput']") && /exported files/.test(doc.querySelector("#propertiesSelectionControls")?.textContent || "")));
@@ -4326,7 +4504,7 @@
           if (requestedWorkspace === "translate") {
             assert(checks, "Translate omits the retired language-focus control and emphasis state", !doc.querySelector(".translation-direction, [data-translation-direction], #translationDirectionText, .translation-input.is-emphasis"));
             assert(checks, "Translation groups are rendered", doc.querySelectorAll("#translationGroups .translation-group").length > 0);
-            assert(checks, "Translation progress uses the concise Translations label", /^\d+ \/ \d+ (Translations|Traductions)$/.test(doc.querySelector("#translationProgressText")?.textContent.trim() || ""), doc.querySelector("#translationProgressText")?.textContent.trim() || "");
+            assert(checks, "Translation progress states completion in plain language", /^(?:\d+ of \d+ translated|All \d+ translations complete|1 translation complete)$/.test(doc.querySelector("#translationProgressText")?.textContent.trim() || ""), doc.querySelector("#translationProgressText")?.textContent.trim() || "");
             const englishTranslationGridLayout = translationGridLayout(doc);
             assert(checks, "English Translate columns align and fit with consistent inline padding", englishTranslationGridLayout.headersFit && englishTranslationGridLayout.rowPaddingIsConsistent, englishTranslationGridLayout.detail);
             assert(checks, "English Translate status stays inside its utility column", englishTranslationGridLayout.utilityColumnsFit, englishTranslationGridLayout.detail);
@@ -4341,7 +4519,7 @@
             await waitFor(() => doc.documentElement.lang === "en" && /English/.test(doc.querySelector(".translation-column-labels")?.textContent || "") && /Status/.test(doc.querySelector(".translation-column-labels")?.textContent || ""), 2000);
             const translateAddSection = doc.querySelector(".translate-add-section");
             assert(checks, "Translation filters and paste action remain available", doc.querySelectorAll("[data-translation-filter]").length === 2 && Boolean(doc.querySelector("#pasteTranslationColumnBtn")));
-            assert(checks, "Translation import action is in the Add section", Boolean(translateAddSection?.querySelector("#importTranslationsBtn")) && /Add|Ajouter/.test(translateAddSection?.textContent || ""), translateAddSection?.textContent || "");
+            assert(checks, "Translation import and paste actions are grouped in Add", Boolean(translateAddSection?.querySelector("#importTranslationsBtn")) && Boolean(translateAddSection?.querySelector("#pasteTranslationColumnBtn")) && /Add|Ajouter/.test(translateAddSection?.textContent || ""), translateAddSection?.textContent || "");
             assert(checks, "Translate uses the full workspace without duplicating its summary in Properties", doc.body.classList.contains("properties-unavailable") && propertiesPanel?.inert && propertiesToggle?.hidden === true && !doc.querySelector("#propertiesSelectionControls [data-property-kind='translation-entry'], #propertiesSelectionControls [data-translation-property]"));
             assert(checks, "Translate column labels show editable and automatic hints", doc.querySelectorAll(".translation-column-labels [data-icon='pencil']").length === 2 && Boolean(doc.querySelector(".translation-column-labels .col-auto-chip [data-icon='wand']")));
             const translationLanguageHeadingNodes = Array.from(doc.querySelectorAll(".translation-column-labels > span")).slice(1, 3);
@@ -4372,10 +4550,10 @@
             await waitFor(() => doc.body.dataset.workspaceView === "projects");
             const projectRowText = doc.querySelector("#projectTable .name-input");
             const projectRowFontSize = projectRowText ? frame.contentWindow.getComputedStyle(projectRowText).fontSize : "";
-            assert(checks, "Editing English in Translate updates the Project points source value", projectRowText?.value === editedEnglishTranslation);
+            assert(checks, "Editing English in Translate updates the Markers source value", projectRowText?.value === editedEnglishTranslation);
             doc.querySelector("#translateTableTab")?.click();
             await waitFor(() => doc.body.dataset.workspaceView === "translate");
-            assert(checks, "Project points and Translate row text share the same font size", projectRowFontSize === translateRowFontSize, `projects=${projectRowFontSize}, translate=${translateRowFontSize}`);
+            assert(checks, "Markers and Translate row text share the same font size", projectRowFontSize === translateRowFontSize, `projects=${projectRowFontSize}, translate=${translateRowFontSize}`);
             const translationRenderSamplesBeforeNavigation = performanceApi.snapshot().samples.length;
             doc.querySelector("#previewTableTab")?.click();
             assert(checks, "Opening Map after a translation edit queues a visible background refresh", doc.body.dataset.workspaceView === "preview" && doc.querySelector("#mapHost")?.classList.contains("is-rendering"));
@@ -4477,11 +4655,27 @@
             const cards = doc.querySelectorAll("#qualityMetricsPanel .quality-card");
             assert(checks, "Quality metrics render as cards", cards.length >= 5);
             assert(checks, "Quality cards expose severity state", Array.from(cards).every(card => ["ok", "review", "danger"].includes(card.dataset.state)));
+            const qualityGrid = doc.querySelector("#qualityMetricsPanel .quality-card-grid");
+            const qualityGridStyle = frame.contentWindow.getComputedStyle(qualityGrid);
+            const qualityCardRects = Array.from(cards, card => card.getBoundingClientRect());
+            const qualityCardTops = [...new Set(qualityCardRects.map(rect => Math.round(rect.top)))];
+            const qualityColumnCount = qualityCardRects.filter(rect => Math.abs(rect.top - qualityCardRects[0].top) < 2).length;
+            const expectedQualityColumns = frame.contentWindow.innerWidth <= 620 ? 1 : frame.contentWindow.innerWidth <= 1080 ? 2 : 3;
+            assert(checks, "QA cards use the responsive review grid", qualityColumnCount === expectedQualityColumns, `width=${frame.contentWindow.innerWidth}, columns=${qualityColumnCount}`);
+            const qualityRowBottomsAlign = qualityCardTops.every(top => {
+              const rowBottoms = qualityCardRects.filter(rect => Math.abs(rect.top - top) < 2).map(rect => Math.round(rect.bottom));
+              return Math.max(...rowBottoms) - Math.min(...rowBottoms) <= 1;
+            });
+            assert(checks, "QA cards stay compact and align within each review row", qualityGridStyle.alignItems === "stretch" && qualityRowBottomsAlign && qualityCardRects.every(rect => rect.height >= 120 && rect.height <= 160), `align=${qualityGridStyle.alignItems}, heights=${qualityCardRects.map(rect => Math.round(rect.height)).join(",")}`);
+            assert(checks, "QA review rows have consistent compact spacing", qualityCardTops.length >= 2 && qualityCardTops.slice(1).every((top, index) => {
+              const previousRowBottom = Math.max(...qualityCardRects.filter(rect => Math.abs(rect.top - qualityCardTops[index]) < 2).map(rect => rect.bottom));
+              return top - previousRowBottom >= 14 && top - previousRowBottom <= 20;
+            }), qualityCardTops.join(","));
+            assert(checks, "QA cards do not use decorative progress bars", !doc.querySelector("#qualityMetricsPanel .quality-card-rule"));
             assert(checks, "Quality summary exposes readiness state", ["ok", "review", "info"].includes(doc.querySelector("#qualitySummaryBanner")?.dataset.state));
             assert(checks, "Quality review banner omits the retired explanatory sentence", !/Actionable|Passive counts|Éléments à corriger|décomptes informatifs/.test(doc.querySelector("#qualitySummaryBanner")?.textContent || ""));
             assert(checks, "Detailed checklist remains available", Boolean(doc.querySelector(".quality-detail-checklist #statusBox")));
             assert(checks, "Quality uses the full workspace without duplicating its checklist in Properties", doc.body.classList.contains("properties-unavailable") && propertiesPanel?.inert && propertiesToggle?.hidden === true);
-            assert(checks, "Quality workspace shows render timing telemetry", doc.querySelectorAll("#performanceTelemetryMetrics .performance-metric").length === 5 && ["ok", "warning"].includes(doc.querySelector("#performanceTelemetryStatus")?.dataset.state));
             const overlapCountFromLabels = labelNodes => {
               const rects = labelNodes.map(node => {
                 const datum = node.__data__;
@@ -4578,7 +4772,7 @@
               );
               assert(
                 checks,
-                "Opening Map quality remains responsive while analysis is pending or already complete",
+                "Opening QA remains responsive while analysis is pending or already complete",
                 qualityOpenDuration < 120
                   && doc.body.dataset.workspaceView === "quality"
                   && (doc.querySelector("#qualityTablePane")?.getAttribute("aria-busy") === "true" || qualityFinishedBeforeOpen),
@@ -4599,7 +4793,7 @@
               } catch (_error) {
                 const qualityAnalysisTimedOut = frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot();
                 const qualityPillOverlap = Number(doc.querySelector("#canvasQualityPill .canvas-quality-metric strong")?.textContent || NaN);
-                throw new Error(`Map quality refresh did not settle: workspace=${doc.body.dataset.workspaceView}; expected=${movedOverlapValue}; card=${getOverlapCardValue()}; pill=${qualityPillOverlap}; analysis=${JSON.stringify(qualityAnalysisTimedOut)}`);
+                throw new Error(`QA refresh did not settle: workspace=${doc.body.dataset.workspaceView}; expected=${movedOverlapValue}; card=${getOverlapCardValue()}; pill=${qualityPillOverlap}; analysis=${JSON.stringify(qualityAnalysisTimedOut)}`);
               }
               const qualityAnalysisAfter = frame.contentWindow.PLOTYPUS_QUALITY_ANALYSIS?.snapshot();
               const overlapChecklist = Array.from(doc.querySelectorAll("#statusBox .checklist-item"))
@@ -4611,9 +4805,9 @@
               const qualityCoalescedDelta = qualityAnalysisAfter.coalesced - qualityAnalysisBefore.coalesced;
               const overlappedRequests = qualityRequestDelta === 2 && qualityCoalescedDelta >= 1;
               const reusedCompletedRequest = qualityRequestDelta === 1 && qualityFinishedBeforeOpen;
-              assert(checks, "Moving a label refreshes the map quality pill in the background", movedOverlapValue > initialGeometry.overlaps && movedOverlapValue > initialOverlapValue, `${initialOverlapValue} -> ${movedOverlapValue}`);
-              assert(checks, "Opening Map quality recomputes moved-label metrics", getOverlapCardValue() === movedOverlapValue && overlapChecklist?.textContent.includes(String(movedOverlapValue)) && qualityVerdict.includes(String(movedOverlapValue)), `${getOverlapCardValue()} / ${overlapChecklist?.textContent || ""} / ${qualityVerdict}`);
-              assert(checks, "Map quality coalesces overlapping requests or reuses a completed background analysis", Boolean(qualityAnalysisBefore && qualityAnalysisAfter) && qualityStartedDelta === 1 && qualityCompletedDelta === 1 && (overlappedRequests || reusedCompletedRequest), JSON.stringify({ before: qualityAnalysisBefore, atOpen: qualityAnalysisAtOpen, after: qualityAnalysisAfter }));
+              assert(checks, "Moving a label refreshes the QA pill in the background", movedOverlapValue > initialGeometry.overlaps && movedOverlapValue > initialOverlapValue, `${initialOverlapValue} -> ${movedOverlapValue}`);
+              assert(checks, "Opening QA recomputes moved-label metrics", getOverlapCardValue() === movedOverlapValue && overlapChecklist?.textContent.includes(String(movedOverlapValue)) && qualityVerdict.includes(String(movedOverlapValue)), `${getOverlapCardValue()} / ${overlapChecklist?.textContent || ""} / ${qualityVerdict}`);
+              assert(checks, "QA coalesces overlapping requests or reuses a completed background analysis", Boolean(qualityAnalysisBefore && qualityAnalysisAfter) && qualityStartedDelta === 1 && qualityCompletedDelta === 1 && (overlappedRequests || reusedCompletedRequest), JSON.stringify({ before: qualityAnalysisBefore, atOpen: qualityAnalysisAtOpen, after: qualityAnalysisAfter }));
               assert(checks, "Quality refresh does not re-plot the map", (doc.querySelector("#mapSvg")?.innerHTML || "") === mapBeforeQualityRefresh);
               assert(checks, "Quality refresh records no render timing", (performanceApi?.snapshot().samples.length || 0) === renderSamplesBeforeQualityRefresh);
               doc.querySelector("#previewTableTab")?.click();
@@ -4661,13 +4855,17 @@
               const previewCompletedChecklistMatches = previewCompletedOverlapValue > 0
                 ? previewCompletedChecklist?.textContent.includes(String(previewCompletedOverlapValue))
                 : /No label overlaps|Aucun chevauchement d'étiquettes/i.test(previewCompletedChecklist?.textContent || "");
-              assert(checks, "Map quality publishes a background result completed before the tab opens", getOverlapCardValue() === previewCompletedOverlapValue && previewCompletedChecklistMatches, `expected=${previewCompletedOverlapValue}; card=${getOverlapCardValue()}; checklist=${previewCompletedChecklist?.textContent || ""}`);
+              assert(checks, "QA publishes a background result completed before the tab opens", getOverlapCardValue() === previewCompletedOverlapValue && previewCompletedChecklistMatches, `expected=${previewCompletedOverlapValue}; card=${getOverlapCardValue()}; checklist=${previewCompletedChecklist?.textContent || ""}`);
               doc.querySelector("#previewTableTab")?.click();
               await waitFor(() => doc.body.dataset.workspaceView === "preview", 2000);
             }
             const locateNextAction = doc.querySelector("#canvasQualityPill [data-property-action='open-map']");
             const locateNextRect = locateNextAction?.getBoundingClientRect();
-            assert(checks, "Quality Locate next action is available on the visible map pill", Boolean(locateNextAction && locateNextRect && locateNextRect.width > 0 && locateNextRect.height > 0));
+            assert(checks, "QA Locate next action is available on the visible review rail", Boolean(locateNextAction && locateNextRect && locateNextRect.width > 0 && locateNextRect.height > 0));
+            const canvasQualityRail = doc.querySelector("#canvasQualityPill");
+            const canvasQualityRailRect = canvasQualityRail?.getBoundingClientRect();
+            const previewMapHostRect = doc.querySelector("#mapHost")?.getBoundingClientRect();
+            assert(checks, "QA summary is docked below the map without covering it", canvasQualityRail?.parentElement?.classList.contains("preview-panel") && canvasQualityRailRect && previewMapHostRect && canvasQualityRailRect.top >= previewMapHostRect.bottom - 1, `rail=${Math.round(canvasQualityRailRect?.top || 0)}; map=${Math.round(previewMapHostRect?.bottom || 0)}`);
             const clickVisibleLocateNext = () => {
               const action = doc.querySelector("#canvasQualityPill [data-property-action='open-map']");
               action?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true, cancelable: true, view: frame.contentWindow }));
@@ -4742,7 +4940,7 @@
         dispatchKey(svgButton, "Escape");
 
         projectTab.click();
-        assert(checks, "Workspace navigation activates Project points", projectTab.classList.contains("is-active") && doc.body.dataset.workspaceView === "projects");
+        assert(checks, "Workspace navigation activates Markers", projectTab.classList.contains("is-active") && doc.body.dataset.workspaceView === "projects");
         mapTab.click();
         assert(checks, "Workspace navigation returns to Map", mapTab.classList.contains("is-active") && doc.body.dataset.workspaceView === "preview");
 

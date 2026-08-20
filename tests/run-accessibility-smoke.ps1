@@ -9,6 +9,7 @@ $outputRoot = Join-Path $scriptRoot "smoke-output\accessibility"
 New-Item -ItemType Directory -Force -Path $outputRoot | Out-Null
 
 $scenarios = @(
+  @{ Name = "startup"; Parameters = @{ Dialog = "startup" } },
   @{ Name = "preview"; Parameters = @{ Workspace = "preview"; LoadSample = $true; VisualCapture = $true } },
   @{ Name = "projects"; Parameters = @{ Workspace = "projects"; LoadSample = $true; VisualCapture = $true } },
   @{ Name = "regions"; Parameters = @{ Workspace = "regions"; LoadSample = $true; VisualCapture = $true } },
@@ -17,9 +18,11 @@ $scenarios = @(
   @{ Name = "feedback"; Parameters = @{ Dialog = "feedback" } },
   @{ Name = "map-details"; Parameters = @{ Dialog = "map-details" } },
   @{ Name = "csv-map"; Parameters = @{ Dialog = "csv-map" } },
-  @{ Name = "point-catalog"; Parameters = @{ Dialog = "point-catalog"; CatalogOrigin = "projects" } },
+  @{ Name = "point-catalog"; Parameters = @{ Dialog = "point-catalog" } },
+  @{ Name = "confirmation"; Parameters = @{ Dialog = "confirmation" } },
   @{ Name = "shortcuts"; Parameters = @{ Dialog = "shortcuts" } },
   @{ Name = "export-menu"; Parameters = @{ Dialog = "export-menu" } },
+  @{ Name = "add-data-menu"; Parameters = @{ Dialog = "add-data-menu" } },
   @{ Name = "project-load-error"; Parameters = @{ Dialog = "project-load-error" } }
 )
 

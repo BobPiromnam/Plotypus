@@ -71,19 +71,19 @@
       ? "data-category-marker-size-draft required"
       : "data-layout-proxy=\"markerSizeInput\" required";
     return `
-      <div class="marker-size-editor" data-marker-size-editor="${escapeHtml(scope)}" data-committed-value="${escapeHtml(committed)}" data-minimum="${escapeHtml(String(minimum))}" data-maximum="${escapeHtml(String(maximum))}" data-step="${escapeHtml(String(step))}" data-category-id="${escapeHtml(categoryId)}" data-applied-status="${escapeHtml(appliedStatus || t("properties.markerSize.draftApplied"))}" data-draft-state="applied">
-        <div class="marker-size-controls">
+      <div class="property-draft-editor marker-size-editor" data-marker-size-editor="${escapeHtml(scope)}" data-committed-value="${escapeHtml(committed)}" data-minimum="${escapeHtml(String(minimum))}" data-maximum="${escapeHtml(String(maximum))}" data-step="${escapeHtml(String(step))}" data-category-id="${escapeHtml(categoryId)}" data-applied-status="${escapeHtml(appliedStatus || t("properties.markerSize.draftApplied"))}" data-draft-state="applied">
+        <div class="property-draft-controls marker-size-controls">
           <label>
             ${propertyFieldLabel(options, scope === "category" ? t("properties.category.marker") : t("properties.field.defaultMarkerSize"), origin)}
             <input class="type-numeric-data property-numeric-input" type="number" min="${escapeHtml(String(minimum))}" max="${escapeHtml(String(maximum))}" step="${escapeHtml(String(step))}" inputmode="numeric" data-marker-size-draft="${escapeHtml(scope)}" ${inputBinding} value="${escapeHtml(committed)}" aria-describedby="${escapeHtml(statusId)}">
           </label>
-          <button type="button" class="primary marker-size-apply-button" data-property-action="apply-marker-size" disabled>${escapeHtml(t("properties.button.applyMarkerSize"))}</button>
+          <button type="button" class="primary panel-apply" data-property-action="apply-marker-size" disabled>${escapeHtml(t("properties.button.applyMarkerSize"))}</button>
         </div>
-        <div class="marker-size-preview" aria-live="polite">
+        <div class="property-draft-preview marker-size-preview" aria-live="polite">
           <span class="marker-size-preview-stage" data-marker-size-preview>${previewMarkup}</span>
-          <output data-marker-size-readout>${escapeHtml(t("properties.markerSize.previewValue", { value: effective }))}</output>
+          <output class="property-draft-readout type-caption" data-marker-size-readout>${escapeHtml(t("properties.markerSize.previewValue", { value: effective }))}</output>
         </div>
-        <span id="${escapeHtml(statusId)}" class="properties-muted" data-marker-size-draft-status>${escapeHtml(appliedStatus || t("properties.markerSize.draftApplied"))}</span>
+        <span id="${escapeHtml(statusId)}" class="property-draft-status properties-muted type-caption" data-marker-size-draft-status aria-live="polite">${escapeHtml(appliedStatus || t("properties.markerSize.draftApplied"))}</span>
       </div>
     `;
   }
@@ -109,8 +109,8 @@
     const inheritedInput = formatLeaderLineWidthInput(inherited);
     const effectiveDisplay = formatLeaderLineWidthDisplay(options, effective);
     const statusId = `leaderLineWidthStatus-${scope}${rowId ? `-${rowId}` : ""}`;
-    const previewText = isPoint && !committed
-      ? t("properties.leaderLines.previewInherited", { value: effectiveDisplay })
+    const previewText = isPoint
+      ? t(committed ? "properties.leaderLines.pointPreviewValue" : "properties.leaderLines.pointPreviewInherited", { value: effectiveDisplay })
       : t("properties.leaderLines.previewValue", { value: effectiveDisplay });
     const inputBinding = isPoint
       ? "data-property-field=\"leaderLineWidth\""
@@ -118,32 +118,39 @@
         ? "data-category-line-width-draft required"
         : "data-layout-proxy=\"lineWidthInput\" required";
     return `
-      <div class="leader-line-thickness-editor" data-leader-line-width-editor="${escapeHtml(scope)}" data-committed-value="${escapeHtml(committed)}" data-inherited-value="${escapeHtml(inherited)}" data-applied-status="${escapeHtml(appliedStatus || t("properties.leaderLines.draftApplied"))}" data-draft-state="applied">
-        <div class="leader-line-thickness-controls">
+      <div class="property-draft-editor leader-line-thickness-editor" data-leader-line-width-editor="${escapeHtml(scope)}" data-committed-value="${escapeHtml(committed)}" data-inherited-value="${escapeHtml(inherited)}" data-applied-status="${escapeHtml(appliedStatus || t("properties.leaderLines.draftApplied"))}" data-draft-state="applied">
+        <div class="property-draft-controls leader-line-thickness-controls">
           <label>
             ${propertyFieldLabel(options, t("properties.field.leaderLineThickness"), origin)}
             <input class="type-numeric-data property-numeric-input" type="number" min="1" max="${maximum}" step="0.5" inputmode="decimal" data-leader-line-width-draft="${escapeHtml(scope)}" ${inputBinding} value="${escapeHtml(committedInput)}"${isPoint && inherited ? ` placeholder="${escapeHtml(inheritedInput)}"` : ""} aria-describedby="${escapeHtml(statusId)}">
           </label>
-          <button type="button" class="primary leader-line-apply-button" data-property-action="apply-leader-line-width" disabled>${escapeHtml(t("properties.button.applyThickness"))}</button>
+          <button type="button" class="primary panel-apply" data-property-action="apply-leader-line-width" disabled>${escapeHtml(t("properties.button.applyThickness"))}</button>
         </div>
-        <div class="leader-line-thickness-preview" aria-live="polite">
+        <div class="property-draft-preview leader-line-thickness-preview" aria-live="polite">
           <svg viewBox="0 0 120 24" preserveAspectRatio="none" focusable="false" aria-hidden="true">
             <line data-leader-line-width-preview x1="6" y1="12" x2="114" y2="12" stroke-width="${escapeHtml(effective)}" vector-effect="non-scaling-stroke"></line>
           </svg>
-          <output data-leader-line-width-readout>${escapeHtml(previewText)}</output>
+          <output class="property-draft-readout type-caption" data-leader-line-width-readout>${escapeHtml(previewText)}</output>
         </div>
-        <span id="${escapeHtml(statusId)}" class="properties-muted" data-leader-line-width-draft-status>${escapeHtml(appliedStatus || t("properties.leaderLines.draftApplied"))}</span>
+        <span id="${escapeHtml(statusId)}" class="property-draft-status properties-muted type-caption" data-leader-line-width-draft-status aria-live="polite">${escapeHtml(appliedStatus || t("properties.leaderLines.draftApplied"))}</span>
       </div>
     `;
   }
 
   function qualityMetricItem(label, value, options) {
     const { state = "neutral", description = "", escapeHtml } = options || {};
+    const t = translator(options);
     const metricState = state === "ok" ? "ok" : (state === "warning" || state === "review") ? "review" : "info";
+    const stateLabel = t(`quality.check.status.${metricState}`);
+    const stateGlyph = metricState === "ok" ? "✓" : metricState === "review" ? "!" : "i";
     return `
       <div class="properties-metric" data-state="${escapeHtml(metricState)}">
         <span>
-          <span class="metric-label">${escapeHtml(label)} ${propertyOriginIcon(options, "auto")}</span>
+          <span class="metric-label">
+            <span class="metric-state" data-state="${escapeHtml(metricState)}"><span class="metric-state-glyph" aria-hidden="true">${stateGlyph}</span>${escapeHtml(stateLabel)}</span>
+            <span>${escapeHtml(label)}</span>
+            ${propertyOriginIcon(options, "auto")}
+          </span>
           ${description ? `<small class="type-caption">${escapeHtml(description)}</small>` : ""}
         </span>
         <strong>${escapeHtml(value)}</strong>
@@ -157,14 +164,13 @@
     return `
       <article class="quality-card" data-state="${safeState}">
         <header>
-          <h3 class="type-card-title">${escapeHtml(label)}</h3>
+          <h3 class="type-control-label">${escapeHtml(label)}</h3>
           <strong${valueClass}>${escapeHtml(value)}</strong>
         </header>
-        <div class="quality-card-rule" aria-hidden="true"><span></span></div>
-        <p>${escapeHtml(description)}</p>
+        <p class="type-supporting">${escapeHtml(description)}</p>
         ${(detail || action) ? `
           <footer>
-            <span>${escapeHtml(detail || "")}</span>
+            <span class="type-caption">${escapeHtml(detail || "")}</span>
             ${action ? `<button type="button" class="text-action" data-property-action="${escapeHtml(action.name)}">${escapeHtml(action.label)}</button>` : ""}
           </footer>
         ` : ""}
@@ -199,49 +205,55 @@
     return `
       <div class="properties-form" data-property-kind="document">
         <details class="properties-accordion document-property-section" data-properties-accordion="map-style">
-          <summary class="type-summary-heading"><span>${escapeHtml(t("properties.section.mapStyle"))}</span></summary>
+          <summary class="properties-accordion-summary type-summary-heading"><span>${escapeHtml(t("properties.section.mapStyle"))}</span></summary>
           <div class="properties-accordion-body">
-          <label class="properties-field-group">
-            ${propertyFieldLabel(options, t("properties.field.mapStyle"))}
-            <select data-map-proxy="mapStylePresetInput">
-              ${selectOptions.mapStyle || ""}
-            </select>
-          </label>
+            <div class="properties-control-group">
+              <label class="properties-field-group">
+                ${propertyFieldLabel(options, t("properties.field.mapStylePreset"), null)}
+                <select class="properties-select" data-map-proxy="mapStylePresetInput">
+                  ${selectOptions.mapStyle || ""}
+                </select>
+              </label>
+            </div>
           </div>
         </details>
         <details class="properties-accordion document-property-section" data-properties-accordion="map-size">
-          <summary class="type-summary-heading"><span>${escapeHtml(t("properties.section.mapSize"))}</span></summary>
+          <summary class="properties-accordion-summary type-summary-heading"><span>${escapeHtml(t("properties.section.mapSize"))}</span></summary>
           <div class="properties-accordion-body">
-          <label class="properties-field-group">
-            ${propertyFieldLabel(options, t("properties.field.pagePreset"))}
-            <select data-layout-proxy="bookSizeInput">
-              ${selectOptions.bookSize || ""}
-            </select>
-          </label>
-          <label class="properties-field-group">
-            ${propertyFieldLabel(options, t("properties.field.canvasSize"))}
-            <select data-layout-proxy="imageSizeInput">
-              ${selectOptions.imageSize || ""}
-            </select>
-            <span class="properties-muted">${escapeHtml(t("properties.helper.documentPreview"))}</span>
-          </label>
-          <label class="properties-field-group">
-            ${propertyFieldLabel(options, t("properties.field.defaultCharactersPerLine"))}
-            <input type="number" min="12" max="42" step="1" data-layout-proxy="labelCharsInput" value="${escapeHtml(values.labelChars || "")}">
-          </label>
-          ${renderMarkerSizeEditor(options, {
-            scope: "global",
-            committedValue: values.markerSize || "",
-            minimum: 4,
-            maximum: 20,
-            appliedStatus: t("properties.markerSize.draftApplied")
-          })}
+            <div class="properties-control-group">
+              <label class="properties-field-group">
+                ${propertyFieldLabel(options, t("properties.field.pagePreset"), null)}
+                <select class="properties-select" data-layout-proxy="bookSizeInput">
+                  ${selectOptions.bookSize || ""}
+                </select>
+              </label>
+              <label class="properties-field-group">
+                ${propertyFieldLabel(options, t("properties.field.canvasSize"), null)}
+                <select class="properties-select" data-layout-proxy="imageSizeInput">
+                  ${selectOptions.imageSize || ""}
+                </select>
+                <span class="properties-field-help type-caption">${escapeHtml(t("properties.helper.documentPreview"))}</span>
+              </label>
+            </div>
+            <div class="properties-control-group">
+              <label class="properties-field-group">
+                ${propertyFieldLabel(options, t("properties.field.defaultCharactersPerLine"), null)}
+                <input class="type-numeric-data property-numeric-input" type="number" min="12" max="42" step="1" inputmode="numeric" data-layout-proxy="labelCharsInput" value="${escapeHtml(values.labelChars || "")}">
+              </label>
+              ${renderMarkerSizeEditor(options, {
+                scope: "global",
+                committedValue: values.markerSize || "",
+                minimum: 4,
+                maximum: 20,
+                appliedStatus: t("properties.markerSize.draftApplied")
+              })}
+            </div>
           </div>
         </details>
         <details class="properties-accordion document-property-section leader-line-property-section" data-properties-accordion="leader-lines" data-leader-line-controls="global">
-          <summary class="type-summary-heading"><span>${escapeHtml(t("properties.section.leaderLines"))}</span></summary>
+          <summary class="properties-accordion-summary type-summary-heading"><span>${escapeHtml(t("properties.section.leaderLines"))}</span></summary>
           <div class="properties-accordion-body">
-          <p class="properties-muted type-supporting">${escapeHtml(t("properties.leaderLines.globalHelp"))}</p>
+          <p class="properties-accordion-description properties-muted type-supporting">${escapeHtml(t("properties.leaderLines.globalHelp"))}</p>
           <div class="properties-control-list leader-line-toggle-list">
             <label class="toolbar-check">
               <input type="checkbox" data-layout-proxy="hideLeaderLinesInput"${values.hideLeaderLines ? " checked" : ""}>
@@ -269,7 +281,7 @@
               <input type="color" data-layout-proxy="leaderColourInput" value="${escapeHtml(values.leaderColour || "#333333")}">
             </label>
           </div>
-          <p class="properties-muted type-supporting">${escapeHtml(t("properties.leaderLines.precedence"))}</p>
+          <p class="properties-accordion-description properties-muted type-supporting">${escapeHtml(t("properties.leaderLines.precedence"))}</p>
           </div>
         </details>
       </div>
@@ -443,7 +455,7 @@
       </div>` : "";
     return `
       <div class="properties-form" data-property-kind="${escapeHtml(kind)}" data-row-id="${rowId}" data-label-key="${safeLabelKey}">
-        <div class="properties-record-status">${escapeHtml(status)} ${propertyOriginIcon(options, "auto")}</div>
+        <div class="properties-record-status type-caption">${escapeHtml(status)} ${propertyOriginIcon(options, "auto")}</div>
         <label>
           ${propertyFieldLabel(options, titleLabel)}
           <input type="text" data-property-field="name" value="${escapeHtml(row.name || "")}">
@@ -510,34 +522,40 @@
               <span>${escapeHtml(t("properties.field.useElbowLeader"))}</span>
             </label>
           </div>
-          <div class="leader-line-style-grid">
-            ${renderLeaderLineWidthEditor(options, {
-              scope: "point",
-              committedValue: leaderLineWidth,
-              inheritedValue: inheritedLeaderLineWidth,
-              appliedStatus: leaderLineWidth
-                ? t("properties.leaderLines.pointWidthOverride")
-                : inheritedLeaderLineWidth
-                  ? t("properties.leaderLines.pointWidthInherited", { value: inheritedLeaderLineWidthDisplay })
-                  : t("properties.leaderLines.pointWidthInheritedDefault"),
-              origin: leaderLineWidth ? "edit" : "auto",
-              rowId
-            })}
-            <label>
-              ${propertyFieldLabel(options, t("properties.field.leaderLineColour"), leaderLineColour ? "edit" : "auto")}
-              <span class="leader-line-colour-control">
-                <input type="color" data-property-field="leaderLineColour" value="${escapeHtml(leaderLineColour || inheritedLeaderLineColour)}">
-                <button type="button" class="ghost-button leader-line-reset-button" data-property-action="reset-leader-colour"${leaderLineColour ? "" : " disabled"}>${escapeHtml(t("properties.button.useInheritedColour"))}</button>
-              </span>
-              <span class="properties-muted">${escapeHtml(leaderLineColour
-                ? t("properties.leaderLines.pointColourOverride")
-                : t("properties.leaderLines.pointColourInherited", { value: inheritedLeaderLineColour }))}</span>
-            </label>
+          <div class="leader-line-style-group">
+            <h4 class="leader-line-style-heading type-supporting">${escapeHtml(t("properties.leaderLines.pointStyleGroup"))}</h4>
+            <div class="leader-line-style-grid">
+              ${renderLeaderLineWidthEditor(options, {
+                scope: "point",
+                committedValue: leaderLineWidth,
+                inheritedValue: inheritedLeaderLineWidth,
+                appliedStatus: leaderLineWidth
+                  ? t("properties.leaderLines.pointWidthOverride")
+                  : inheritedLeaderLineWidth
+                    ? t("properties.leaderLines.pointWidthInherited", { value: inheritedLeaderLineWidthDisplay })
+                    : t("properties.leaderLines.pointWidthInheritedDefault"),
+                origin: null,
+                rowId
+              })}
+              <label class="leader-line-colour-field">
+                ${propertyFieldLabel(options, t("properties.field.leaderLineColour"), null)}
+                <span class="leader-line-colour-control">
+                  <input type="color" data-property-field="leaderLineColour" value="${escapeHtml(leaderLineColour || inheritedLeaderLineColour)}">
+                  <button type="button" class="ghost-button panel-reset" data-property-action="reset-leader-colour"${leaderLineColour ? "" : " disabled"}>${escapeHtml(t("properties.button.useInheritedColour"))}</button>
+                </span>
+                <span class="properties-muted type-caption">${escapeHtml(leaderLineColour
+                  ? t("properties.leaderLines.pointColourOverride")
+                  : t("properties.leaderLines.pointColourInherited", { value: inheritedLeaderLineColour }))}</span>
+              </label>
+            </div>
           </div>
-          <p class="properties-muted properties-dot-note type-supporting">${escapeHtml(t("properties.leaderLines.pointPrecedence"))}</p>
+          <p class="properties-muted point-leader-line-note type-caption">${escapeHtml(t("properties.leaderLines.pointPrecedence"))}</p>
         </section>
-        <details${advancedOpen ? " open" : ""}>
-          <summary class="type-control-label">${escapeHtml(t("properties.field.advanced"))}</summary>
+        <details class="point-advanced-settings"${advancedOpen ? " open" : ""}>
+          <summary class="type-control-label">
+            <span>${escapeHtml(t("properties.field.advanced"))}</span>
+            <small class="type-caption">${escapeHtml(t("properties.field.advancedHint"))}</small>
+          </summary>
           <div class="properties-form">
             <label>
               ${propertyFieldLabel(options, t("properties.field.footnote"))}
@@ -547,7 +565,7 @@
               ${propertyFieldLabel(options, t("properties.field.charactersPerLine"))}
               <div class="properties-value-reset">
                 <input class="type-numeric-data property-numeric-input" type="number" min="12" max="42" step="1" inputmode="numeric" data-property-field="labelMaxChars" value="${escapeHtml(String(effectiveLabelMaxChars))}" placeholder="${escapeHtml(t("properties.field.defaultValue", { value: globalLabelMaxChars }))}" aria-label="${escapeHtml(t("properties.field.charactersPerLine"))}">
-                <button type="button" class="properties-inline-reset" data-property-action="reset-label-max-chars" aria-label="${escapeHtml(t("properties.button.resetCharactersPerLine"))}" title="${escapeHtml(t("properties.button.resetCharactersPerLine"))}"${hasLabelMaxCharsOverride ? "" : " disabled"}>${iconSvg("reset")}</button>
+                <button type="button" class="panel-reset" data-property-action="reset-label-max-chars" aria-label="${escapeHtml(t("properties.button.resetCharactersPerLine"))}" title="${escapeHtml(t("properties.button.resetCharactersPerLine"))}"${hasLabelMaxCharsOverride ? "" : " disabled"}>${iconSvg("reset")}</button>
               </div>
             </div>
             <div class="properties-actions">
@@ -568,7 +586,7 @@
           ${propertyFieldLabel(options, t("properties.field.baselayerSize"))}
           <span class="properties-unit-input">
             <input type="number" min="45" max="115" step="1" inputmode="decimal" data-layout-proxy="mapScaleInput" value="${escapeHtml(String(mapScale))}" aria-describedby="baselayerSizeHint">
-            <span aria-hidden="true">%</span>
+            <span class="type-supporting" aria-hidden="true">%</span>
           </span>
           <span id="baselayerSizeHint" class="properties-muted">${escapeHtml(t("properties.helper.baselayerSize"))}</span>
         </label>

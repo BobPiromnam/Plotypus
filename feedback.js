@@ -175,11 +175,13 @@ Please remove map or project content, personal or protected information, credent
     titleInput,
     detailsInput,
     detailsLabel,
-    githubIssueLink,
-    feedbackEmailLink
+    destinationButtons = [],
+    sendLink
   }, environment, options = {}) {
     const inputList = Array.from(typeInputs);
+    const destinationList = Array.from(destinationButtons);
     const translate = typeof options.t === "function" ? options.t : key => key;
+    let destination = destinationList.find(button => button.getAttribute("aria-pressed") === "true")?.dataset.feedbackDestination || "github";
     const getFeedback = () => ({
       type: inputList.find(input => input.checked)?.value || "problem",
       title: titleInput?.value || "",
@@ -204,12 +206,23 @@ Please remove map or project content, personal or protected information, credent
           ? "feedback.details.improvementPlaceholder"
           : "feedback.details.problemPlaceholder");
       }
-      if (githubIssueLink) {
-        githubIssueLink.href = isImprovement
-          ? buildFeatureRequestUrl(environment, feedback)
-          : buildBugReportUrl(environment, feedback);
+      if (sendLink) {
+        const isGithub = destination === "github";
+        sendLink.href = isGithub
+          ? (isImprovement ? buildFeatureRequestUrl(environment, feedback) : buildBugReportUrl(environment, feedback))
+          : buildFeedbackEmailUrl(environment, feedback);
+        if (isGithub) {
+          sendLink.target = "_blank";
+          sendLink.rel = "noopener noreferrer";
+        } else {
+          sendLink.removeAttribute("target");
+          sendLink.removeAttribute("rel");
+        }
+        const label = sendLink.querySelector("[data-feedback-action-label]");
+        if (label) label.textContent = translate(isGithub ? "feedback.continueGithub" : "feedback.continueEmail");
+        const newTab = sendLink.querySelector("[data-feedback-new-tab]");
+        if (newTab) newTab.hidden = !isGithub;
       }
-      if (feedbackEmailLink) feedbackEmailLink.href = buildFeedbackEmailUrl(environment, feedback);
     };
 
     const requireCompleteEntry = event => {
@@ -221,8 +234,18 @@ Please remove map or project content, personal or protected information, credent
       input?.addEventListener("input", update);
       input?.addEventListener("change", update);
     });
-    githubIssueLink?.addEventListener("click", requireCompleteEntry);
-    feedbackEmailLink?.addEventListener("click", requireCompleteEntry);
+    destinationList.forEach(button => {
+      button.addEventListener("click", () => {
+        destination = button.dataset.feedbackDestination || "github";
+        destinationList.forEach(option => {
+          const selected = option === button;
+          option.classList.toggle("is-active", selected);
+          option.setAttribute("aria-pressed", String(selected));
+        });
+        update();
+      });
+    });
+    sendLink?.addEventListener("click", requireCompleteEntry);
     update();
 
     return { update };

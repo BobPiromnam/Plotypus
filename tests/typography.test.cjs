@@ -62,20 +62,6 @@ test("application typography exposes the shared semantic scale", () => {
   }
 });
 
-test("legacy component aliases resolve through the shared typography scale", () => {
-  assert.equal(cssToken("text-2xs"), "var(--type-eyebrow-size)");
-  assert.equal(cssToken("text-xs"), "var(--type-caption-size)");
-  assert.equal(cssToken("text-sm"), "var(--type-supporting-size)");
-  assert.equal(cssToken("text-ui"), "var(--type-control-size)");
-  assert.equal(cssToken("text-body"), "var(--type-body-size)");
-  assert.equal(cssToken("text-control"), "var(--type-control-size)");
-  assert.equal(cssToken("text-md"), "var(--type-summary-size)");
-  assert.equal(cssToken("text-lg"), "var(--type-card-title-size)");
-  assert.equal(cssToken("text-title"), "var(--type-dialog-title-size)");
-  assert.equal(cssToken("text-heading"), "var(--type-page-title-size)");
-  assert.equal(cssToken("text-display"), "var(--type-display-size)");
-});
-
 test("semantic typography classes declare intent across static and generated UI", () => {
   for (const className of [
     "type-display",
@@ -94,15 +80,20 @@ test("semantic typography classes declare intent across static and generated UI"
   ]) {
     assert.match(style, new RegExp(`\\.${className}\\b`), className);
   }
-  assert.equal((html.match(/workspace-eyebrow type-eyebrow/g) || []).length, 6);
-  assert.equal((html.match(/class="type-page-title"/g) || []).length, 5);
+  assert.equal((html.match(/<h2 class="workspace-title type-panel-title" data-i18n="(?:project|region|translate|preview|quality)\.intro\.title"/g) || []).length, 5);
+  assert.equal((html.match(/<p class="type-supporting" data-i18n="(?:project|region|translate|preview|quality)\.intro\.body"/g) || []).length, 5);
   assert.match(html, /id="propertiesTitle" class="type-panel-title"/);
-  assert.match(html, /id="startupTitle" class="type-display"/);
+  assert.match(html, /id="startupTitle" class="type-dialog-title"/);
   assert.match(html, /id="mapDetailsTitle" class="type-dialog-title"/);
-  assert.match(properties, /<summary class="type-summary-heading">/);
+  assert.match(properties, /<summary class="properties-accordion-summary type-summary-heading">/);
   assert.match(properties, /<h3 class="type-eyebrow">/);
   assert.match(referenceCities, /class="refCityInput type-control"/);
   assert.match(referenceCities, /class="refCityHint type-caption"/);
+  assert.match(html, /class="data-table project-data-table"/);
+  assert.match(html, /class="data-table region-data-table"/);
+  assert.match(html, /class="project-filter-select type-control"/);
+  assert.match(html, /class="map-canvas"/);
+  assert.match(html, /class="ribbon-button ribbon-icon-only properties-toggle-button"/);
 });
 
 test("production templates contain no inline style attributes", () => {
@@ -121,7 +112,7 @@ test("map typography is assigned by stylesheet classes rather than element font 
   assert.doesNotMatch(app, /setAttribute\(\s*["']font-(?:size|family|weight|style)/);
   assert.doesNotMatch(app, /font-(?:size|family|weight|style)\s*=/);
   assert.match(app, /mapTypographySizeClass/);
-  assert.match(style, /#mapSvg\.map-font-lato text/);
+  assert.match(style, /\.map-canvas\.map-font-lato text/);
   for (let value = 2; value <= 40; value += 0.5) {
     const token = String(value).replace(".", "-");
     const escapedValue = String(value).replace(".", "\\.");
@@ -143,5 +134,16 @@ test("generated numeric property fields use the shared data typography class", (
   const properties = read("properties.js");
   assert.doesNotMatch(properties, /numericStyle/);
   assert.match(properties, /type-numeric-data property-numeric-input/g);
+  assert.match(style, /\.type-numeric-data\s*\{[^}]*font-size:\s*var\(--type-control-size\);[^}]*font-weight:\s*var\(--font-weight-data-medium\);[^}]*line-height:\s*var\(--type-control-line\);/s);
   assert.match(style, /\.property-numeric-input\s*\{[^}]*text-align:\s*right/s);
+});
+
+test("Properties typography roles are owned by reusable component classes", () => {
+  assert.match(style, /\.properties-form label:not\(\.toolbar-check\)\s*\{[^}]*font-weight:\s*var\(--font-weight-regular\);/s);
+  assert.match(style, /\.properties-field-label\s*\{[^}]*font-size:\s*var\(--type-control-size\);[^}]*font-weight:\s*var\(--font-weight-regular\);[^}]*line-height:\s*var\(--type-control-line\);/s);
+  assert.match(style, /\.type-numeric-data\s*\{[^}]*font-weight:\s*var\(--font-weight-data-medium\);[^}]*line-height:\s*var\(--type-control-line\);/s);
+  assert.match(properties, /class="property-draft-readout type-caption" data-marker-size-readout/);
+  assert.match(properties, /class="property-draft-readout type-caption" data-leader-line-width-readout/);
+  assert.match(style, /\.property-draft-readout\s*\{[^}]*font-weight:\s*var\(--font-weight-bold\);/s);
+  assert.doesNotMatch(style, /\.document-property-section[^}]*font-(?:family|size|weight)|\.leader-line-property-section[^}]*\.properties-field-label/s);
 });

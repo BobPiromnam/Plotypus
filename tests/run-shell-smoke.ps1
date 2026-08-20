@@ -1,15 +1,11 @@
 param(
   [int]$Width = 1440,
   [int]$Height = 1000,
-  [int]$VirtualTimeBudgetMs = 0,
-  [int]$ScreenshotDelayMs = 12000,
   [int]$BrowserTimeoutMs = 0,
   [ValidateSet("", "preview", "projects", "regions", "translate", "quality")]
   [string]$Workspace = "",
   [ValidateSet("", "startup", "feedback", "map-details", "csv-map", "point-catalog", "point-selection", "confirmation", "shortcuts", "export-menu", "add-data-menu", "project-load-error")]
   [string]$Dialog = "",
-  [ValidateSet("projects", "regions")]
-  [string]$CatalogOrigin = "projects",
   [switch]$LoadSample,
   [switch]$TableLayoutOnly,
   [switch]$CustomMarkerIcon,
@@ -51,18 +47,6 @@ if ($ProjectRoundTrip -and (-not $LoadSample -or $Workspace -ne "preview")) {
 
 if ($BrowserTimeoutMs -lt 0) {
   throw "-BrowserTimeoutMs must be zero (automatic) or a positive number of milliseconds."
-}
-
-if ($VirtualTimeBudgetMs -lt 0) {
-  throw "-VirtualTimeBudgetMs must be zero or a positive number of milliseconds."
-}
-
-if ($PSBoundParameters.ContainsKey("VirtualTimeBudgetMs")) {
-  Write-Warning "-VirtualTimeBudgetMs is retained for compatibility but is no longer used. The runner now waits for the page's explicit smoke completion signal."
-}
-
-if ($PSBoundParameters.ContainsKey("ScreenshotDelayMs")) {
-  Write-Warning "-ScreenshotDelayMs is retained for compatibility but is no longer used. Screenshots are captured as soon as the smoke result is ready."
 }
 
 $resolvedBrowserTimeoutMs = if ($BrowserTimeoutMs -gt 0) {
@@ -109,7 +93,6 @@ try {
   $query = @()
   if ($Workspace) { $query += "workspace=$Workspace" }
   if ($Dialog) { $query += "dialog=$Dialog" }
-  if ($Dialog -eq "point-catalog") { $query += "origin=$CatalogOrigin" }
   if ($LoadSample) { $query += "sample=1" }
   if ($TableLayoutOnly) { $query += "tableLayout=1" }
   if ($CustomMarkerIcon) { $query += "customMarkerIcon=1" }
@@ -117,6 +100,7 @@ try {
   if ($PropertiesSide) { $query += "propertiesSide=$PropertiesSide" }
   if ($ProjectRoundTrip) { $query += "projectRoundTrip=1" }
   if ($VisualCapture) { $query += "visual=1" }
+  if ($AccessibilityAudit -or $EnforceAccessibility) { $query += "accessibility=1" }
   $queryString = if ($query.Count) { "?" + ($query -join "&") } else { "" }
   $smokeUrl = "http://127.0.0.1:$port/tests/shell-interactions.html$queryString"
   $ready = $false

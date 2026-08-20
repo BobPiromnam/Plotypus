@@ -1,6 +1,6 @@
 # Plotypus Shell Handoff Conformance
 
-Status: implemented and verified on 2026-06-22.
+Status: implemented; responsive verification matrix updated on 2026-08-20.
 
 ## Implementation Order
 
@@ -15,7 +15,7 @@ Status: implemented and verified on 2026-06-22.
 | Numeric typography, sticky names, zebra rows, danger separation, focus rings | Complete | Table and focus states are covered by shell smoke assertions and visual baselines. |
 | Contextual Properties | Complete | Map, project row, category, region, translation, and quality contexts are rendered from active workspace and selection. |
 | Map details, CSV mapping, and point catalog dialogs | Complete | Dialog semantics, focus trapping, Escape, and focus restoration are browser-tested. |
-| 1440, 1280, and 1024 responsive behavior | Complete | Docked widths and 1024 slide-over behavior are browser-tested. |
+| Four documented responsive transitions | Complete | Test at 1440 plus 1281/1279, 1081/1079, 841/839, and 621/619 to cross every real CSS boundary. |
 | Offline runtime | Complete | D3, Papa Parse, Lato, IBM Plex Mono, boundaries, icons, and configuration are bundled. Remote boundary URLs have local fallbacks. |
 | Visual regression | Complete | Nine active baselines cover all desktop workspaces and responsive Map/Project sentinels; a full 15-case matrix is available. |
 
@@ -56,3 +56,5 @@ node tests\validate-config.cjs
 ```
 
 Use `run-visual-regression.ps1 -FullMatrix` before a release and only update baselines after reviewing every changed image.
+
+The responsive matrix follows four layout jobs: 1280 px narrows the docked Properties/workflow layout, 1080 px collapses lower-priority toolbar groups, 840 px switches to single-column workspaces, and 620 px enables the compact phone layout.

@@ -71,7 +71,7 @@ test("reference-city model preserves unresolved IDs and bilingual overrides", ()
   assert.equal(model.style, "default");
 });
 
-test("older projects migrate to an empty additive baselayer model", () => {
+test("older projects migrate to a boundary-only baselayer model", () => {
   const migrated = projectFile.validateAndNormalizeProject({
     version: 8,
     format: "plotypus-project",
@@ -88,12 +88,11 @@ test("older projects migrate to an empty additive baselayer model", () => {
   assert.deepEqual(migrated.baselayer, {
     id: "canada",
     geometrySource: "canada",
-    projection: "canada",
-    referenceCities: { ids: [], overrides: {}, rule: null, style: "default" }
+    projection: "canada"
   });
 });
 
-test("project round-trip stores reference-city IDs rather than resolved records", () => {
+test("legacy baselayer reference cities are removed when a project is normalized", () => {
   const baselayer = {
     id: "canada",
     geometrySource: "canada",
@@ -114,9 +113,6 @@ test("project round-trip stores reference-city IDs rather than resolved records"
     cleanType: value => value
   });
 
-  assert.deepEqual(JSON.parse(JSON.stringify(snapshot.baselayer.referenceCities.ids)), ["ca-on-toronto", "missing-city"]);
-  assert.equal(snapshot.baselayer.referenceCities.ids.some(value => typeof value === "object"), false);
-
   const restored = projectFile.validateAndNormalizeProject(snapshot, {
     currentVersion: 9,
     projectFormat: "plotypus-project",
@@ -124,20 +120,27 @@ test("project round-trip stores reference-city IDs rather than resolved records"
     mapStylePresets: { default: {} },
     defaultMapStyle: "default"
   });
-  assert.deepEqual(JSON.parse(JSON.stringify(restored.baselayer.referenceCities)), baselayer.referenceCities);
+  assert.deepEqual(restored.baselayer, {
+    id: "canada",
+    geometrySource: "canada",
+    projection: "canada"
+  });
+  assert.equal(Object.prototype.hasOwnProperty.call(restored.baselayer, "referenceCities"), false);
 });
 
-test("the field is mounted only in the two reviewed locations", () => {
+test("city selection is available only from Markers in City location mode", () => {
   const indexSource = fs.readFileSync(path.join(repoRoot, "index.html"), "utf8");
   const propertiesSource = fs.readFileSync(path.join(repoRoot, "properties.js"), "utf8");
-  const setupMounts = indexSource.match(/id="referenceCitiesField"/g) || [];
-  const baselayerMounts = indexSource.match(/id="referenceCitiesBaselayerField"/g) || [];
+  const appSource = fs.readFileSync(path.join(repoRoot, "app.js"), "utf8");
+  const projectCityMounts = indexSource.match(/id="projectCitiesField"/g) || [];
 
-  assert.equal(setupMounts.length, 1);
-  assert.equal(baselayerMounts.length, 1);
+  assert.equal(projectCityMounts.length, 1);
   assert.doesNotMatch(propertiesSource, /referenceCities(?:Properties|Baselayer)Field/);
-  assert.match(indexSource, /startup-baselayer-grid[\s\S]*id="referenceCitiesField"[\s\S]*startup-canvas-section/);
-  assert.match(indexSource, /id="regionTablePane"[\s\S]*id="referenceCitiesBaselayerField"[\s\S]*id="regionTable"/);
+  assert.doesNotMatch(indexSource, /referenceCities(?:Field|BaselayerField)|region-reference-cities-panel/);
+  assert.match(indexSource, /id="pointCatalogPresetsPanel"[\s\S]*id="projectCitiesField"/);
+  assert.match(indexSource, /id="addPointsBtn"[^>]*hidden[^>]*>[\s\S]*?data-i18n="toolbar\.add\.cities"/);
+  assert.match(appSource, /els\.addPointsBtn\.hidden = !isCities/);
+  assert.match(appSource, /function showPointCatalog\(event\) \{\s*if \(!isCityLocationMode\(\)\) return;/);
 });
 
 test("reference-city runtime remains compatible with direct file use", () => {
@@ -244,7 +247,7 @@ test("city-located project points survive project and CSV export", () => {
   assert.equal(csv.rows[0].name, "Housing project");
 });
 
-test("Project points uses city autosuggest instead of disconnected preset cards", () => {
+test("Markers uses city autosuggest instead of disconnected preset cards", () => {
   const indexSource = fs.readFileSync(path.join(repoRoot, "index.html"), "utf8");
   const appSource = fs.readFileSync(path.join(repoRoot, "app.js"), "utf8");
   const styleSource = fs.readFileSync(path.join(repoRoot, "style.css"), "utf8");
@@ -255,6 +258,6 @@ test("Project points uses city autosuggest instead of disconnected preset cards"
   assert.doesNotMatch(indexSource, /data-catalog-preset="major-cities"/);
   assert.match(appSource, /buildProjectCityImport/);
   assert.match(appSource, /regionVisibility\[regionId\] = true/);
-  assert.match(appSource, /drawReferenceCities/);
-  assert.match(styleSource, /#projectTable \.city-location-field\.is-compact input\.cityLocationInput\[type="text"\][\s\S]*?padding:\s*0 42px;/);
+  assert.doesNotMatch(appSource, /drawReferenceCities|createReferenceCityRenderState|reference-city-layer/);
+  assert.match(styleSource, /\.project-data-table \.city-location-field\.is-compact input\.cityLocationInput\[type="text"\][\s\S]*?padding:\s*0 42px;/);
 });

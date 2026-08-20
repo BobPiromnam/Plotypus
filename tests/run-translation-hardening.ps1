@@ -14,12 +14,15 @@ $scenarios = @(
   @{ Name = "workspace-regions"; Parameters = @{ Workspace = "regions"; LoadSample = $true } },
   @{ Name = "workspace-translate"; Parameters = @{ Workspace = "translate"; LoadSample = $true } },
   @{ Name = "workspace-quality"; Parameters = @{ Workspace = "quality"; LoadSample = $true } },
+  @{ Name = "dialog-startup"; Parameters = @{ Dialog = "startup" } },
+  @{ Name = "dialog-feedback"; Parameters = @{ Dialog = "feedback" } },
   @{ Name = "dialog-map-details"; Parameters = @{ Dialog = "map-details" } },
   @{ Name = "dialog-csv-map"; Parameters = @{ Dialog = "csv-map" } },
-  @{ Name = "dialog-point-catalog-projects"; Parameters = @{ Dialog = "point-catalog"; CatalogOrigin = "projects" } },
-  @{ Name = "dialog-point-catalog-regions"; Parameters = @{ Dialog = "point-catalog"; CatalogOrigin = "regions" } },
+  @{ Name = "dialog-point-catalog"; Parameters = @{ Dialog = "point-catalog" } },
+  @{ Name = "dialog-confirmation"; Parameters = @{ Dialog = "confirmation" } },
   @{ Name = "dialog-shortcuts"; Parameters = @{ Dialog = "shortcuts" } },
   @{ Name = "dialog-export-menu"; Parameters = @{ Dialog = "export-menu" } },
+  @{ Name = "menu-add-data"; Parameters = @{ Dialog = "add-data-menu" } },
   @{ Name = "dialog-project-load-error"; Parameters = @{ Dialog = "project-load-error" } }
 )
 

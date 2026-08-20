@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Plotypus button inventory</title>
+  <link rel="stylesheet" href="../style.css" />
+  <style>
+    body { min-height: 100vh; margin: 0; padding: 32px; background: var(--app-background); color: var(--ink); }
+    main { max-width: 1180px; margin: 0 auto; }
+    h1 { margin: 0 0 8px; }
+    p { margin: 0 0 24px; color: var(--muted); }
+    table { width: 100%; border-collapse: separate; border-spacing: 0; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel); }
+    th, td { padding: 14px; border-right: 1px solid var(--border-soft); border-bottom: 1px solid var(--border-soft); text-align: left; }
+    th:last-child, td:last-child { border-right: 0; }
+    tr:last-child td { border-bottom: 0; }
+    thead th { background: var(--surface); font-size: var(--type-caption-size); letter-spacing: .08em; text-transform: uppercase; }
+    tbody th { width: 120px; color: var(--ink-2); }
+    .inventory-focus { outline: 2px solid var(--focus); outline-offset: 2px; }
+    .btn-icon::before { content: "⋯"; font-weight: 700; }
+    td:nth-child(3) .btn-primary { border-color: var(--accent-dark); background: var(--accent-dark); }
+    td:nth-child(3) .btn-danger { border-color: var(--danger); background: var(--danger-bg); }
+    td:nth-child(3) .btn-quiet { border-color: transparent; background: var(--accent-soft); color: var(--accent-dark); }
+    td:nth-child(3) .btn-default,
+    td:nth-child(3) .btn-icon,
+    td:nth-child(3) .btn-toggle,
+    td:nth-child(3) .btn-card { border-color: var(--accent); background: var(--button-hover); }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Button inventory</h1>
+    <p>Seven canonical button jobs across rest, hover, focus-visible, disabled and active states.</p>
+    <table aria-label="Canonical button variants and states">
+      <thead><tr><th>Variant</th><th>Rest</th><th>Hover</th><th>Focus</th><th>Disabled</th><th>Active</th></tr></thead>
+      <tbody>
+        <tr><th>Primary</th><td><button class="btn-primary">Continue</button></td><td><button class="btn-primary">Continue</button></td><td><button class="btn-primary inventory-focus">Continue</button></td><td><button class="btn-primary" disabled>Continue</button></td><td><button class="btn-primary is-active">Continue</button></td></tr>
+        <tr><th>Default</th><td><button class="btn-default">Open</button></td><td><button class="btn-default">Open</button></td><td><button class="btn-default inventory-focus">Open</button></td><td><button class="btn-default" disabled>Open</button></td><td><button class="btn-default is-active">Open</button></td></tr>
+        <tr><th>Danger</th><td><button class="btn-danger">Delete</button></td><td><button class="btn-danger">Delete</button></td><td><button class="btn-danger inventory-focus">Delete</button></td><td><button class="btn-danger" disabled>Delete</button></td><td><button class="btn-danger is-active">Delete</button></td></tr>
+        <tr><th>Quiet</th><td><button class="btn-quiet">Learn more</button></td><td><button class="btn-quiet">Learn more</button></td><td><button class="btn-quiet inventory-focus">Learn more</button></td><td><button class="btn-quiet" disabled>Learn more</button></td><td><button class="btn-quiet is-active">Learn more</button></td></tr>
+        <tr><th>Icon</th><td><button class="btn-icon" aria-label="More"></button></td><td><button class="btn-icon" aria-label="More"></button></td><td><button class="btn-icon inventory-focus" aria-label="More"></button></td><td><button class="btn-icon" aria-label="More" disabled></button></td><td><button class="btn-icon is-active" aria-label="More"></button></td></tr>
+        <tr><th>Toggle</th><td><button class="btn-toggle" aria-pressed="false">Labels</button></td><td><button class="btn-toggle" aria-pressed="false">Labels</button></td><td><button class="btn-toggle inventory-focus" aria-pressed="false">Labels</button></td><td><button class="btn-toggle" aria-pressed="false" disabled>Labels</button></td><td><button class="btn-toggle" aria-pressed="true">Labels</button></td></tr>
+        <tr><th>Card</th><td><button class="btn-card" aria-pressed="false">Canada map</button></td><td><button class="btn-card" aria-pressed="false">Canada map</button></td><td><button class="btn-card inventory-focus" aria-pressed="false">Canada map</button></td><td><button class="btn-card" aria-pressed="false" disabled>Canada map</button></td><td><button class="btn-card" aria-pressed="true">Canada map</button></td></tr>
+      </tbody>
+    </table>
+  </main>
+</body>
+</html>
