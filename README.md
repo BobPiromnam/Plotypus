@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/plotypus-pin.png" width="88" alt="Plotypus logo">
+  <img src="assets/branding/plotypus-pin.png" width="88" alt="Plotypus logo">
 </p>
 
 <h1 align="center">Plotypus</h1>
@@ -39,15 +39,23 @@ Runtime libraries, fonts, and Canada/world boundary data are bundled with the re
 
 ## See the workflow
 
+### Arrange the map directly
+
+![Animated Plotypus map editor showing a label being dragged, an unlocked marker being moved, and the baselayer being resized](docs/screenshots/map-editing.gif)
+
+Drag labels into place, move unlocked markers when coordinates need refinement,
+and select the baselayer to resize it with visible handles and whole-percentage
+feedback.
+
 <table>
   <tr>
     <td width="50%">
-      <a href="docs/screenshots/projects.png"><img src="docs/screenshots/projects.png" alt="Plotypus Project points workspace with spreadsheet rows and coordinate controls"></a><br>
+      <a href="docs/screenshots/projects.png"><img src="docs/screenshots/projects.png" alt="Plotypus Markers workspace with spreadsheet rows and coordinate controls"></a><br>
       <strong>Bring in source data</strong><br>
       <sub>Edit spreadsheet rows and locations directly.</sub>
     </td>
     <td width="50%">
-      <a href="docs/screenshots/regions.png"><img src="docs/screenshots/regions.png" alt="Plotypus Map baselayer workspace with Canadian regions, status visibility, and colour controls"></a><br>
+      <a href="docs/screenshots/regions.png"><img src="docs/screenshots/regions.png" alt="Plotypus Baselayer workspace with Canadian regions, status visibility, and colour controls"></a><br>
       <strong>Control the baselayer</strong><br>
       <sub>Choose regions, statuses, and colour order.</sub>
     </td>
@@ -59,7 +67,7 @@ Runtime libraries, fonts, and Canada/world boundary data are bundled with the re
       <sub>Review English and French strings side by side.</sub>
     </td>
     <td width="50%">
-      <a href="docs/screenshots/quality.png"><img src="docs/screenshots/quality.png" alt="Plotypus Map quality workspace with export-readiness checks"></a><br>
+      <a href="docs/screenshots/quality.png"><img src="docs/screenshots/quality.png" alt="Plotypus QA workspace with export-readiness checks"></a><br>
       <strong>Review export readiness</strong><br>
       <sub>Locate layout and publishing issues before export.</sub>
     </td>
@@ -82,7 +90,7 @@ All runtime libraries, fonts, map boundaries, and other required assets are incl
 
 2. Open `index.html` in Microsoft Edge, Chrome, or another modern desktop browser.
 3. Select **Sample** to load the example project.
-4. Select **Fit: map + labels**, refine the layout, and open **Map quality** to review it.
+4. Select **Fit: map + labels**, refine the layout, and open **QA** to review it.
 5. Select **Export** and download an SVG or PNG.
 
 Project data stays in the browser unless you explicitly save, export, copy, or share a file.
@@ -94,7 +102,7 @@ A server is not required for normal offline use. Run Plotypus from a local or ho
 On Windows, if Python is installed, the included launcher starts a local server and opens Plotypus:
 
 ```powershell
-.\start-plotypus.ps1
+.\scripts\start-plotypus.ps1
 ```
 
 Or start Python's static server directly on any platform:
@@ -109,11 +117,11 @@ Then open <http://localhost:8000/>. For hosting, publish the repository folder t
 
 The five workspaces follow the publishing workflow:
 
-1. **Project points** — add, paste, or import your source data. Choose coordinate or region-based locations.
-2. **Map baselayer** — choose Canada or the world, include the regions you need, and set fills, values, and statuses.
-3. **Map** — define legend items from Document Properties, choose the page and canvas size, run auto-placement, and make final adjustments directly on the canvas.
-4. **Translate** — add or import French content and review missing translations.
-5. **Map quality** — resolve automated checks, locate layout problems, and complete the final human review.
+1. **Markers** — add, paste, or import your source data. Choose coordinate or region-based locations.
+2. **Baselayer** — choose Canada or the world, include the regions you need, and set fills, values, and statuses.
+3. **Translate** — add or import French content and review missing translations.
+4. **Map** — define legend items from Document Properties, choose the page and canvas size, run auto-placement, and make final adjustments directly on the canvas.
+5. **QA** — resolve automated checks, locate layout problems, and complete the final human review.
 
 For a new dataset, define the legend items in **Map** before importing rows so incoming `type` values can be matched correctly.
 
@@ -146,9 +154,9 @@ Three fictional datasets exercise each import location mode:
 
 | Sample | Select during import | Location column |
 | --- | --- | --- |
-| [`sample-projects.csv`](sample-projects.csv) | Coordinates | `lon`, `lat` |
-| [`sample-projects-cities.csv`](sample-projects-cities.csv) | City | `city` |
-| [`sample-projects-provinces.csv`](sample-projects-provinces.csv) | Province or territory | `region` |
+| [`sample-projects.csv`](samples/sample-projects.csv) | Coordinates | `lon`, `lat` |
+| [`sample-projects-cities.csv`](samples/sample-projects-cities.csv) | City | `city` |
+| [`sample-projects-provinces.csv`](samples/sample-projects-provinces.csv) | Province or territory | `region` |
 
 The location choice in the mapping dialog applies to the complete import and replaces the current Project-point table. Switching an existing coordinate table to **Province or territory** derives containing regions where possible and keeps the original coordinates for switching back. Switching to **City** does not guess a nearest city; rows need an exact city selection from the offline catalogue. A selected city retains its exact catalogue coordinates and containing province when modes are changed. Province-only rows have no hidden point coordinates, so switching them to Coordinates leaves them as unlocated callouts until coordinates are supplied.
 
@@ -169,12 +177,30 @@ Publishers can customize Plotypus without changing the application code.
 
 | Layer | File | Purpose |
 | --- | --- | --- |
-| Bundled defaults | [`config.js`](config.js) | Keeps the app usable when opened directly from `file://` |
+| Bundled defaults | [`config.js`](src/config.js) | Keeps the app usable when opened directly from `file://` |
 | Deployment overrides | [`plotypus.config.json`](plotypus.config.json) | Customizes a hosted or local-server deployment |
 
 Configuration covers page and image sizes, fonts, map themes, category styles, approved colours, performance budgets, defaults, and sample data. Browsers commonly block sibling JSON reads from `file://`, so serve the folder locally when testing `plotypus.config.json`.
 
 Read the [configuration guide](docs/configuration.md) for examples and the complete publishing workflow.
+
+## Repository layout
+
+The repository keeps deployable runtime files separate from development material:
+
+| Directory | Contents |
+| --- | --- |
+| `src/` | Ordered browser scripts and first-party runtime libraries |
+| `styles/` | Application design system and map theme stylesheets |
+| `assets/` | Branding, offline fonts, and vendored third-party browser libraries |
+| `data/` | Bundled city and boundary datasets |
+| `samples/` | Example CSV files for each supported location workflow |
+| `scripts/` | Local launch helpers |
+| `tests/` | Unit, browser, accessibility, responsive, and visual checks |
+| `tools/` | Repository validation and generated-data utilities |
+| `docs/` | Current user/developer documentation and reviewed screenshots |
+
+`index.html` and `plotypus.config.json` remain at the root because they are the application entry point and deployment-editable configuration.
 
 ## Contributing and support
 

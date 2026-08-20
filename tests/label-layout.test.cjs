@@ -5,7 +5,7 @@ const test = require("node:test");
 const vm = require("node:vm");
 
 function loadFactory() {
-  const source = fs.readFileSync(path.join(__dirname, "..", "label-layout.js"), "utf8");
+  const source = fs.readFileSync(path.join(__dirname, "..", "src", "label-layout.js"), "utf8");
   const context = { window: {} };
   vm.runInNewContext(source, context, { filename: "label-layout.js" });
   return context.window.PLOTYPUS_LABEL_LAYOUT;

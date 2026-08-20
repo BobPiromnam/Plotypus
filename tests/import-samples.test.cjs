@@ -6,8 +6,8 @@ const path = require("node:path");
 const test = require("node:test");
 
 const Papa = require("../assets/vendor/papaparse-5.4.1.min.js");
-const cityIntegration = require("../city-integration.js");
-const regionMatching = require("../region-matching.js");
+const cityIntegration = require("../src/city-integration.js");
+const regionMatching = require("../src/region-matching.js");
 const cities = require("../data/cities.json");
 
 const repoRoot = path.join(__dirname, "..");
@@ -16,7 +16,7 @@ const regionRows = provinceNames.map(name => ({ id: name, name }));
 const regionLookup = regionMatching.buildRegionLookup(regionRows);
 
 function parseFixture(fileName) {
-  const csv = fs.readFileSync(path.join(repoRoot, fileName), "utf8");
+  const csv = fs.readFileSync(path.join(repoRoot, "samples", fileName), "utf8");
   const parsed = Papa.parse(csv, { header: true, skipEmptyLines: true });
   assert.deepEqual(parsed.errors, [], `${fileName} should parse without CSV errors`);
   assert.ok(parsed.data.length > 0, `${fileName} should contain data rows`);

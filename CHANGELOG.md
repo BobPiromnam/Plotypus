@@ -25,6 +25,9 @@ Earlier project history remains available in the Git commit log.
 - Added rendered regression coverage for workspace headings, responsive
   layouts, Properties components, City editing, sticky table headers, and
   bilingual UI states.
+- Added an animated documentation demo of dragging labels, moving unlocked
+  markers, and resizing the baselayer, backed by a reusable real-interaction
+  capture mode in the headless screenshot harness.
 
 ### Changed
 
@@ -53,6 +56,11 @@ Earlier project history remains available in the Git commit log.
 - Pruned obsolete overlapping tests and aligned the Windows smoke,
   accessibility, translation, and responsive matrices with the current
   workspaces and CSS boundaries.
+- Refreshed every repository documentation screenshot and visual-regression
+  baseline from the current Markers, Baselayer, Translate, Map, and QA views.
+- Reorganized the repository into clear runtime, style, branding, data, sample,
+  script, test, tool, and documentation directories while preserving direct
+  `file://` use and the existing ordered-script architecture.
 
 ### Fixed
 
@@ -71,3 +79,10 @@ Earlier project history remains available in the Git commit log.
   primary content.
 - Corrected inconsistent Properties typography, control alignment, spacing, and
   disabled-state hierarchy.
+
+### Removed
+
+- Removed superseded design handoffs, completed audit and migration plans,
+  unused branding exports, and an obsolete standalone loading fixture. Current
+  guidance and reviewed screenshots remain in `docs/`; historical tracked
+  material remains available through Git history.

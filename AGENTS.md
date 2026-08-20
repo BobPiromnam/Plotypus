@@ -45,17 +45,22 @@ Important files:
 | Path | Responsibility |
 | --- | --- |
 | `index.html` | Static shell, workspaces, dialogs, semantic structure, script order |
-| `style.css` | Canonical application tokens, components, responsive behaviour, and states |
-| `app.js` | Main application state, orchestration, rendering, import/export, and interaction wiring |
-| `properties.js` | Contextual Properties renderers and document/object controls |
-| `workspace.js` | Workspace summary and shell helpers |
-| `i18n.js` | English and French UI dictionaries |
-| `config.js` | File-mode defaults used when the app opens directly from `file://` |
+| `styles/app.css` | Canonical application tokens, components, responsive behaviour, and states |
+| `styles/themes/` | Map-output theme stylesheets |
+| `src/app.js` | Main application state, orchestration, rendering, import/export, and interaction wiring |
+| `src/properties.js` | Contextual Properties renderers and document/object controls |
+| `src/workspace.js` | Workspace summary and shell helpers |
+| `src/i18n.js` | English and French UI dictionaries |
+| `src/config.js` | File-mode defaults used when the app opens directly from `file://` |
 | `plotypus.config.json` | Editable hosted/local-server configuration |
-| `project-file.js`, `project-io.js` | Project validation, migration, snapshots, and exchange formats |
-| `geometry.js`, `label-layout.js` | Geometry and label-layout policy |
-| `reference-cities.js`, `city-integration.js`, `src/lib/city-search*` | Bundled city catalogue and Markers city workflow |
-| `icons.js` | Shared icon paths and rendering |
+| `src/project-file.js`, `src/project-io.js` | Project validation, migration, snapshots, and exchange formats |
+| `src/geometry.js`, `src/label-layout.js` | Geometry and label-layout policy |
+| `src/reference-cities.js`, `src/city-integration.js`, `src/lib/city-search*` | Bundled city catalogue and Markers city workflow |
+| `src/icons.js` | Shared icon paths and rendering |
+| `assets/branding/`, `assets/fonts/`, `assets/vendor/` | Branding, offline fonts, and third-party runtime libraries |
+| `data/` | Generated city runtime and bundled boundary datasets |
+| `samples/` | Import fixtures for coordinates, cities, and regions |
+| `scripts/` | Local launch helpers |
 | `tests/*.test.cjs` | Fast Node contract and unit tests |
 | `tests/shell-interactions.html` | Browser interaction, layout, accessibility, and smoke assertions |
 | `tests/run-*.ps1` | Windows Chromium/Edge smoke, accessibility, responsive, and visual workflows |
@@ -64,7 +69,9 @@ Important files:
 
 The runtime uses ordered browser scripts and `window.PLOTYPUS_*` APIs so direct-file mode continues to work. Preserve script order and exported global contracts. Do not convert one file to ESM or add a bundler in isolation.
 
-`config.js` and `plotypus.config.json` are paired sources for file and server modes. When changing shared configuration, update both and run the parity test. Arrays replace defaults; objects merge with defaults.
+Keep root files limited to the application entry point, deployment configuration, package/repository metadata, and top-level documentation. Put runtime JavaScript in `src/`, styles in `styles/`, runtime assets in `assets/` or `data/`, sample imports in `samples/`, and local launch helpers in `scripts/`. Keep `docs/` limited to current user/developer documentation and reviewed screenshots; use Git history instead of retaining completed audits, superseded plans, or design handoffs in the working tree. Do not create a new root-level source, sample, test, or generated artifact.
+
+`src/config.js` and `plotypus.config.json` are paired sources for file and server modes. When changing shared configuration, update both and run the parity test. Arrays replace defaults; objects merge with defaults.
 
 Do not hand-edit generated city runtime data without checking the relevant builders in `tools/`. Preserve project schema migrations and stable category, row, layout, and city IDs.
 
@@ -164,7 +171,7 @@ Display map and canvas scale as whole percentages. The map-scale control uses on
 
 ## 6. CSS architecture
 
-`style.css` is a design system, not an append-only patch log.
+`styles/app.css` is a design system, not an append-only patch log.
 
 - Reuse root colour, type, spacing, radius, icon, and control-size tokens. Add a token only when it represents a repeated semantic decision.
 - Prefer a single low-specificity class for a component and explicit modifier/state classes such as `.is-open`, `.is-selected`, or `[data-state]`.
@@ -214,7 +221,7 @@ Target WCAG 2.2 AA across every workspace, dialog, popover, menu, Properties pan
 
 ## 9. Bilingual content and data
 
-- Add every new user-facing string to both `en` and `fr` dictionaries in `i18n.js` in the same change.
+- Add every new user-facing string to both `en` and `fr` dictionaries in `src/i18n.js` in the same change.
 - Keep interpolation variables identical between languages and use the existing translation functions rather than hard-coded UI strings.
 - Use proper accents, apostrophes, multiplication signs, en/em dashes, non-breaking characters, and locale-aware decimal formatting where appropriate.
 - Do not shrink French text to force it into an English-sized box. Make the component reflow.
@@ -241,8 +248,8 @@ Choose checks in proportion to risk, but never skip the fastest relevant contrac
 ### Fast cross-platform checks
 
 ```text
-node --check app.js
-node --check properties.js
+node --check src/app.js
+node --check src/properties.js
 node tests/run-unit-tests.cjs
 node tools/css-selector-audit.cjs
 node tests/validate-config.cjs

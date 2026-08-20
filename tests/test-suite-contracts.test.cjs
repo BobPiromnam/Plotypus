@@ -108,10 +108,68 @@ test("unit suite has no disabled tests and keeps manual HTML fixtures intentiona
   assert.deepEqual(htmlFixtures, ["shell-interactions.html", "smoke-labels.html"]);
 });
 
+test("repository root stays limited to entry points and repository metadata", () => {
+  const allowedFiles = [
+    "AGENTS.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "README.md",
+    "index.html",
+    "package-lock.json",
+    "package.json",
+    "plotypus.config.json"
+  ];
+  const rootFiles = fs.readdirSync(repoRoot, { withFileTypes: true })
+    .filter(entry => entry.isFile() && !entry.name.startsWith("."))
+    .map(entry => entry.name)
+    .sort();
+  assert.deepEqual(rootFiles, allowedFiles);
+
+  const allowedDirectories = [
+    "assets",
+    "data",
+    "docs",
+    "node_modules",
+    "samples",
+    "scripts",
+    "src",
+    "styles",
+    "tests",
+    "tools"
+  ];
+  const rootDirectories = fs.readdirSync(repoRoot, { withFileTypes: true })
+    .filter(entry => entry.isDirectory() && !entry.name.startsWith("."))
+    .map(entry => entry.name)
+    .sort();
+  assert.deepEqual(rootDirectories, allowedDirectories);
+});
+
+test("documentation and branding inventories stay intentional", () => {
+  const docsEntries = fs.readdirSync(path.join(repoRoot, "docs"), { withFileTypes: true })
+    .map(entry => entry.name)
+    .sort();
+  assert.deepEqual(docsEntries, ["button-inventory.html", "configuration.md", "screenshots"]);
+
+  const documentationScreenshots = fs.readdirSync(path.join(repoRoot, "docs", "screenshots"))
+    .sort();
+  assert.deepEqual(documentationScreenshots, [
+    "map-editing.gif",
+    "preview.png",
+    "projects.png",
+    "quality.png",
+    "regions.png",
+    "translate.png"
+  ]);
+
+  const brandingFiles = fs.readdirSync(path.join(repoRoot, "assets", "branding"))
+    .sort();
+  assert.deepEqual(brandingFiles, ["plotypus-pin.png"]);
+});
+
 test("AGENTS verification commands reference files that exist", () => {
   const requiredPaths = [
-    "app.js",
-    "properties.js",
+    "src/app.js",
+    "src/properties.js",
     "tests/run-unit-tests.cjs",
     "tools/css-selector-audit.cjs",
     "tests/validate-config.cjs",

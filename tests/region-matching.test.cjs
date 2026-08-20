@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const regionMatching = require("../region-matching.js");
+const regionMatching = require("../src/region-matching.js");
 
 const lookup = regionMatching.buildRegionLookup([
   { id: "Alberta", name: "Alberta" },

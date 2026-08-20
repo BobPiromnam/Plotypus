@@ -5,15 +5,15 @@ const test = require("node:test");
 const vm = require("node:vm");
 
 function loadApi() {
-  const appSource = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
-  const geometrySource = fs.readFileSync(path.join(__dirname, "..", "geometry.js"), "utf8");
-  const markerColourSource = fs.readFileSync(path.join(__dirname, "..", "marker-colour.js"), "utf8");
-  const labelLayoutSource = fs.readFileSync(path.join(__dirname, "..", "label-layout.js"), "utf8");
-  const projectIoSource = fs.readFileSync(path.join(__dirname, "..", "project-io.js"), "utf8");
-  const regionMatchingSource = fs.readFileSync(path.join(__dirname, "..", "region-matching.js"), "utf8");
-  const workspaceSource = fs.readFileSync(path.join(__dirname, "..", "workspace.js"), "utf8");
-  const propertiesSource = fs.readFileSync(path.join(__dirname, "..", "properties.js"), "utf8");
-  const projectFileSource = fs.readFileSync(path.join(__dirname, "..", "project-file.js"), "utf8");
+  const appSource = fs.readFileSync(path.join(__dirname, "..", "src", "app.js"), "utf8");
+  const geometrySource = fs.readFileSync(path.join(__dirname, "..", "src", "geometry.js"), "utf8");
+  const markerColourSource = fs.readFileSync(path.join(__dirname, "..", "src", "marker-colour.js"), "utf8");
+  const labelLayoutSource = fs.readFileSync(path.join(__dirname, "..", "src", "label-layout.js"), "utf8");
+  const projectIoSource = fs.readFileSync(path.join(__dirname, "..", "src", "project-io.js"), "utf8");
+  const regionMatchingSource = fs.readFileSync(path.join(__dirname, "..", "src", "region-matching.js"), "utf8");
+  const workspaceSource = fs.readFileSync(path.join(__dirname, "..", "src", "workspace.js"), "utf8");
+  const propertiesSource = fs.readFileSync(path.join(__dirname, "..", "src", "properties.js"), "utf8");
+  const projectFileSource = fs.readFileSync(path.join(__dirname, "..", "src", "project-file.js"), "utf8");
   const windowStub = {
     d3: {},
     PLOTYPUS_TEST_MODE: true,
@@ -68,7 +68,7 @@ function loadApi() {
 }
 
 function loadProjectIo() {
-  const projectIoSource = fs.readFileSync(path.join(__dirname, "..", "project-io.js"), "utf8");
+  const projectIoSource = fs.readFileSync(path.join(__dirname, "..", "src", "project-io.js"), "utf8");
   const windowStub = {};
   vm.runInNewContext(projectIoSource, { window: windowStub }, { filename: "project-io.js" });
   assert.ok(windowStub.PLOTYPUS_PROJECT_IO, "project I/O API should be exported");
@@ -318,7 +318,7 @@ test("localized config fallbacks prefer the requested language", () => {
 
 test("world region names resolve in French without changing stable English IDs", () => {
   const api = loadApi();
-  const world = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "assets", "world-countries.geojson"), "utf8"));
+  const world = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "data", "boundaries", "world-countries.geojson"), "utf8"));
   const unresolved = world.features.filter(feature => !api.getFrenchWorldRegionName(feature.properties));
   assert.deepEqual(unresolved.map(feature => feature.properties.name), []);
 
@@ -545,7 +545,7 @@ test("rich label image sizing stays proportional and expands label geometry", ()
 
 test("project snapshots round-trip portable assets, leader settings, metadata, and layouts", () => {
   const projectIo = loadProjectIo();
-  const projectFile = require("../project-file.js");
+  const projectFile = require("../src/project-file.js");
   const richImageBlock = {
     type: "image",
     assetRef: "data:image/png;base64,iVBORw0KGgo=",

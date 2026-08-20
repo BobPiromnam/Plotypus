@@ -2,7 +2,7 @@
 
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const markerColour = require("../marker-colour.js");
+const markerColour = require("../src/marker-colour.js");
 
 function pixels(values) {
   return { data: Uint8ClampedArray.from(values.flat()) };

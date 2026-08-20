@@ -3,9 +3,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
-const feedback = require("../feedback.js");
+const feedback = require("../src/feedback.js");
 
-const style = fs.readFileSync(path.resolve(__dirname, "..", "style.css"), "utf8");
+const style = fs.readFileSync(path.resolve(__dirname, "..", "styles", "app.css"), "utf8");
 
 function cssToken(name) {
   const match = style.match(new RegExp(`--${name}\\s*:\\s*([^;]+);`));

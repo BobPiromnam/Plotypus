@@ -2,7 +2,7 @@
   /*
     Developer note: add map styles here.
 
-    1. Create a matching CSS file in themes/, for example themes/my-style.css.
+    1. Create a matching CSS file in styles/themes/, for example styles/themes/my-style.css.
        The CSS file should usually override :root variables only.
     2. Add a new entry to MAP_APP_STYLE_PRESETS.
        - label: what users see in the Map style dropdown.
@@ -31,7 +31,7 @@
     "goc-green": {
       label: "GoC green",
       labelFr: "Vert GC",
-      stylesheet: "themes/goc-green.css?v=20260612-map-only",
+      stylesheet: "styles/themes/goc-green.css?v=20260612-map-only",
       regionColours: ["#c7ded5", "#96c6b4", "#6caf94", "#078c70"],
       categoryStyles: [
         { colour: "#444444", stroke: "#ffffff", markerSize: 10, lineWidth: 2 },
@@ -42,7 +42,7 @@
     "goc-blue": {
       label: "GoC blue",
       labelFr: "Bleu GC",
-      stylesheet: "themes/goc-blue.css?v=20260612-map-only",
+      stylesheet: "styles/themes/goc-blue.css?v=20260612-map-only",
       regionColours: ["#d7e5f5", "#9dbbe0", "#26374a"],
       categoryStyles: [
         { colour: "#26374a", stroke: "#ffffff", markerSize: 10, lineWidth: 2 },
@@ -53,7 +53,7 @@
     "neutral-print": {
       label: "Neutral print",
       labelFr: "Impression neutre",
-      stylesheet: "themes/neutral-print.css?v=20260612-map-only",
+      stylesheet: "styles/themes/neutral-print.css?v=20260612-map-only",
       regionColours: ["#efefef", "#d8d8d8", "#bdbdbd"],
       categoryStyles: [
         { colour: "#222222", stroke: "#ffffff", markerSize: 10, lineWidth: 2 },
@@ -64,7 +64,7 @@
     "high-contrast": {
       label: "High contrast",
       labelFr: "Contraste élevé",
-      stylesheet: "themes/high-contrast.css?v=20260612-map-only",
+      stylesheet: "styles/themes/high-contrast.css?v=20260612-map-only",
       regionColours: ["#ffffff", "#d8d8d8", "#000000"],
       categoryStyles: [
         { colour: "#000000", stroke: "#ffffff", markerSize: 11, lineWidth: 3 },

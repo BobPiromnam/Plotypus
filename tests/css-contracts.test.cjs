@@ -4,9 +4,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const root = path.resolve(__dirname, "..");
-const style = fs.readFileSync(path.join(root, "style.css"), "utf8");
+const style = fs.readFileSync(path.join(root, "styles", "app.css"), "utf8");
 const inventory = fs.readFileSync(path.join(root, "docs", "button-inventory.html"), "utf8");
-const i18n = fs.readFileSync(path.join(root, "i18n.js"), "utf8");
+const i18n = fs.readFileSync(path.join(root, "src", "i18n.js"), "utf8");
 const {
   auditCss,
   auditDuplicateDeclarations,

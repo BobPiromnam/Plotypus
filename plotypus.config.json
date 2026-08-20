@@ -29,7 +29,7 @@
       "label": "Canada provinces and territories",
       "labelFr": "Provinces et territoires du Canada",
       "url": "https://data.opendatasoft.com/api/explore/v2.1/catalog/datasets/georef-canada-province%40public/exports/geojson?lang=en&timezone=America%2FToronto",
-      "fallbackUrl": "assets/canada-regions.geojson",
+      "fallbackUrl": "data/boundaries/canada-regions.geojson",
       "fallbackKey": "canada",
       "projection": "canada"
     },
@@ -37,7 +37,7 @@
       "label": "World countries",
       "labelFr": "Pays du monde",
       "url": "https://datahub.io/core/geo-boundaries-world-110m/_r/-/countries.geojson",
-      "fallbackUrl": "assets/world-countries.geojson",
+      "fallbackUrl": "data/boundaries/world-countries.geojson",
       "fallbackKey": "world",
       "projection": "world"
     }
@@ -130,7 +130,7 @@
     "goc-green": {
       "label": "GoC green",
       "labelFr": "Vert GC",
-      "stylesheet": "themes/goc-green.css?v=20260612-map-only",
+      "stylesheet": "styles/themes/goc-green.css?v=20260612-map-only",
       "regionColours": ["#b4d6c9", "#88b6a5", "#57a588", "#088b70"],
       "categoryStyles": [
         { "colour": "#444444", "stroke": "#ffffff", "markerSize": 4, "lineWidth": 2 },
@@ -141,7 +141,7 @@
     "goc-blue": {
       "label": "GoC blue",
       "labelFr": "Bleu GC",
-      "stylesheet": "themes/goc-blue.css?v=20260612-map-only",
+      "stylesheet": "styles/themes/goc-blue.css?v=20260612-map-only",
       "regionColours": ["#d7e5f5", "#9dbbe0", "#26374a"],
       "categoryStyles": [
         { "colour": "#26374a", "stroke": "#ffffff", "markerSize": 10, "lineWidth": 2 },
@@ -152,7 +152,7 @@
     "neutral-print": {
       "label": "Neutral print",
       "labelFr": "Impression neutre",
-      "stylesheet": "themes/neutral-print.css?v=20260612-map-only",
+      "stylesheet": "styles/themes/neutral-print.css?v=20260612-map-only",
       "regionColours": ["#efefef", "#d8d8d8", "#bdbdbd"],
       "categoryStyles": [
         { "colour": "#222222", "stroke": "#ffffff", "markerSize": 10, "lineWidth": 2 },
@@ -163,7 +163,7 @@
     "high-contrast": {
       "label": "High contrast",
       "labelFr": "Contraste élevé",
-      "stylesheet": "themes/high-contrast.css?v=20260612-map-only",
+      "stylesheet": "styles/themes/high-contrast.css?v=20260612-map-only",
       "regionColours": ["#ffffff", "#d8d8d8", "#000000"],
       "categoryStyles": [
         { "colour": "#000000", "stroke": "#ffffff", "markerSize": 11, "lineWidth": 3 },

@@ -102,6 +102,126 @@ async function evaluate(connection, expression) {
   return response.result?.value;
 }
 
+async function capturePng(connection, outputPath, width, height) {
+  const screenshot = await connection.send("Page.captureScreenshot", {
+    format: "png",
+    fromSurface: true,
+    captureBeyondViewport: true,
+    clip: { x: 0, y: 0, width, height, scale: 1 }
+  });
+  fs.writeFileSync(outputPath, Buffer.from(screenshot.data, "base64"));
+}
+
+async function getAppElementRect(connection, selector) {
+  return evaluate(connection, `(() => {
+    const doc = document.querySelector("#app")?.contentDocument;
+    const node = doc?.querySelector(${JSON.stringify(selector)});
+    if (!node) return null;
+    const rect = node.getBoundingClientRect();
+    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+  })()`);
+}
+
+async function dispatchMouse(connection, type, x, y, buttons) {
+  await connection.send("Input.dispatchMouseEvent", {
+    type,
+    x,
+    y,
+    button: type === "mouseMoved" ? "none" : "left",
+    buttons,
+    clickCount: type === "mousePressed" ? 1 : 0
+  });
+}
+
+async function captureDragSequence(connection, options) {
+  const {
+    selector,
+    outputDirectory,
+    prefix,
+    width,
+    height,
+    deltaX,
+    deltaY,
+    steps = 12,
+    holdFrames = 5
+  } = options;
+  const rect = await waitFor(`${prefix} drag target`, () => getAppElementRect(connection, selector), 4000);
+  const startX = rect.x + rect.width / 2;
+  const startY = rect.y + rect.height / 2;
+  let frameIndex = 0;
+  const capture = async () => {
+    frameIndex += 1;
+    const outputPath = path.join(outputDirectory, `${prefix}-${String(frameIndex).padStart(3, "0")}.png`);
+    await capturePng(connection, outputPath, width, height);
+  };
+
+  for (let index = 0; index < holdFrames; index += 1) await capture();
+  await dispatchMouse(connection, "mousePressed", startX, startY, 1);
+  for (let index = 1; index <= steps; index += 1) {
+    const progress = index / steps;
+    await dispatchMouse(connection, "mouseMoved", startX + deltaX * progress, startY + deltaY * progress, 1);
+    await delay(90);
+    await capture();
+  }
+  await dispatchMouse(connection, "mouseReleased", startX + deltaX, startY + deltaY, 0);
+  await delay(350);
+  for (let index = 0; index < holdFrames; index += 1) await capture();
+}
+
+async function captureMapEditingDemo(connection, outputDirectory, width, height) {
+  fs.mkdirSync(outputDirectory, { recursive: true });
+  await evaluate(connection, `(() => {
+    const frame = document.querySelector("#app");
+    const doc = frame?.contentDocument;
+    const input = doc?.querySelector("#lockMarkerCoordinatesInput");
+    if (!frame?.contentWindow || !input) return false;
+    input.checked = false;
+    input.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+    return true;
+  })()`);
+  await waitFor("unlocked map markers", async () => {
+    const count = await evaluate(connection, `document.querySelector("#app")?.contentDocument?.querySelectorAll("#mapSvg .marker-layer .marker:not(.is-locked)").length || 0`);
+    return count > 0 ? count : null;
+  }, 12000);
+
+  await captureDragSequence(connection, {
+    selector: "#mapSvg .map-label[data-layout-id='label-0']",
+    outputDirectory,
+    prefix: "label",
+    width,
+    height,
+    deltaX: 112,
+    deltaY: 56
+  });
+  await captureDragSequence(connection, {
+    selector: "#mapSvg .marker-layer .marker[data-layout-id='label-0']",
+    outputDirectory,
+    prefix: "marker",
+    width,
+    height,
+    deltaX: 72,
+    deltaY: 44
+  });
+
+  await evaluate(connection, `(() => {
+    const frame = document.querySelector("#app");
+    const province = frame?.contentDocument?.querySelector("#mapSvg .province");
+    if (!frame?.contentWindow || !province) return false;
+    province.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true, cancelable: true, view: frame.contentWindow }));
+    return true;
+  })()`);
+  await waitFor("baselayer resize handles", () => getAppElementRect(connection, "#mapSvg .map-scale-handle-e"), 4000);
+  await captureDragSequence(connection, {
+    selector: "#mapSvg .map-scale-handle-e",
+    outputDirectory,
+    prefix: "baselayer",
+    width,
+    height,
+    deltaX: 72,
+    deltaY: 0
+  });
+}
+
 async function main() {
   const values = parseArguments(process.argv.slice(2));
   const browserPath = path.resolve(required(values, "browser"));
@@ -110,6 +230,7 @@ async function main() {
   const domPath = path.resolve(required(values, "dom"));
   const errorPath = path.resolve(required(values, "error-output"));
   const screenshotPath = values.screenshot ? path.resolve(values.screenshot) : "";
+  const mapEditingFramesDirectory = values["map-editing-frames"] ? path.resolve(values["map-editing-frames"]) : "";
   const axeScriptPath = values["axe-script"] ? path.resolve(values["axe-script"]) : "";
   const axeReportPath = values["axe-report"] ? path.resolve(values["axe-report"]) : "";
   const axeFailImpacts = new Set(String(values["axe-fail-impacts"] || "").split(",").map(value => value.trim()).filter(Boolean));
@@ -125,6 +246,7 @@ async function main() {
   fs.mkdirSync(path.dirname(domPath), { recursive: true });
   fs.mkdirSync(path.dirname(errorPath), { recursive: true });
   if (screenshotPath) fs.mkdirSync(path.dirname(screenshotPath), { recursive: true });
+  if (mapEditingFramesDirectory) fs.mkdirSync(mapEditingFramesDirectory, { recursive: true });
   if (axeReportPath) fs.mkdirSync(path.dirname(axeReportPath), { recursive: true });
 
   const browserArguments = [
@@ -224,16 +346,14 @@ async function main() {
       throw error;
     }
 
+    if (mapEditingFramesDirectory) {
+      await captureMapEditingDemo(connection, mapEditingFramesDirectory, width, height);
+    }
+
     const html = await evaluate(connection, "document.documentElement.outerHTML");
     fs.writeFileSync(domPath, `<!doctype html>\n${html}\n`, "utf8");
     if (screenshotPath) {
-      const screenshot = await connection.send("Page.captureScreenshot", {
-        format: "png",
-        fromSurface: true,
-        captureBeyondViewport: true,
-        clip: { x: 0, y: 0, width, height, scale: 1 }
-      });
-      fs.writeFileSync(screenshotPath, Buffer.from(screenshot.data, "base64"));
+      await capturePng(connection, screenshotPath, width, height);
     }
     let accessibility = null;
     if (axeScriptPath) {

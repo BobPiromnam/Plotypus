@@ -36,21 +36,8 @@ jobs:
       - name: Check JavaScript syntax
         shell: pwsh
         run: |
-          node --check app.js
-          node --check city-integration.js
-          node --check config.js
+          Get-ChildItem src -Recurse -Filter *.js | Sort-Object FullName | ForEach-Object { node --check $_.FullName }
           node --check data/cities.js
-          node --check feedback.js
-          node --check geometry.js
-          node --check icons.js
-          node --check label-layout.js
-          node --check presets.js
-          node --check project-io.js
-          node --check project-file.js
-          node --check properties.js
-          node --check reference-cities.js
-          node --check src/lib/city-search.js
-          node --check src/lib/city-search-runtime.js
           node --check tests/headless-smoke-runner.cjs
           node --check tests/run-unit-tests.cjs
           node --check tests/validate-performance-report.cjs
@@ -59,7 +46,6 @@ jobs:
           node --check tests/validate-config.cjs
           node --check tools/build-reference-city-runtime.cjs
           node --check tools/build-cities.js
-          node --check workspace.js
 
       - name: Validate configuration
         shell: pwsh

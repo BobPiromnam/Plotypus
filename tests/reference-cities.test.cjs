@@ -8,12 +8,12 @@ const { pathToFileURL } = require("node:url");
 const vm = require("node:vm");
 
 const repoRoot = path.join(__dirname, "..");
-const referenceCities = require(path.join(repoRoot, "reference-cities.js"));
-const cityIntegration = require(path.join(repoRoot, "city-integration.js"));
-const projectFile = require(path.join(repoRoot, "project-file.js"));
+const referenceCities = require(path.join(repoRoot, "src", "reference-cities.js"));
+const cityIntegration = require(path.join(repoRoot, "src", "city-integration.js"));
+const projectFile = require(path.join(repoRoot, "src", "project-file.js"));
 const projectIoWindow = {};
 vm.runInNewContext(
-  fs.readFileSync(path.join(repoRoot, "project-io.js"), "utf8"),
+  fs.readFileSync(path.join(repoRoot, "src", "project-io.js"), "utf8"),
   { window: projectIoWindow },
   { filename: "project-io.js" }
 );
@@ -130,8 +130,8 @@ test("legacy baselayer reference cities are removed when a project is normalized
 
 test("city selection is available only from Markers in City location mode", () => {
   const indexSource = fs.readFileSync(path.join(repoRoot, "index.html"), "utf8");
-  const propertiesSource = fs.readFileSync(path.join(repoRoot, "properties.js"), "utf8");
-  const appSource = fs.readFileSync(path.join(repoRoot, "app.js"), "utf8");
+  const propertiesSource = fs.readFileSync(path.join(repoRoot, "src", "properties.js"), "utf8");
+  const appSource = fs.readFileSync(path.join(repoRoot, "src", "app.js"), "utf8");
   const projectCityMounts = indexSource.match(/id="projectCitiesField"/g) || [];
 
   assert.equal(projectCityMounts.length, 1);
@@ -157,9 +157,9 @@ test("reference-city runtime remains compatible with direct file use", () => {
   );
 
   const indexSource = fs.readFileSync(path.join(repoRoot, "index.html"), "utf8");
-  const appSource = fs.readFileSync(path.join(repoRoot, "app.js"), "utf8");
-  assert.ok(indexSource.indexOf("data/cities.js") < indexSource.indexOf("app.js"));
-  assert.ok(indexSource.indexOf("src/lib/city-search-runtime.js") < indexSource.indexOf("app.js"));
+  const appSource = fs.readFileSync(path.join(repoRoot, "src", "app.js"), "utf8");
+  assert.ok(indexSource.indexOf("data/cities.js") < indexSource.indexOf("src/app.js"));
+  assert.ok(indexSource.indexOf("src/lib/city-search-runtime.js") < indexSource.indexOf("src/app.js"));
   assert.doesNotMatch(appSource, /import\(["']\.\/src\/lib\/city-search\.js/);
   assert.doesNotMatch(appSource, /fetchJson\(["']data\/cities\.json/);
 });
@@ -249,8 +249,8 @@ test("city-located project points survive project and CSV export", () => {
 
 test("Markers uses city autosuggest instead of disconnected preset cards", () => {
   const indexSource = fs.readFileSync(path.join(repoRoot, "index.html"), "utf8");
-  const appSource = fs.readFileSync(path.join(repoRoot, "app.js"), "utf8");
-  const styleSource = fs.readFileSync(path.join(repoRoot, "style.css"), "utf8");
+  const appSource = fs.readFileSync(path.join(repoRoot, "src", "app.js"), "utf8");
+  const styleSource = fs.readFileSync(path.join(repoRoot, "styles", "app.css"), "utf8");
 
   assert.match(indexSource, /id="projectCitiesField"/);
   assert.match(indexSource, /data-project-location-mode="cities"/);

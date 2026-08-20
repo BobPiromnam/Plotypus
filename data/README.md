@@ -15,3 +15,10 @@ node tools/build-reference-city-runtime.cjs
 ```
 
 The first command fails instead of replacing the catalogue if fewer than 1,000 official name/coordinate matches are produced. The second command regenerates the classic scripts used when Plotypus is opened directly from disk.
+
+## Boundary data
+
+`boundaries/` contains the bundled Canada and world GeoJSON fallbacks plus
+classic-script copies for direct-file use. The deployment configuration may
+name a remote boundary source, but Plotypus must always retain these local
+fallbacks for offline operation.

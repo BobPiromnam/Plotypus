@@ -440,7 +440,7 @@ if (require.main === module) {
   const write = process.argv.includes("--write");
   const fixDeclarations = process.argv.includes("--fix-declarations");
   const format = process.argv.includes("--format");
-  const path = process.argv.filter(argument => !["--write", "--fix-declarations", "--format"].includes(argument))[2] || "style.css";
+  const path = process.argv.filter(argument => !["--write", "--fix-declarations", "--format"].includes(argument))[2] || "styles/app.css";
   const source = fs.readFileSync(path, "utf8");
   if (write) fs.writeFileSync(path, consolidateCss(source));
   if (fixDeclarations) fs.writeFileSync(path, cleanDuplicateDeclarations(write ? fs.readFileSync(path, "utf8") : source));

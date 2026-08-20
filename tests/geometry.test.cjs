@@ -5,7 +5,7 @@ const test = require("node:test");
 const vm = require("node:vm");
 
 function loadGeometry() {
-  const source = fs.readFileSync(path.join(__dirname, "..", "geometry.js"), "utf8");
+  const source = fs.readFileSync(path.join(__dirname, "..", "src", "geometry.js"), "utf8");
   const context = { window: {} };
   vm.runInNewContext(source, context, { filename: "geometry.js" });
   return context.window.PLOTYPUS_GEOMETRY;

@@ -7,7 +7,7 @@ const vm = require("node:vm");
 const repoRoot = path.resolve(__dirname, "..");
 
 function loadBundledConfig() {
-  const source = fs.readFileSync(path.join(repoRoot, "config.js"), "utf8");
+  const source = fs.readFileSync(path.join(repoRoot, "src", "config.js"), "utf8");
   const window = {
     location: { protocol: "file:" },
     fetch: null
@@ -28,14 +28,14 @@ function loadBundledConfig() {
 }
 
 function loadBundledI18n() {
-  const source = fs.readFileSync(path.join(repoRoot, "i18n.js"), "utf8");
+  const source = fs.readFileSync(path.join(repoRoot, "src", "i18n.js"), "utf8");
   const window = {};
   vm.runInNewContext(source, { window });
   return window.PLOTYPUS_I18N;
 }
 
 function loadProjectFileApi() {
-  const source = fs.readFileSync(path.join(repoRoot, "project-file.js"), "utf8");
+  const source = fs.readFileSync(path.join(repoRoot, "src", "project-file.js"), "utf8");
   const context = { window: {}, globalThis: {} };
   vm.runInNewContext(source, context);
   return context.globalThis.PlotypusProjectFile || context.window.PlotypusProjectFile;
@@ -55,7 +55,7 @@ function getStaticI18nKeys() {
 }
 
 function getLiteralJsI18nKeys() {
-  const files = ["app.js", "feedback.js", "properties.js", "workspace.js", "project-io.js", "project-file.js"];
+  const files = ["src/app.js", "src/feedback.js", "src/properties.js", "src/workspace.js", "src/project-io.js", "src/project-file.js"];
   const keys = new Set();
   const pattern = /\b(?:t|tOr|startupT)\("([^"`$]+)"/g;
   files.forEach(file => {
@@ -69,7 +69,7 @@ function getLiteralJsI18nKeys() {
 }
 
 function getAllReferencedJsI18nKeys(i18n) {
-  const files = ["app.js", "feedback.js", "properties.js", "workspace.js", "project-io.js", "project-file.js", "xlsx-lite.js"];
+  const files = ["src/app.js", "src/feedback.js", "src/properties.js", "src/workspace.js", "src/project-io.js", "src/project-file.js", "src/lib/xlsx-lite.js"];
   const namespaces = [...new Set(Object.keys(i18n.dictionaries.en).map(key => key.split(".")[0]))];
   const pattern = new RegExp(`["'\`]((?:${namespaces.join("|")})\\.[A-Za-z0-9_.-]+)["'\`]`, "g");
   const keys = new Set();
@@ -84,7 +84,7 @@ function getAllReferencedJsI18nKeys(i18n) {
 }
 
 function getSourceDictionaryKeys(locale) {
-  const source = fs.readFileSync(path.join(repoRoot, "i18n.js"), "utf8").replace(/\r\n/g, "\n");
+  const source = fs.readFileSync(path.join(repoRoot, "src", "i18n.js"), "utf8").replace(/\r\n/g, "\n");
   const marker = `${locale}: Object.freeze({`;
   const start = source.indexOf(marker);
   assert.notEqual(start, -1, `Could not find ${locale} source dictionary`);
@@ -103,7 +103,7 @@ function getInterpolationNames(value) {
 }
 
 function getUndoHistoryI18nKeys() {
-  const source = fs.readFileSync(path.join(repoRoot, "app.js"), "utf8");
+  const source = fs.readFileSync(path.join(repoRoot, "src", "app.js"), "utf8");
   const labels = new Set([
     "clear longitude",
     "clear latitude"
@@ -159,7 +159,7 @@ function getConfigBackedI18nKeys(config) {
 }
 
 function getPropertiesRenderCallsMissingTranslator() {
-  const source = fs.readFileSync(path.join(repoRoot, "app.js"), "utf8");
+  const source = fs.readFileSync(path.join(repoRoot, "src", "app.js"), "utf8");
   const pattern = /properties\.render[A-Za-z]+PropertyControls\(\{/g;
   const missing = [];
   let match;

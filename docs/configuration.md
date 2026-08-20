@@ -3,9 +3,9 @@
 Plotypus has two configuration layers:
 
 1. `plotypus.config.json` is the department-editable configuration file for hosted or local-server use.
-2. `config.js` contains the bundled fallback defaults so `index.html` still opens directly from `file://`.
+2. `src/config.js` contains the bundled fallback defaults so `index.html` still opens directly from `file://`.
 
-Browsers usually block JavaScript from reading a sibling JSON file when `index.html` is opened directly from disk. For JSON customization, serve the folder from a simple local/static web server or host the app internally. If the JSON cannot be loaded, Plotypus falls back to the defaults embedded in `config.js`.
+Browsers usually block JavaScript from reading a sibling JSON file when `index.html` is opened directly from disk. For JSON customization, serve the folder from a simple local/static web server or host the app internally. If the JSON cannot be loaded, Plotypus falls back to the defaults embedded in `src/config.js`.
 
 ## Common Edits
 
@@ -103,7 +103,7 @@ The validator checks for:
 
 ## Adding A Map Style
 
-1. Create a CSS file in `themes/`.
+1. Create a CSS file in `styles/themes/`.
 2. Add a `mapStyles` entry with a key such as `department-green`.
 3. Set `defaultMapStylePreset` to that same key if it should be selected by default.
 
@@ -113,7 +113,7 @@ The validator checks for:
   "mapStyles": {
     "department-green": {
       "label": "Department green",
-      "stylesheet": "themes/department-green.css",
+      "stylesheet": "styles/themes/department-green.css",
       "regionColours": ["#dcebe4", "#94c2aa", "#217346"],
       "categoryStyles": [
         { "colour": "#444444", "stroke": "#ffffff", "markerSize": 10, "lineWidth": 2 },

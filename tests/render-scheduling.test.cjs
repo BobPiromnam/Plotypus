@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const appSource = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
+const appSource = fs.readFileSync(path.join(__dirname, "..", "src", "app.js"), "utf8");
 
 function directRenderCallOwners(source) {
   let owner = "";
@@ -36,4 +36,3 @@ test("scheduled rendering waits for paint and idle time and remains cancellable"
   assert.match(appSource, /cancelIdleCallback\(pendingRenderIdleCallback\)/);
   assert.match(appSource, /deferPendingScheduledRender\(\)/);
 });
-

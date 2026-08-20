@@ -2,7 +2,6 @@
 /.edge-smoke-profile/
 .DS_Store
 /.claude/
-/handoff/
 /node_modules/
 /tests/smoke-output/
 /tests/visual-output/

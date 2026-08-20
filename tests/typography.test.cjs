@@ -5,26 +5,26 @@ const path = require("node:path");
 
 const root = path.resolve(__dirname, "..");
 const read = file => fs.readFileSync(path.join(root, file), "utf8");
-const style = read("style.css");
+const style = read("styles/app.css");
 const html = read("index.html");
-const properties = read("properties.js");
-const referenceCities = read("reference-cities.js");
+const properties = read("src/properties.js");
+const referenceCities = read("src/reference-cities.js");
 const productionMarkup = [
   "index.html",
-  "app.js",
-  "config.js",
-  "geometry.js",
-  "i18n.js",
-  "icons.js",
-  "label-layout.js",
-  "presets.js",
-  "project-file.js",
-  "project-io.js",
-  "properties.js",
-  "reference-cities.js",
-  "region-matching.js",
-  "workspace.js",
-  "xlsx-lite.js"
+  "src/app.js",
+  "src/config.js",
+  "src/geometry.js",
+  "src/i18n.js",
+  "src/icons.js",
+  "src/label-layout.js",
+  "src/presets.js",
+  "src/project-file.js",
+  "src/project-io.js",
+  "src/properties.js",
+  "src/reference-cities.js",
+  "src/region-matching.js",
+  "src/workspace.js",
+  "src/lib/xlsx-lite.js"
 ]
   .map(file => ({ file, source: read(file) }));
 
@@ -105,7 +105,7 @@ test("production templates contain no inline style attributes", () => {
 });
 
 test("map typography is assigned by stylesheet classes rather than element font declarations", () => {
-  const app = read("app.js");
+  const app = read("src/app.js");
   assert.doesNotMatch(app, /\.style\(\s*["']font-/);
   assert.doesNotMatch(app, /\.style\.font(?:Family|Size|Style|Weight)/);
   assert.doesNotMatch(app, /\.attr\(\s*["']font-(?:size|family|weight|style)/);
@@ -131,7 +131,7 @@ test("application typography uses only supported top-level weight tokens", () =>
 });
 
 test("generated numeric property fields use the shared data typography class", () => {
-  const properties = read("properties.js");
+  const properties = read("src/properties.js");
   assert.doesNotMatch(properties, /numericStyle/);
   assert.match(properties, /type-numeric-data property-numeric-input/g);
   assert.match(style, /\.type-numeric-data\s*\{[^}]*font-size:\s*var\(--type-control-size\);[^}]*font-weight:\s*var\(--font-weight-data-medium\);[^}]*line-height:\s*var\(--type-control-line\);/s);

@@ -205,7 +205,7 @@
   const mapStylePresets = appConfig.mapStylePresets || window.MAP_APP_STYLE_PRESETS || appConfig.fallbackMapStylePresets || {
     "goc-green": {
       label: "GoC green",
-      stylesheet: "themes/goc-green.css",
+      stylesheet: "styles/themes/goc-green.css",
       regionColours: fallbackRegionColours,
       categoryStyles: [
         { colour: "#444444", stroke: "#ffffff", markerSize: 4, lineWidth: 2 },
@@ -13474,7 +13474,7 @@
   }
 
   async function readExcelWorkbookRows(file) {
-    if (!window.PlotypusXlsx) await loadDeferredScript("xlsx-lite.js?v=20260722-performance");
+    if (!window.PlotypusXlsx) await loadDeferredScript("src/lib/xlsx-lite.js?v=20260722-performance");
     if (!window.PlotypusXlsx) throw new Error(t("status.excelInvalidWorkbook"));
     return window.PlotypusXlsx.readWorkbookRows(file, {
       invalidWorkbook: t("status.excelInvalidWorkbook"),
