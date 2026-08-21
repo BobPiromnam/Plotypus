@@ -39,8 +39,14 @@ Earlier project history remains available in the Git commit log.
 - Standardized application typography around reusable semantic classes and the
   shared display, page, dialog, panel, card, summary, control, supporting,
   caption, and eyebrow tokens.
+- Standardized control, group, surface, and dialog corner geometry; aligned
+  composed toolbar controls; and introduced restrained shared menu, dialog,
+  feedback, and reduced-motion transition contracts.
 - Restored concise headings across all five workspaces and reduced excessive
   introductory whitespace.
+- Standardized the page-heading and first-content gutters across all five
+  workspaces, and replaced accidental Markers toolbar wrapping with deliberate
+  container-responsive command rows.
 - Consolidated Document Properties accordions, descriptions, draft editors,
   labels, control spacing, and typography into shared component contracts.
 - Refined the Markers toolbar and table with content-aware column sizing, an
@@ -52,7 +58,8 @@ Earlier project history remains available in the Git commit log.
 - Simplified Map canvas controls, QA presentation, empty states, and callout
   editing while preserving deliberate manual layout.
 - Reworked callout resizing to update the affected SVG furniture and QA state
-  without scheduling an unnecessary full map render.
+  without scheduling an unnecessary full map render, while reflowing callout
+  text continuously as the resize handle moves.
 - Pruned obsolete overlapping tests and aligned the Windows smoke,
   accessibility, translation, and responsive matrices with the current
   workspaces and CSS boundaries.
@@ -64,6 +71,12 @@ Earlier project history remains available in the Git commit log.
 
 ### Fixed
 
+- Reworked the narrow workflow rail's QA warning into a balanced, single-row
+  shield-and-count action while retaining its full accessible description.
+- Centred the compact save-state dot inside a square passive status chip at
+  narrower toolbar widths.
+- Kept missing-location **Fix** actions in the Markers Status column instead of
+  allowing them to float over long project names when location modes change.
 - Custom marker upload failures now show the exact validation error inside the
   category's upload panel and move keyboard focus to the message.
 - Kept inline City search interactions in the Markers table from opening
@@ -79,9 +92,12 @@ Earlier project history remains available in the Git commit log.
   primary content.
 - Corrected inconsistent Properties typography, control alignment, spacing, and
   disabled-state hierarchy.
+- Vertically centred the Compact and Rich choices in the Extra info Properties
+  control.
 
 ### Removed
 
+- Removed the empty Note and Source placeholders from the document-page preview.
 - Removed superseded design handoffs, completed audit and migration plans,
   unused branding exports, and an obsolete standalone loading fixture. Current
   guidance and reviewed screenshots remain in `docs/`; historical tracked

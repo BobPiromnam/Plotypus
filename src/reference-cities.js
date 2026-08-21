@@ -158,7 +158,7 @@
       const city = cityById.get(id);
       const override = model.overrides[id] && model.overrides[id].name || {};
       return `
-        <div class="refCityOverridePopover" data-reference-city-override="${escapeHtml(id)}">
+        <div class="refCityOverridePopover ui-floating-surface" data-reference-city-override="${escapeHtml(id)}">
           <div class="refCityOverrideHeader">
             <strong>${escapeHtml(translate("referenceCities.override.title", { city: storedName(id) }))}</strong>
             <button type="button" class="refCityOverrideClose" data-reference-city-override-close aria-label="${escapeHtml(translate("referenceCities.override.close"))}">×</button>
@@ -203,7 +203,7 @@
         <div class="refCityCombobox">
           <span class="refCitySearchIcon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 4 4"></path></svg></span>
           <input id="${escapeHtml(idPrefix)}Input" class="refCityInput type-control" type="text" value="${escapeHtml(query)}" placeholder="${escapeHtml(translate(textKey("placeholder", "referenceCities.placeholder")))}" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="${showResults}" aria-controls="${escapeHtml(idPrefix)}Results"${activeDescendant ? ` aria-activedescendant="${escapeHtml(activeDescendant)}"` : ""}>
-          <div id="${escapeHtml(idPrefix)}Results" class="refCityResults" role="listbox"${showResults ? "" : " hidden"}>
+          <div id="${escapeHtml(idPrefix)}Results" class="refCityResults ui-floating-surface" role="listbox"${showResults ? "" : " hidden"}>
             ${results.length ? results.map(renderResult).join("") : `<div class="refCityNoMatch">${escapeHtml(translate(textKey("noMatchBefore", "referenceCities.noMatch.before")))} <span>cities.json</span>. ${escapeHtml(translate(textKey("noMatchAfter", "referenceCities.noMatch.after")))}</div>`}
           </div>
         </div>
@@ -465,7 +465,7 @@
           <span class="refCitySearchIcon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 4 4"></path></svg></span>
           <input id="${escapeHtml(idPrefix)}Input" class="refCityInput cityLocationInput" type="text" value="${escapeHtml(label)}" placeholder="${escapeHtml(translate("projectCities.row.placeholder"))}" autocomplete="off" role="combobox" aria-label="${escapeHtml(translate("projectCities.row.aria"))}" aria-autocomplete="list" aria-expanded="${showResults}" aria-controls="${escapeHtml(idPrefix)}Results"${activeDescendant ? ` aria-activedescendant="${escapeHtml(activeDescendant)}"` : ""}>
           ${value ? `<button type="button" class="cityLocationClear" data-city-location-clear aria-label="${escapeHtml(translate("projectCities.row.clear", { city: city ? cityName(city) : label }))}">×</button>` : ""}
-          <div id="${escapeHtml(idPrefix)}Results" class="refCityResults cityLocationResults" role="listbox"${showResults ? "" : " hidden"}>
+          <div id="${escapeHtml(idPrefix)}Results" class="refCityResults cityLocationResults ui-floating-surface" role="listbox"${showResults ? "" : " hidden"}>
             ${results.length ? results.map(renderResult).join("") : `<div class="refCityNoMatch">${escapeHtml(translate("projectCities.row.noMatch"))}</div>`}
           </div>
         </div>`;

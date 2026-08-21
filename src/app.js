@@ -1740,7 +1740,7 @@
               </svg>
             </span>
             <button class="legend-item-menu-button icon-button" type="button" data-category-id="${escapeHtml(category.id)}" aria-haspopup="menu" aria-expanded="false" aria-controls="${menuId}" aria-label="${escapeHtml(t("properties.category.actionsAria", { label: categoryUiLabel }))}">${iconSvg("more-horizontal")}</button>
-            <div id="${menuId}" class="legend-item-menu" role="menu" hidden>
+            <div id="${menuId}" class="legend-item-menu ui-floating-surface" role="menu" hidden>
               <button class="move-category-up-btn" type="button" role="menuitem" data-category-id="${escapeHtml(category.id)}"${index === 0 ? " disabled" : ""}>${escapeHtml(t("properties.category.moveUp"))}</button>
               <button class="move-category-down-btn" type="button" role="menuitem" data-category-id="${escapeHtml(category.id)}"${index >= categorySettings.length - 1 ? " disabled" : ""}>${escapeHtml(t("properties.category.moveDown"))}</button>
               <button class="remove-category-btn is-danger" type="button" role="menuitem" data-category-id="${escapeHtml(category.id)}"${category.removable === false || categorySettings.length <= 1 ? " disabled" : ""}>${escapeHtml(t("properties.category.removeTitle"))}</button>
@@ -2316,7 +2316,7 @@
     const numericRowId = Number(rowId);
     nextRowId = Number.isFinite(numericRowId) ? Math.max(nextRowId, numericRowId + 1) : nextRowId + 1;
     tr.innerHTML = `
-      <td class="name-cell vcell" data-cell-field="name"><input class="name-input type-editable-text" type="text" value="${escapeHtml(activeAuthoringLanguage === "fr" ? row.nameFr || "" : row.name || "")}" title="${escapeHtml(activeAuthoringLanguage === "fr" ? row.nameFr || "" : row.name || "")}" aria-label="${escapeHtml(t("table.projectName.aria"))}"><span class="row-validation-badge" aria-hidden="true"></span><button class="row-fix-link" type="button" hidden>${escapeHtml(t("table.fix"))}</button></td>
+      <td class="name-cell vcell" data-cell-field="name"><input class="name-input type-editable-text" type="text" value="${escapeHtml(activeAuthoringLanguage === "fr" ? row.nameFr || "" : row.name || "")}" title="${escapeHtml(activeAuthoringLanguage === "fr" ? row.nameFr || "" : row.name || "")}" aria-label="${escapeHtml(t("table.projectName.aria"))}"><span class="row-validation-badge" aria-hidden="true"></span></td>
       <td data-cell-field="footnote"><input class="footnote-input type-editable-text" type="text" value="${escapeHtml(row.footnote || "")}" aria-label="${escapeHtml(t("table.footnote.title"))}" maxlength="2" pattern="[A-Za-z0-9]*|[*]"></td>
       <td class="vcell" data-cell-field="type">
         <select class="type-input type-control" title="${escapeHtml(getCategoryLabel(row.type, activeAuthoringLanguage))}" aria-label="${escapeHtml(t("table.projectType.aria"))}">
@@ -2328,7 +2328,7 @@
       <td class="bulk-edit-cell region-cell anchor-preview-cell vcell" data-cell-field="region"><select class="region-input type-control" aria-label="${escapeHtml(t("properties.field.region"))}"></select></td>
       <td class="bulk-edit-cell coordinate-cell lon-cell vcell" data-cell-field="lon"><input class="lon-input type-numeric-data" type="text" inputmode="decimal" value="${escapeHtml(formatProjectCoordinate(row.lon))}" aria-label="${escapeHtml(t("table.longitude"))}"><button class="clear-coordinate-cell" type="button" data-clear-coordinate="lon" aria-label="${escapeHtml(t("table.clearLongitude"))}" title="${escapeHtml(t("table.clearLongitude"))}" hidden>&times;</button></td>
       <td class="bulk-edit-cell coordinate-cell lat-cell vcell" data-cell-field="lat"><input class="lat-input type-numeric-data" type="text" inputmode="decimal" value="${escapeHtml(formatProjectCoordinate(row.lat))}" aria-label="${escapeHtml(t("table.latitude"))}"><button class="clear-coordinate-cell" type="button" data-clear-coordinate="lat" aria-label="${escapeHtml(t("table.clearLatitude"))}" title="${escapeHtml(t("table.clearLatitude"))}" hidden>&times;</button></td>
-      <td class="status-cell" data-cell-field="status"><span class="row-status-badge type-status-badge"></span></td>
+      <td class="status-cell" data-cell-field="status"><div class="row-status-content"><span class="row-status-badge type-status-badge"></span><button class="row-fix-link" type="button" hidden>${escapeHtml(t("table.fix"))}</button></div></td>
       <td class="line-cell" data-cell-field="hideLine"><input type="checkbox" class="hide-line-input" aria-label="${escapeHtml(t("properties.field.hideLeaderLine"))}"${row.hideLine ? " checked" : ""}></td>
       <td hidden>
         <input type="checkbox" class="elbow-leader-input" aria-label="${escapeHtml(t("properties.field.useElbowLeader"))}"${row.elbowLeader ? " checked" : ""}>
@@ -2751,8 +2751,15 @@
         })
       ],
       status: [headerWidth(".status-col"), ...sizingRows.map(row => {
-        const badge = row.querySelector(".row-status-badge");
-        return getProjectTableContentWidth(badge?.textContent, badge, 32);
+        const statusContent = row.querySelector(".row-status-content");
+        const visibleItems = Array.from(statusContent?.children || []).filter(item => !item.hidden);
+        const itemWidths = visibleItems.reduce((width, item) => {
+          return width + getProjectTableContentWidth(item.textContent, item);
+        }, 0);
+        const contentGap = visibleItems.length > 1
+          ? (Number.parseFloat(getComputedStyle(statusContent).columnGap || getComputedStyle(statusContent).gap) || 0) * (visibleItems.length - 1)
+          : 0;
+        return itemWidths + contentGap + 32;
       })]
     };
     Object.entries(values).forEach(([column, columnValues]) => {
@@ -2868,6 +2875,7 @@
       }
       const fixLink = tr.querySelector(".row-fix-link");
       if (fixLink) {
+        fixLink.textContent = t("table.fix");
         fixLink.hidden = !state.isMissingCoordinate;
         fixLink.setAttribute("aria-label", t("project.preview.fixCoordinatesAria", { name: readRowElement(tr).name || t("project.preview.thisRow") }));
       }
@@ -12042,7 +12050,7 @@
       .attr("transform", `translate(${Math.max(0, dimensions.width - 16)},${Math.max(0, dimensions.height - 16)})`);
   }
 
-  function attachBoxControls(group, key, position, dimensions, constraints, settings, label, mapBounds, visibilityInput, onResizeCommit = null) {
+  function attachBoxControls(group, key, position, dimensions, constraints, settings, label, mapBounds, visibilityInput, onResizeCommit = null, onResizePreview = null) {
     if (visibilityInput) {
       const hide = group.append("g")
         .attr("class", "box-controls box-hide-control")
@@ -12090,10 +12098,18 @@
             pushManualLayoutHistory(getBoxHistoryLabel(key, "resize"), { allowEmpty: true });
             resizeState.historyPushed = true;
           }
-          const nextDimensions = clampBoxDimensions({
+          let nextDimensions = clampBoxDimensions({
             width: resizeState.width + event.dx,
             height: resizeState.height + event.dy
           }, constraints, settings);
+          if (typeof onResizePreview === "function") {
+            const preview = onResizePreview({
+              dimensions: { ...nextDimensions }
+            });
+            if (preview && preview.dimensions) {
+              nextDimensions = clampBoxDimensions(preview.dimensions, constraints, settings);
+            }
+          }
           const nextPosition = clampBoxPosition({ x: resizeState.x, y: resizeState.y }, nextDimensions, settings);
           resizeState.x = nextPosition.x;
           resizeState.y = nextPosition.y;
@@ -12240,22 +12256,8 @@
   }
 
   function drawCallouts(svg, calloutRows, settings, mapBounds) {
-    const {
-      dimensions,
-      position,
-      constraints,
-      headingLines,
-      headingSize,
-      headingLineH,
-      headingRuleY,
-      nameSize,
-      lineH,
-      padV,
-      insetX,
-      textX,
-      markerX,
-      rows
-    } = getCalloutBoxLayout(calloutRows, settings);
+    const layout = getCalloutBoxLayout(calloutRows, settings);
+    const { dimensions, position, constraints } = layout;
     const group = svg.append("g")
       .attr("class", "callout-layer movable-map-box")
       .attr("transform", translatePosition(position))
@@ -12278,46 +12280,7 @@
       .attr("height", dimensions.height)
       .attr("rx", 0);
 
-    group.append("text")
-      .attr("class", `box-heading callout-heading ${mapTypographySizeClass(headingSize)}`)
-      .attr("x", insetX)
-      .attr("y", padV + 4)
-      .attr("dominant-baseline", "hanging")
-      .selectAll("tspan")
-      .data(headingLines)
-      .join("tspan")
-      .attr("x", insetX)
-      .attr("dy", (_, index) => index === 0 ? 0 : headingLineH)
-      .text(line => line);
-
-    group.append("line")
-      .attr("class", "box-heading-rule callout-heading-rule")
-      .attr("x1", insetX)
-      .attr("y1", headingRuleY)
-      .attr("x2", Math.max(insetX, dimensions.width - insetX))
-      .attr("y2", headingRuleY);
-
-    rows.forEach(layout => {
-      const { row, rowY, textY, nameLines, rowHeight } = layout;
-      const category = getCategory(row.type);
-      const markerSize = Math.max(7, Math.min(14, getCategoryMarkerSize(category, settings)));
-      drawMarkerSymbol(group, category, markerX, rowY + rowHeight / 2, markerSize);
-
-      const nameEl = group.append("text")
-        .attr("class", `callout-text ${mapTypographySizeClass(nameSize)}`)
-        .attr("x", textX)
-        .attr("y", textY)
-        .attr("dominant-baseline", "hanging");
-      nameLines.forEach((line, index) => {
-        nameEl.append("tspan")
-          .attr("class", `callout-line callout-${line.role || "title"}`)
-          .attr("x", textX)
-          .attr("dy", index === 0 ? 0 : lineH)
-          .text(line.role === "separator" ? "" : lineText(line));
-      });
-      const footnote = getRenderableFootnote(row.footnote);
-      if (footnote) appendSuperscript(nameEl, footnote, nameSize);
-    });
+    renderCalloutContent(group, settings, layout, dimensions.width);
 
     attachBoxDragging(group, "callouts", position, dimensions, settings, t("properties.furniture.callouts"), mapBounds);
     attachBoxControls(
@@ -12348,8 +12311,80 @@
           }));
         }
         invalidatePatchedLayoutQuality();
+      },
+      ({ dimensions: previewDimensions }) => {
+        const previewLayout = getCalloutContentLayout(calloutRows, settings, previewDimensions.width);
+        renderCalloutContent(group, settings, previewLayout, previewDimensions.width);
+        return {
+          dimensions: {
+            ...previewDimensions,
+            height: Math.max(previewDimensions.height, previewLayout.contentHeight)
+          }
+        };
       }
     );
+  }
+
+  function renderCalloutContent(group, settings, layout, width) {
+    const {
+      headingLines,
+      headingSize,
+      headingLineH,
+      headingRuleY,
+      nameSize,
+      lineH,
+      padV,
+      insetX,
+      textX,
+      markerX,
+      rows
+    } = layout;
+    const content = group.selectAll("g.callout-content")
+      .data([null])
+      .join("g")
+      .attr("class", "callout-content");
+    content.selectAll("*").remove();
+
+    content.append("text")
+      .attr("class", `box-heading callout-heading ${mapTypographySizeClass(headingSize)}`)
+      .attr("x", insetX)
+      .attr("y", padV + 4)
+      .attr("dominant-baseline", "hanging")
+      .selectAll("tspan")
+      .data(headingLines)
+      .join("tspan")
+      .attr("x", insetX)
+      .attr("dy", (_, index) => index === 0 ? 0 : headingLineH)
+      .text(line => line);
+
+    content.append("line")
+      .attr("class", "box-heading-rule callout-heading-rule")
+      .attr("x1", insetX)
+      .attr("y1", headingRuleY)
+      .attr("x2", Math.max(insetX, width - insetX))
+      .attr("y2", headingRuleY);
+
+    rows.forEach(layout => {
+      const { row, rowY, textY, nameLines, rowHeight } = layout;
+      const category = getCategory(row.type);
+      const markerSize = Math.max(7, Math.min(14, getCategoryMarkerSize(category, settings)));
+      drawMarkerSymbol(content, category, markerX, rowY + rowHeight / 2, markerSize);
+
+      const nameEl = content.append("text")
+        .attr("class", `callout-text ${mapTypographySizeClass(nameSize)}`)
+        .attr("x", textX)
+        .attr("y", textY)
+        .attr("dominant-baseline", "hanging");
+      nameLines.forEach((line, index) => {
+        nameEl.append("tspan")
+          .attr("class", `callout-line callout-${line.role || "title"}`)
+          .attr("x", textX)
+          .attr("dy", index === 0 ? 0 : lineH)
+          .text(line.role === "separator" ? "" : lineText(line));
+      });
+      const footnote = getRenderableFootnote(row.footnote);
+      if (footnote) appendSuperscript(nameEl, footnote, nameSize);
+    });
   }
 
   function drawMarkerSymbol(svg, category, cx, cy, size) {

@@ -13,7 +13,7 @@
   </style>
 </head>
 <body>
-  <iframe id="app" title="Plotypus application under test" data-src="../index.html?v=20260820-city-sticky-header-2"></iframe>
+  <iframe id="app" title="Plotypus application under test" data-src="../index.html?v=20260821-ui-patterns-3"></iframe>
   <pre id="result">{"status":"running"}</pre>
   <script>
     const result = document.querySelector("#result");
@@ -1200,6 +1200,17 @@
           await waitFor(() => doc.querySelector(`#propertiesSelectionControls .properties-form[data-property-kind='marker'][data-row-id='${compositionRowId}']`), 2000);
           const selectedPointCompactInput = doc.querySelector("#propertiesSelectionControls input[data-property-field='labelStyle'][value='compact']");
           assert(checks, "Selected sample map point starts with Compact Properties", Boolean(selectedPointCompactInput?.checked));
+          const extraInfoSegments = Array.from(doc.querySelectorAll("#propertiesSelectionControls .annotation-segment"));
+          const extraInfoSegmentsAreCentred = extraInfoSegments.length === 2 && extraInfoSegments.every(segment => {
+            const segmentRect = segment.getBoundingClientRect();
+            const textNode = segment.querySelector("span")?.firstChild;
+            if (!textNode) return false;
+            const textRange = doc.createRange();
+            textRange.selectNodeContents(textNode);
+            const textRect = textRange.getBoundingClientRect();
+            return Math.abs((textRect.top + textRect.height / 2) - (segmentRect.top + segmentRect.height / 2)) <= 1;
+          });
+          assert(checks, "Extra info choices are vertically centred in the shared segmented control", extraInfoSegmentsAreCentred);
           doc.querySelector("#propertiesSelectionControls input[data-property-field='labelStyle'][value='rich']")?.click();
           const pointContentBeforeAdd = JSON.parse(compositionRow?.dataset.content || "[]").length;
           const addPointElementButton = await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-action='add-content-text']"), 2000);
@@ -1220,6 +1231,10 @@
           const calloutResizeRect = calloutResizeHandle?.getBoundingClientRect();
           const calloutWidthBeforeResize = Number(calloutBoxBeforeResize?.getAttribute("width") || 0);
           const calloutHeadingLinesBeforeResize = calloutLayerBeforeResize?.querySelectorAll(".callout-heading tspan").length || 0;
+          const calloutBodyLinesBeforeResize = calloutLayerBeforeResize?.querySelectorAll(".callout-text tspan").length || 0;
+          let calloutWidthDuringResize = calloutWidthBeforeResize;
+          let calloutHeadingLinesDuringResize = calloutHeadingLinesBeforeResize;
+          let calloutBodyLinesDuringResize = calloutBodyLinesBeforeResize;
           const markerBeforeCalloutResize = doc.querySelector("#mapSvg .marker-layer .marker");
           const renderSamplesBeforeCalloutResize = frame.contentWindow.PLOTYPUS_RENDER_PERFORMANCE?.snapshot().samples.length || 0;
           let calloutResizeShowedLoader = doc.querySelector("#mapHost")?.classList.contains("is-rendering") || false;
@@ -1248,6 +1263,9 @@
               button: 0,
               buttons: 1
             }));
+            calloutWidthDuringResize = Number(calloutLayerBeforeResize.querySelector(".callout-box")?.getAttribute("width") || 0);
+            calloutHeadingLinesDuringResize = calloutLayerBeforeResize.querySelectorAll(".callout-heading tspan").length;
+            calloutBodyLinesDuringResize = calloutLayerBeforeResize.querySelectorAll(".callout-text tspan").length;
             frame.contentWindow.dispatchEvent(new frame.contentWindow.MouseEvent("mouseup", {
               bubbles: true,
               cancelable: true,
@@ -1264,6 +1282,7 @@
           const calloutWidthAfterResize = Number(calloutLayerAfterResize?.querySelector(".callout-box")?.getAttribute("width") || 0);
           const calloutHeadingLinesAfterResize = calloutLayerAfterResize?.querySelectorAll(".callout-heading tspan").length || 0;
           const renderSamplesAfterCalloutResize = frame.contentWindow.PLOTYPUS_RENDER_PERFORMANCE?.snapshot().samples.length || 0;
+          assert(checks, "Callout text reflows while the resize handle is moving", calloutWidthDuringResize < calloutWidthBeforeResize && calloutHeadingLinesDuringResize >= calloutHeadingLinesBeforeResize && calloutBodyLinesDuringResize >= calloutBodyLinesBeforeResize && (calloutHeadingLinesDuringResize > calloutHeadingLinesBeforeResize || calloutBodyLinesDuringResize > calloutBodyLinesBeforeResize), `width=${calloutWidthBeforeResize}->${calloutWidthDuringResize}; heading=${calloutHeadingLinesBeforeResize}->${calloutHeadingLinesDuringResize}; body=${calloutBodyLinesBeforeResize}->${calloutBodyLinesDuringResize}`);
           assert(checks, "Resizing a callout redraws only that callout without showing the map loader", Boolean(calloutLayerBeforeResize && calloutResizeHandle) && calloutWidthAfterResize < calloutWidthBeforeResize && calloutHeadingLinesAfterResize >= calloutHeadingLinesBeforeResize && markerBeforeCalloutResize?.isConnected === true && renderSamplesAfterCalloutResize === renderSamplesBeforeCalloutResize && !calloutResizeShowedLoader, `width=${calloutWidthBeforeResize}->${calloutWidthAfterResize}; heading=${calloutHeadingLinesBeforeResize}->${calloutHeadingLinesAfterResize}; renders=${renderSamplesBeforeCalloutResize}->${renderSamplesAfterCalloutResize}; loader=${calloutResizeShowedLoader}`);
           const mapScaleInput = doc.querySelector("#mapScaleInput");
           mapScaleInput.value = "47.03476053851771";
@@ -2102,6 +2121,22 @@
             && activeWorkspaceIntro.querySelector("h2.workspace-title")?.getBoundingClientRect().height >= 24
             && activeWorkspaceIntro.querySelector("p")?.textContent.trim()
           ));
+          const workspaceLeadSurfaceSelector = {
+            projects: "#projectTablePane > .table-toolbar.workspace-rail",
+            regions: "#regionTablePane > .region-management-controls.workspace-rail",
+            translate: "#translateTablePane > .translate-header.workspace-rail",
+            quality: "#qualityTablePane > .quality-workspace-content"
+          }[requestedWorkspace];
+          const workspaceLeadSurface = workspaceLeadSurfaceSelector
+            ? doc.querySelector(workspaceLeadSurfaceSelector)
+            : null;
+          if (workspaceLeadSurface && activeWorkspaceIntroStyle) {
+            const leadSurfaceStyle = frame.contentWindow.getComputedStyle(workspaceLeadSurface);
+            const introRect = activeWorkspaceIntro.getBoundingClientRect();
+            const leadSurfaceRect = workspaceLeadSurface.getBoundingClientRect();
+            assert(checks, `${requestedWorkspace} heading and first content region share one horizontal gutter`, Math.abs(parseFloat(activeWorkspaceIntroStyle.paddingLeft) - parseFloat(leadSurfaceStyle.paddingLeft)) <= 1 && Math.abs(parseFloat(activeWorkspaceIntroStyle.paddingRight) - parseFloat(leadSurfaceStyle.paddingRight)) <= 1, `intro=${activeWorkspaceIntroStyle.paddingLeft}/${activeWorkspaceIntroStyle.paddingRight}; content=${leadSurfaceStyle.paddingLeft}/${leadSurfaceStyle.paddingRight}`);
+            assert(checks, `${requestedWorkspace} first content region follows its heading without an accidental gap`, Math.abs(leadSurfaceRect.top - introRect.bottom) <= 1, `introBottom=${introRect.bottom.toFixed(1)}; contentTop=${leadSurfaceRect.top.toFixed(1)}`);
+          }
           if (loadSample) {
             assert(checks, "Sample rows are available", doc.querySelectorAll("#projectTable tbody tr").length > 0);
           } else {
@@ -2225,6 +2260,49 @@
           const applicationSettingsClose = doc.querySelector("#applicationSettingsCloseBtn");
           const workspaceElement = doc.querySelector(".workspace");
           const appWidth = frame.contentWindow.innerWidth;
+          const projectSaveState = doc.querySelector("#projectSaveState");
+          if (appWidth <= 1280 && appWidth > 620 && projectSaveState) {
+            const saveStateRect = projectSaveState.getBoundingClientRect();
+            const saveStateStyle = frame.contentWindow.getComputedStyle(projectSaveState);
+            const saveStateDotStyle = frame.contentWindow.getComputedStyle(projectSaveState, "::before");
+            const saveStateGap = Number.parseFloat(saveStateStyle.columnGap || saveStateStyle.gap || "0");
+            assert(
+              checks,
+              "Compact save status centres its dot in a square passive chip",
+              Math.abs(saveStateRect.width - saveStateRect.height) <= 1
+                && saveStateStyle.justifyContent === "center"
+                && Number.parseFloat(saveStateStyle.paddingLeft) === 0
+                && Number.parseFloat(saveStateStyle.paddingRight) === 0
+                && saveStateGap === 0
+                && Number.parseFloat(saveStateDotStyle.width) === Number.parseFloat(saveStateDotStyle.height),
+              `state=${projectSaveState.dataset.state}; rect=${saveStateRect.width}x${saveStateRect.height}; justify=${saveStateStyle.justifyContent}; padding=${saveStateStyle.paddingLeft}/${saveStateStyle.paddingRight}; gap=${saveStateStyle.gap}; dot=${saveStateDotStyle.width}x${saveStateDotStyle.height}`
+            );
+          }
+          const workspaceReviewButton = doc.querySelector("#workspaceReviewBtn[data-summary-state='warning']");
+          if (appWidth <= 1280 && workspaceReviewButton && frame.contentWindow.getComputedStyle(workspaceReviewButton).display !== "none") {
+            const reviewButtonRect = workspaceReviewButton.getBoundingClientRect();
+            const reviewButtonStyle = frame.contentWindow.getComputedStyle(workspaceReviewButton);
+            const reviewIcon = workspaceReviewButton.querySelector(".workspace-summary-warning-icon");
+            const reviewLabel = Array.from(workspaceReviewButton.children).find(child => child.tagName === "SPAN" && !child.classList.contains("workspace-summary-warning-icon"));
+            const reviewCount = workspaceReviewButton.querySelector("strong");
+            const originalReviewCount = reviewCount?.textContent || "";
+            if (reviewCount) reviewCount.textContent = "15";
+            const twoDigitCountFits = workspaceReviewButton.scrollWidth <= workspaceReviewButton.clientWidth;
+            if (reviewCount) reviewCount.textContent = originalReviewCount;
+            assert(
+              checks,
+              "Compact rail presents QA review as one balanced icon-and-count action",
+              reviewButtonRect.height <= 45
+                && reviewButtonRect.width <= 50
+                && reviewButtonStyle.gridTemplateColumns !== "none"
+                && frame.contentWindow.getComputedStyle(reviewIcon).display === "grid"
+                && frame.contentWindow.getComputedStyle(reviewLabel).display === "none"
+                && Boolean(reviewCount?.textContent.trim())
+                && twoDigitCountFits
+                && /Review.+issues.+Map quality/i.test(workspaceReviewButton.getAttribute("aria-label") || ""),
+              `rect=${reviewButtonRect.width}x${reviewButtonRect.height}; columns=${reviewButtonStyle.gridTemplateColumns}; icon=${frame.contentWindow.getComputedStyle(reviewIcon).display}; label=${frame.contentWindow.getComputedStyle(reviewLabel).display}; count=${reviewCount?.textContent.trim() || "missing"}; twoDigitFits=${twoDigitCountFits}; aria=${workspaceReviewButton.getAttribute("aria-label") || "missing"}`
+            );
+          }
           const expectedPropertiesWidth = appWidth <= 1280 ? 300 : 320;
           const propertiesAvailableAtWorkspaceStart = !doc.body.classList.contains("properties-unavailable");
           const summaryChips = Array.from(doc.querySelectorAll("#workspaceSummaryMetrics .workspace-summary-chip"));
@@ -2611,7 +2689,7 @@
               firstFrenchTranslation.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
               await waitFor(() => !doc.querySelector("#exportLanguageNotice")?.hidden, 4000);
               const exportNoticeText = doc.querySelector("#exportLanguageNotice")?.textContent || "";
-              assert(checks, "Export missing-translation notice switches to French", /1 chaîne n'a pas de français/.test(exportNoticeText) && /anglais/.test(exportNoticeText), exportNoticeText);
+              assert(checks, "Export missing-translation notice switches to French", /1 chaîne n[’']a pas de français/.test(exportNoticeText) && /anglais/.test(exportNoticeText), exportNoticeText);
               doc.querySelector(`[data-map-language='${mapLanguageBeforeNotice}']`)?.click();
               await waitFor(() => doc.querySelector("#mapLanguageInput")?.value === mapLanguageBeforeNotice, 2000);
             }
@@ -2636,7 +2714,6 @@
                 pane.querySelector(".document-preview-caption"),
                 pane.querySelector(".document-page-header"),
                 pane.querySelector("#canvasPlaceholder"),
-                pane.querySelector(".document-page-footer"),
                 pane.querySelector("#canvasToolbar"),
                 pane.querySelector("#canvasQualityPill")
               ].filter(Boolean)
@@ -2686,7 +2763,9 @@
           }
           if (requestedWorkspace === "projects") {
             const frenchStatusBadge = doc.querySelector("#projectTable .row-status-badge:not([data-state='blank'])");
+            const frenchFixAction = doc.querySelector("#projectTable .row-fix-link");
             assert(checks, "Project row status ARIA switches to French", /^État\s*:/.test(frenchStatusBadge?.getAttribute("aria-label") || ""), frenchStatusBadge?.getAttribute("aria-label") || "");
+            assert(checks, "Missing-location actions switch to French", frenchFixAction?.textContent.trim() === "Corriger" && /^Corriger l’emplacement de /.test(frenchFixAction?.getAttribute("aria-label") || ""), `${frenchFixAction?.textContent.trim() || "missing"} | ${frenchFixAction?.getAttribute("aria-label") || ""}`);
             assert(checks, "Project row edit ARIA labels switch to French", /Nom du projet/i.test(doc.querySelector("#projectTable .name-input")?.getAttribute("aria-label") || "") && /Type de projet/i.test(doc.querySelector("#projectTable .type-input")?.getAttribute("aria-label") || ""), `${doc.querySelector("#projectTable .name-input")?.getAttribute("aria-label") || ""} | ${doc.querySelector("#projectTable .type-input")?.getAttribute("aria-label") || ""}`);
             doc.querySelector("#clearRowsBtn")?.click();
             const confirmationDialog = await waitFor(() => doc.querySelector("#confirmationDialog")?.hidden === false && doc.querySelector("#confirmationDialog"), 2000);
@@ -3235,7 +3314,7 @@
               documentBleedRect.bottom - canvasSurfaceRect.bottom
             ] : [];
             assert(checks, "A standard bleed guide surrounds all four sides of the map canvas", documentBleedRect && canvasSurfaceRect && bleedGaps.length === 4 && bleedGaps.every(gap => gap >= 2) && Math.max(...bleedGaps) - Math.min(...bleedGaps) <= 1.5 && documentPagePreview.dataset.bleedIn === "0.125" && documentBleedGuide.querySelectorAll(".document-bleed-corner").length === 4, `gaps=${bleedGaps.map(gap => gap.toFixed(1)).join(",")}, bleed=${documentPagePreview?.dataset.bleedIn || "missing"}`);
-            assert(checks, "Document preview is clearly identified as a non-exported screen guide", /page and bleed lines are not included in exports/i.test(doc.querySelector("#documentPreviewHint")?.textContent || "") && !doc.querySelector("#mapSvg .document-page-header, #mapSvg .document-page-footer, #mapSvg .document-canvas-bleed"));
+            assert(checks, "Document preview is clearly identified as a non-exported screen guide without placeholder footer text", /page and bleed lines are not included in exports/i.test(doc.querySelector("#documentPreviewHint")?.textContent || "") && !doc.querySelector(".document-page-footer") && !doc.querySelector("#mapSvg .document-page-header, #mapSvg .document-canvas-bleed"));
             const imageSizeInput = doc.querySelector("#imageSizeInput");
             const originalImageSize = imageSizeInput?.value;
             const alternateImageSize = Array.from(imageSizeInput?.options || []).find(option => option.value !== originalImageSize)?.value;
@@ -3927,6 +4006,11 @@
               doc.querySelector("#propertiesPanel")
             ].map(element => element ? frame.contentWindow.getComputedStyle(element).backgroundColor : "");
             assert(checks, "Project controls, main content, and Properties use distinct brand surfaces", projectAreaBackgrounds.every(Boolean) && new Set(projectAreaBackgrounds).size === 3, projectAreaBackgrounds.join(", "));
+            if (appWidth > 1080) {
+              const projectSearchRect = doc.querySelector("#projectSearchControl")?.getBoundingClientRect();
+              const projectAddRect = doc.querySelector("#projectAddMenuBtn")?.getBoundingClientRect();
+              assert(checks, "Markers keeps Search, Show, Add data, and More on one intentional command row", Boolean(projectSearchRect && projectAddRect) && Math.abs(projectSearchRect.top - projectAddRect.top) <= 1, `searchTop=${projectSearchRect?.top.toFixed(1) || "missing"}; addTop=${projectAddRect?.top.toFixed(1) || "missing"}`);
+            }
             assert(checks, "Project filters use one compact counted selector", filterOptions.length === 3 && /All rows \(\d+\)/.test(filterOptions[0]?.textContent || "") && /Missing coordinates \(\d+\)/.test(filterOptions[1]?.textContent || "") && /No-coordinate callouts \(\d+\)/.test(filterOptions[2]?.textContent || ""));
             assert(checks, "Project authoring language remains available", doc.querySelectorAll("[data-authoring-language]").length === 2);
             const firstTypeInput = doc.querySelector("#projectTable .type-input");
@@ -4195,11 +4279,14 @@
             assert(checks, "Project table headers remain sticky while the data viewport scrolls", Array.from(doc.querySelectorAll("#projectTable thead th")).every(header => frame.contentWindow.getComputedStyle(header).position === "sticky"));
             const statusCell = doc.querySelector("#projectTable .status-cell");
             const statusBadge = doc.querySelector("#projectTable .row-status-badge:not([data-state='blank'])");
+            const statusContent = statusCell?.querySelector(".row-status-content");
+            const rowFixAction = doc.querySelector("#projectTable .row-fix-link");
             assert(checks, "Project status cells are read-only and labelled", statusCell?.getAttribute("aria-readonly") === "true" && /^Status: /.test(statusBadge?.getAttribute("aria-label") || ""));
-            assert(checks, "Project status column fits the widest badge with standard inline padding", statusCell && statusBadge && statusCell.getBoundingClientRect().width <= 290 && statusBadge.getBoundingClientRect().left >= statusCell.getBoundingClientRect().left + 16 && statusBadge.getBoundingClientRect().right <= statusCell.getBoundingClientRect().right - 16, `cell=${statusCell ? Math.round(statusCell.getBoundingClientRect().width) : "missing"}`);
+            assert(checks, "Missing-location actions belong to Status rather than floating over Project names", rowFixAction?.closest(".status-cell") === statusCell && !rowFixAction.closest(".name-cell") && frame.contentWindow.getComputedStyle(rowFixAction).position === "static");
+            assert(checks, "Project status column fits its content with standard inline padding", statusCell && statusContent && statusCell.getBoundingClientRect().width <= 290 && statusContent.getBoundingClientRect().left >= statusCell.getBoundingClientRect().left + 16 && statusContent.getBoundingClientRect().right <= statusCell.getBoundingClientRect().right - 16, `cell=${statusCell ? Math.round(statusCell.getBoundingClientRect().width) : "missing"}`);
             const statusCellCenter = statusCell ? statusCell.getBoundingClientRect().left + statusCell.getBoundingClientRect().width / 2 : 0;
-            const statusBadgeCenter = statusBadge ? statusBadge.getBoundingClientRect().left + statusBadge.getBoundingClientRect().width / 2 : 999;
-            assert(checks, "Project status badge is centered in the status column", Math.abs(statusCellCenter - statusBadgeCenter) <= 3, `cell=${Math.round(statusCellCenter)}, badge=${Math.round(statusBadgeCenter)}`);
+            const statusContentCenter = statusContent ? statusContent.getBoundingClientRect().left + statusContent.getBoundingClientRect().width / 2 : 999;
+            assert(checks, "Project status content is centered in the status column", Math.abs(statusCellCenter - statusContentCenter) <= 3, `cell=${Math.round(statusCellCenter)}, content=${Math.round(statusContentCenter)}`);
             firstNameInput?.click();
             await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-kind='row']"));
             assert(checks, "Selecting a Project row opens contextual Properties and enables that row", !doc.body.classList.contains("properties-unavailable") && propertiesToggle?.hidden === false && firstNameInput?.readOnly === false && firstNameInput?.tabIndex !== -1);
@@ -4518,8 +4605,24 @@
             uiEnglishButton?.click();
             await waitFor(() => doc.documentElement.lang === "en" && /English/.test(doc.querySelector(".translation-column-labels")?.textContent || "") && /Status/.test(doc.querySelector(".translation-column-labels")?.textContent || ""), 2000);
             const translateAddSection = doc.querySelector(".translate-add-section");
+            const translateFilters = doc.querySelector(".translate-filters");
+            const translateFilterButton = translateFilters?.querySelector("button");
+            const translateAddLabel = translateAddSection?.querySelector(".control-group-label");
+            const translateImportButton = translateAddSection?.querySelector("#importTranslationsBtn");
+            const translateFilterStyle = translateFilters ? frame.contentWindow.getComputedStyle(translateFilters) : null;
+            const translateAddStyle = translateAddSection ? frame.contentWindow.getComputedStyle(translateAddSection) : null;
+            const translateFilterButtonStyle = translateFilterButton ? frame.contentWindow.getComputedStyle(translateFilterButton) : null;
+            const translateImportButtonStyle = translateImportButton ? frame.contentWindow.getComputedStyle(translateImportButton) : null;
+            const translateFilterRect = translateFilters?.getBoundingClientRect();
+            const translateAddRect = translateAddSection?.getBoundingClientRect();
+            const translateFilterButtonRect = translateFilterButton?.getBoundingClientRect();
+            const translateAddLabelRect = translateAddLabel?.getBoundingClientRect();
+            const translateImportButtonRect = translateImportButton?.getBoundingClientRect();
             assert(checks, "Translation filters and paste action remain available", doc.querySelectorAll("[data-translation-filter]").length === 2 && Boolean(doc.querySelector("#pasteTranslationColumnBtn")));
             assert(checks, "Translation import and paste actions are grouped in Add", Boolean(translateAddSection?.querySelector("#importTranslationsBtn")) && Boolean(translateAddSection?.querySelector("#pasteTranslationColumnBtn")) && /Add|Ajouter/.test(translateAddSection?.textContent || ""), translateAddSection?.textContent || "");
+            assert(checks, "Translate toolbar groups share one surface geometry", Boolean(translateFilterRect && translateAddRect) && Math.abs(translateFilterRect.height - translateAddRect.height) <= 1 && translateFilterStyle?.borderRadius === translateAddStyle?.borderRadius && translateAddStyle?.borderRadius !== "999px", `filters=${Math.round(translateFilterRect?.height || 0)}px/${translateFilterStyle?.borderRadius}; add=${Math.round(translateAddRect?.height || 0)}px/${translateAddStyle?.borderRadius}`);
+            assert(checks, "Translate toolbar controls share the control radius", translateFilterButtonStyle?.borderRadius === translateImportButtonStyle?.borderRadius && translateImportButtonStyle?.borderRadius === "6px", `filters=${translateFilterButtonStyle?.borderRadius}; import=${translateImportButtonStyle?.borderRadius}`);
+            assert(checks, "Translate toolbar labels and controls share one vertical rhythm", Boolean(translateFilterButtonRect && translateAddLabelRect && translateImportButtonRect) && Math.abs(translateFilterButtonRect.height - translateAddLabelRect.height) <= 1 && Math.abs(translateAddLabelRect.height - translateImportButtonRect.height) <= 1 && Math.abs((translateFilterButtonRect.top + translateFilterButtonRect.height / 2) - (translateImportButtonRect.top + translateImportButtonRect.height / 2)) <= 1, `filter=${Math.round(translateFilterButtonRect?.height || 0)}px; label=${Math.round(translateAddLabelRect?.height || 0)}px; import=${Math.round(translateImportButtonRect?.height || 0)}px`);
             assert(checks, "Translate uses the full workspace without duplicating its summary in Properties", doc.body.classList.contains("properties-unavailable") && propertiesPanel?.inert && propertiesToggle?.hidden === true && !doc.querySelector("#propertiesSelectionControls [data-property-kind='translation-entry'], #propertiesSelectionControls [data-translation-property]"));
             assert(checks, "Translate column labels show editable and automatic hints", doc.querySelectorAll(".translation-column-labels [data-icon='pencil']").length === 2 && Boolean(doc.querySelector(".translation-column-labels .col-auto-chip [data-icon='wand']")));
             const translationLanguageHeadingNodes = Array.from(doc.querySelectorAll(".translation-column-labels > span")).slice(1, 3);

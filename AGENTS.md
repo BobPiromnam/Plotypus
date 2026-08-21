@@ -97,6 +97,7 @@ Use plain, task-oriented copy. A first-time user should be able to answer: what 
 
 ### Hierarchy and density
 
+- Every workspace intro and its first controls/content region use the shared `--workspace-gutter`; control rails also use `--workspace-rail-padding-block`. Do not add workspace-specific page-edge padding. At responsive widths, change the shared gutter token so headings, controls, tables, and QA content move together.
 - Each workspace has one obvious primary action. Secondary actions are outlined/default; utilities are quiet or icon buttons; destructive actions use the shared danger treatment and usually live in an overflow menu.
 - Do not duplicate the same command in the workspace and Properties unless both placements serve distinct contexts.
 - Use progressive disclosure. Keep frequent, required controls visible and move advanced or infrequent controls into a clearly labelled section or overflow menu.
@@ -118,6 +119,18 @@ Use the established shared classes and the inventory in `docs/button-inventory.h
 - `.btn-card`
 
 Frequent controls use `--control-h` (44px), compact controls use `--control-h-compact` (36px), and passive chips use `--chip-h` (28px). Do not invent additional height scales or locally resize a shared button. Buttons with icons need a deliberate, shared icon; do not leave an accidental empty icon slot. Icon-only buttons require an accessible name and tooltip where useful.
+
+Grouped controls use `.ui-control-group`: a 46px grouped surface containing 38px controls, with `.control-group-label` for its short uppercase label. Do not create a pill-shaped toolbar group or reproduce this geometry in a feature-specific selector. Menus, popovers, and other transient surfaces use `.ui-floating-surface` so their geometry and entry behaviour remain consistent.
+
+The shape scale has five semantic roles:
+
+- `--radius-detail` (4px) for tiny swatches and internal details;
+- `--radius-control` (6px) for buttons, inputs, and selects;
+- `--radius-group` / `--radius-surface` (8px) for grouped controls, cards, menus, and popovers;
+- `--radius-dialog` (14px) for modal dialog surfaces;
+- `--radius-pill` only for genuine pills, chips, toggles, progress tracks, and circles.
+
+Do not choose a radius because it looks close to a neighbouring value. Do not use a pill to make an ordinary group look more modern.
 
 ### Typography
 
@@ -154,6 +167,16 @@ When improving one accordion, inspect every Document Properties accordion in bot
 
 Icons must be distinct, intuitive, and consistent with the existing stroke family. Preserve the approved navigation icons. A marker should read as a pin; Map and Map baselayer must not be visually interchangeable; combined concepts may exaggerate a pin hovering above a map. Do not replace approved icons during unrelated work.
 
+### Motion and transitions
+
+Motion communicates state and spatial relationships; it is not decoration. Use the shared durations `--motion-fast` (120ms), `--motion-base` (160ms), and `--motion-slow` (220ms), plus the shared easing tokens. A dedicated loader may use its documented cycle token.
+
+- Prefer colour, opacity, and transform. Do not animate layout dimensions or position when transform can express the relationship; progress tracks are the narrow exception.
+- Buttons may use the shared one-pixel pressed transform. Menus and popovers use `.ui-floating-surface`; dialogs use the shared dialog entry. Do not invent a bespoke animation per workspace.
+- Keep entry motion subtle and exit/feedback motion fast. State, hierarchy, and meaning must remain clear when animation is removed.
+- Every new animation or transition must respect `prefers-reduced-motion`. Test that mode explicitly when motion changes.
+- Avoid springy, bouncy, parallax, ambient, or attention-seeking movement in this focused internal tool unless the user explicitly requests and approves it.
+
 ### Layering, scrolling, and geometry
 
 - Menus, popovers, tooltips, and dialog content must appear above following cards and must not be clipped by an unintended overflow ancestor.
@@ -174,6 +197,7 @@ Display map and canvas scale as whole percentages. The map-scale control uses on
 `styles/app.css` is a design system, not an append-only patch log.
 
 - Reuse root colour, type, spacing, radius, icon, and control-size tokens. Add a token only when it represents a repeated semantic decision.
+- Do not add literal `border-radius` values or literal transition durations in component rules. Use the semantic radius and motion tokens.
 - Prefer a single low-specificity class for a component and explicit modifier/state classes such as `.is-open`, `.is-selected`, or `[data-state]`.
 - Do not style reusable components through IDs, long ancestry chains, section names, positional selectors, or a later duplicate rule.
 - Do not add inline presentation styles from HTML or JavaScript when a class/state can express the same result. Dynamic map geometry is an exception; UI component styling is not.
