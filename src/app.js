@@ -51,6 +51,13 @@
     return;
   }
 
+  if (!window.PLOTYPUS_LOCATION_HIERARCHY) {
+    const message = startupT("startup.error.module", { module: "location-hierarchy.js" });
+    const statusBox = document.querySelector("#statusBox");
+    if (statusBox) statusBox.innerHTML = `<div class="status-danger">${message}</div>`;
+    return;
+  }
+
   if (!window.PLOTYPUS_LABEL_LAYOUT) {
     const message = startupT("startup.error.module", { module: "label-layout.js" });
     const statusBox = document.querySelector("#statusBox");
@@ -106,6 +113,7 @@
     segmentsCross
   } = window.PLOTYPUS_GEOMETRY;
   const markerColour = window.PLOTYPUS_MARKER_COLOUR;
+  const locationHierarchy = window.PLOTYPUS_LOCATION_HIERARCHY;
   const projectIo = window.PLOTYPUS_PROJECT_IO;
   const workspace = window.PLOTYPUS_WORKSPACE;
   const regionMatching = window.PLOTYPUS_REGION_MATCHING;
@@ -1841,10 +1849,29 @@
     return normalizeProjectLocationMode(mode) === "cities";
   }
 
-  function getProjectLocationAnchor(mode = activeProjectLocationMode) {
-    if (isRegionLocationMode(mode)) return "region";
-    if (isCityLocationMode(mode)) return "city";
-    return "coord";
+  function resolveProjectLocationHierarchy(row = {}) {
+    return locationHierarchy.resolveLocationHierarchy({
+      exactLon: row.exactLon,
+      exactLat: row.exactLat,
+      cityId: row.cityId,
+      cityLon: row.cityLon,
+      cityLat: row.cityLat,
+      region: row.region
+    });
+  }
+
+  function applyProjectLocationHierarchy(row = {}) {
+    const location = resolveProjectLocationHierarchy(row);
+    return {
+      ...row,
+      lon: location.lon,
+      lat: location.lat,
+      anchor: location.anchor,
+      locationSource: location.source,
+      locationIssue: location.locationIssue,
+      hasExactCoordinates: location.hasExactCoordinates,
+      hasPartialExactCoordinates: location.hasPartialExactCoordinates
+    };
   }
 
   function getActiveTableFields() {
@@ -1902,6 +1929,18 @@
     getTableRows().forEach(syncProjectRowRegionInput);
   }
 
+  function deriveProjectRegionFromExactCoordinates(tr) {
+    if (!tr) return "";
+    const lon = toNumber(tr.querySelector(".lon-input")?.value);
+    const lat = toNumber(tr.querySelector(".lat-input")?.value);
+    if (lon === "" || lat === "") return String(tr.dataset.region || "");
+    const regionId = getRegionIdForPoint(Number(lon), Number(lat)) || "";
+    tr.dataset.region = regionId;
+    if (regionId) regionVisibility[regionId] = true;
+    syncProjectRowRegionInput(tr);
+    return regionId;
+  }
+
   function syncProjectLocationModeUi() {
     const isRegions = isRegionLocationMode();
     const isCities = isCityLocationMode();
@@ -1928,61 +1967,28 @@
   function setProjectLocationMode(mode, options = {}) {
     const nextMode = normalizeProjectLocationMode(mode);
     const changed = nextMode !== activeProjectLocationMode;
-    const nextIsRegionMode = isRegionLocationMode(nextMode);
-    const nextIsCityMode = isCityLocationMode(nextMode);
-    if (changed && options.pushUndo !== false) pushAppUndoHistory("project location mode");
-    if (changed && nextIsRegionMode) {
-      getTableRows().forEach(tr => {
-        const lonValue = tr.querySelector(".lon-input")?.value || "";
-        const latValue = tr.querySelector(".lat-input")?.value || "";
-        if (lonValue) tr.dataset.coordLon = lonValue;
-        if (latValue) tr.dataset.coordLat = latValue;
-      });
-    }
     activeProjectLocationMode = nextMode;
-    let autoFilled = 0;
     getTableRows().forEach(tr => {
-      tr.dataset.anchor = getProjectLocationAnchor();
-      if (!nextIsRegionMode) {
-        const lonInput = tr.querySelector(".lon-input");
-        const latInput = tr.querySelector(".lat-input");
-        if (lonInput) lonInput.value = tr.dataset.coordLon || "";
-        if (latInput) latInput.value = tr.dataset.coordLat || "";
-      }
-      if (nextIsRegionMode && !String(tr.dataset.region || "").trim()) {
-        const lonValue = toNumber(tr.dataset.coordLon || tr.querySelector(".lon-input")?.value || "");
-        const latValue = toNumber(tr.dataset.coordLat || tr.querySelector(".lat-input")?.value || "");
-        if (lonValue !== "" && latValue !== "") {
-          const regionId = getRegionIdForPoint(Number(lonValue), Number(latValue));
-          if (regionId) {
-            tr.dataset.region = regionId;
-            autoFilled += 1;
-          }
-        }
-      }
       syncProjectRowRegionInput(tr);
       projectRowCityControllers.get(String(tr.dataset.rowId))?.refresh();
-      updateRowAnnotationPreview(tr);
       syncCoordinateClearButtons(tr);
     });
     syncProjectLocationModeUi();
     refreshProjectTableUx();
-    refreshActiveRowProperties();
-    if (options.render !== false) requestPreviewRefresh();
     if (changed && options.status !== false) {
-      const key = nextIsRegionMode
-        ? "status.locationModeRegions"
-        : nextIsCityMode
-          ? "status.locationModeCities"
-          : "status.locationModeCoordinates";
-      const message = autoFilled > 0 ? t("status.locationModeRegionsAutoFilled", { count: autoFilled }) : t(key);
-      setStatusMessage(message, "ok");
+      const key = isRegionLocationMode(nextMode)
+        ? "status.locationViewRegions"
+        : isCityLocationMode(nextMode)
+          ? "status.locationViewCities"
+          : "status.locationViewCoordinates";
+      setStatusMessage(t(key), "ok");
     }
   }
   function normalizeImportedProjectRow(rawRow, index = 0, messages = [], locationMode = activeProjectLocationMode) {
     const row = normalizeRow(rawRow);
-    row.anchor = getProjectLocationAnchor(locationMode);
     if (isCityLocationMode(locationMode)) {
+      row.exactLon = "";
+      row.exactLat = "";
       const input = String(rawRow && (rawRow.city || getField(rawRow, csvColumnAliases.city) || "") || "").trim();
       const resolved = cityIntegration && cityIntegration.resolveCityInput(input, indexedReferenceCities);
       if (resolved && resolved.status === "matched") {
@@ -1991,26 +1997,32 @@
         row.cityName = city.name;
         row.cityNameFr = city.name_fr || city.name;
         row.cityProvince = city.prov;
-        row.lon = Number(city.lon);
-        row.lat = Number(city.lat);
+        row.cityLon = Number(city.lon);
+        row.cityLat = Number(city.lat);
         row.region = getCityRegionId(city);
       } else {
         row.cityId = "";
         row.cityName = "";
         row.cityNameFr = "";
         row.cityProvince = "";
-        row.lon = "";
-        row.lat = "";
+        row.cityLon = "";
+        row.cityLat = "";
         row.region = "";
         if (input) messages.push(t(resolved && resolved.status === "ambiguous" ? "status.csvRowCityAmbiguous" : "status.csvRowCityUnmatched", { row: index + 2, input }));
       }
-      return row;
+      return applyProjectLocationHierarchy(row);
     }
-    if (!isRegionLocationMode(locationMode)) return row;
+    if (!isRegionLocationMode(locationMode)) return applyProjectLocationHierarchy(row);
     const input = String(rawRow && (rawRow.region || getField(rawRow, csvColumnAliases.region) || "") || "").trim();
     const resolved = resolveProjectRegionInput(input);
-    row.lon = "";
-    row.lat = "";
+    row.exactLon = "";
+    row.exactLat = "";
+    row.cityId = "";
+    row.cityName = "";
+    row.cityNameFr = "";
+    row.cityProvince = "";
+    row.cityLon = "";
+    row.cityLat = "";
     row.region = resolved.status === "matched" ? resolved.id : "";
     const rowNumber = index + 2;
     if (resolved.status === "matched" && resolved.confidence !== "exact") {
@@ -2020,7 +2032,7 @@
     } else if (resolved.status === "ambiguous") {
       messages.push(t("status.csvRowRegionAmbiguous", { row: rowNumber, input }));
     }
-    return row;
+    return applyProjectLocationHierarchy(row);
   }
 
   function normalizeLabelStyle(value) {
@@ -2224,22 +2236,40 @@
   }
 
   function normalizeRow(row) {
-    const anchor = normalizeAnchor(row && row.anchor);
-    return {
+    const source = row || {};
+    const legacyAnchor = normalizeAnchor(source.anchor);
+    const legacyLon = toNumber(getField(source, csvColumnAliases.lon));
+    const legacyLat = toNumber(getField(source, csvColumnAliases.lat));
+    const exactLon = Object.prototype.hasOwnProperty.call(source, "exactLon")
+      ? toNumber(source.exactLon)
+      : legacyAnchor === "coord" ? legacyLon : "";
+    const exactLat = Object.prototype.hasOwnProperty.call(source, "exactLat")
+      ? toNumber(source.exactLat)
+      : legacyAnchor === "coord" ? legacyLat : "";
+    const cityId = String(source.cityId || source.sourceCityId || "").trim();
+    const catalogueCity = cityId ? getProjectCityById(cityId) : null;
+    const cityLon = Object.prototype.hasOwnProperty.call(source, "cityLon")
+      ? toNumber(source.cityLon)
+      : legacyAnchor === "city" ? legacyLon : catalogueCity ? toNumber(catalogueCity.lon) : "";
+    const cityLat = Object.prototype.hasOwnProperty.call(source, "cityLat")
+      ? toNumber(source.cityLat)
+      : legacyAnchor === "city" ? legacyLat : catalogueCity ? toNumber(catalogueCity.lat) : "";
+    return applyProjectLocationHierarchy({
       rowId: row && row.rowId ? String(row.rowId) : "",
       name: String(getField(row, csvColumnAliases.name) || "").trim(),
       nameFr: String(getField(row, csvColumnAliases.nameFr) || row.nameFr || "").trim(),
       footnote: normalizeFootnote(getField(row, csvColumnAliases.footnote)),
       type: cleanType(getField(row, csvColumnAliases.type) || getDefaultCategory().label),
       typeFr: String(getField(row, csvColumnAliases.typeFr) || row.typeFr || "").trim(),
-      lon: anchor === "region" ? "" : toNumber(getField(row, csvColumnAliases.lon)),
-      lat: anchor === "region" ? "" : toNumber(getField(row, csvColumnAliases.lat)),
-      anchor,
+      exactLon,
+      exactLat,
       region: String(row && row.region || getField(row, csvColumnAliases.region) || "").trim(),
-      cityId: String(row && (row.cityId || row.sourceCityId) || "").trim(),
+      cityId,
       cityName: String(row && row.cityName || "").trim(),
       cityNameFr: String(row && row.cityNameFr || "").trim(),
       cityProvince: String(row && row.cityProvince || "").trim(),
+      cityLon,
+      cityLat,
       labelStyle: normalizeLabelStyle(row && row.labelStyle),
       content: normalizeAnnotationContent(row && row.content),
       labelBorder: toBoolean(row && row.labelBorder),
@@ -2248,7 +2278,7 @@
       leaderLineWidth: normalizeLeaderLineWidthOverride(row && row.leaderLineWidth),
       leaderLineColour: normalizeHexColour(row && row.leaderLineColour, ""),
       labelMaxChars: normalizeLabelMaxCharsOverride(row && row.labelMaxChars)
-    };
+    });
   }
 
   function setRows(rows, importMessages = [], options = {}) {
@@ -2267,7 +2297,6 @@
     const fragment = document.createDocumentFragment();
     rows.forEach(row => {
       const normalized = normalizeRow(row);
-      normalized.anchor = getProjectLocationAnchor();
       if (normalized.typeFr) {
         const category = getCategoryForType(normalized.type);
         if (category && !category.labelFr) category.labelFr = normalized.typeFr;
@@ -2291,7 +2320,7 @@
   }
 
   function addRow(
-    row = { name: "", nameFr: "", footnote: "", type: getDefaultCategory().id, lon: "", lat: "", anchor: "coord", region: "", cityId: "", cityName: "", cityNameFr: "", cityProvince: "", labelStyle: "compact", content: [], labelBorder: false, hideLine: false, elbowLeader: false, leaderLineWidth: "", leaderLineColour: "", labelMaxChars: "" },
+    row = { name: "", nameFr: "", footnote: "", type: getDefaultCategory().id, exactLon: "", exactLat: "", region: "", cityId: "", cityName: "", cityNameFr: "", cityProvince: "", cityLon: "", cityLat: "", labelStyle: "compact", content: [], labelBorder: false, hideLine: false, elbowLeader: false, leaderLineWidth: "", leaderLineColour: "", labelMaxChars: "" },
     options = {}
   ) {
     const tr = document.createElement("tr");
@@ -2302,17 +2331,19 @@
     tr.dataset.nameEn = row.name || "";
     tr.dataset.nameFr = row.nameFr || "";
     tr.dataset.labelMaxChars = normalizeLabelMaxCharsOverride(row.labelMaxChars);
-    tr.dataset.anchor = getProjectLocationAnchor();
+    tr.dataset.anchor = row.anchor || "coord";
     tr.dataset.region = String(row.region || "").trim();
     tr.dataset.cityId = String(row.cityId || row.sourceCityId || "").trim();
     tr.dataset.cityName = String(row.cityName || "").trim();
     tr.dataset.cityNameFr = String(row.cityNameFr || "").trim();
     tr.dataset.cityProvince = String(row.cityProvince || "").trim();
+    tr.dataset.cityLon = formatProjectCoordinate(row.cityLon);
+    tr.dataset.cityLat = formatProjectCoordinate(row.cityLat);
     tr.dataset.labelStyle = normalizeLabelStyle(row.labelStyle);
     tr.dataset.content = annotationArrayToDataset(normalizeAnnotationContent(row.content));
     tr.dataset.labelBorder = row.labelBorder ? "true" : "false";
-    tr.dataset.coordLon = formatProjectCoordinate(row.lon);
-    tr.dataset.coordLat = formatProjectCoordinate(row.lat);
+    tr.dataset.exactLon = formatProjectCoordinate(row.exactLon);
+    tr.dataset.exactLat = formatProjectCoordinate(row.exactLat);
     const numericRowId = Number(rowId);
     nextRowId = Number.isFinite(numericRowId) ? Math.max(nextRowId, numericRowId + 1) : nextRowId + 1;
     tr.innerHTML = `
@@ -2326,8 +2357,8 @@
       <td class="annotation-preview-cell label-preview-cell" data-cell-field="labelStyle"><span class="label-preview-text"></span></td>
       <td class="bulk-edit-cell city-cell vcell" data-cell-field="city"><div class="project-city-cell-field"></div></td>
       <td class="bulk-edit-cell region-cell anchor-preview-cell vcell" data-cell-field="region"><select class="region-input type-control" aria-label="${escapeHtml(t("properties.field.region"))}"></select></td>
-      <td class="bulk-edit-cell coordinate-cell lon-cell vcell" data-cell-field="lon"><input class="lon-input type-numeric-data" type="text" inputmode="decimal" value="${escapeHtml(formatProjectCoordinate(row.lon))}" aria-label="${escapeHtml(t("table.longitude"))}"><button class="clear-coordinate-cell" type="button" data-clear-coordinate="lon" aria-label="${escapeHtml(t("table.clearLongitude"))}" title="${escapeHtml(t("table.clearLongitude"))}" hidden>&times;</button></td>
-      <td class="bulk-edit-cell coordinate-cell lat-cell vcell" data-cell-field="lat"><input class="lat-input type-numeric-data" type="text" inputmode="decimal" value="${escapeHtml(formatProjectCoordinate(row.lat))}" aria-label="${escapeHtml(t("table.latitude"))}"><button class="clear-coordinate-cell" type="button" data-clear-coordinate="lat" aria-label="${escapeHtml(t("table.clearLatitude"))}" title="${escapeHtml(t("table.clearLatitude"))}" hidden>&times;</button></td>
+      <td class="bulk-edit-cell coordinate-cell lon-cell vcell" data-cell-field="lon"><input class="lon-input type-numeric-data" type="text" inputmode="decimal" value="${escapeHtml(formatProjectCoordinate(row.exactLon))}" aria-label="${escapeHtml(t("table.longitude"))}"><button class="clear-coordinate-cell" type="button" data-clear-coordinate="lon" aria-label="${escapeHtml(t("table.clearLongitude"))}" title="${escapeHtml(t("table.clearLongitude"))}" hidden>&times;</button></td>
+      <td class="bulk-edit-cell coordinate-cell lat-cell vcell" data-cell-field="lat"><input class="lat-input type-numeric-data" type="text" inputmode="decimal" value="${escapeHtml(formatProjectCoordinate(row.exactLat))}" aria-label="${escapeHtml(t("table.latitude"))}"><button class="clear-coordinate-cell" type="button" data-clear-coordinate="lat" aria-label="${escapeHtml(t("table.clearLatitude"))}" title="${escapeHtml(t("table.clearLatitude"))}" hidden>&times;</button></td>
       <td class="status-cell" data-cell-field="status"><div class="row-status-content"><span class="row-status-badge type-status-badge"></span><button class="row-fix-link" type="button" hidden>${escapeHtml(t("table.fix"))}</button></div></td>
       <td class="line-cell" data-cell-field="hideLine"><input type="checkbox" class="hide-line-input" aria-label="${escapeHtml(t("properties.field.hideLeaderLine"))}"${row.hideLine ? " checked" : ""}></td>
       <td hidden>
@@ -2340,13 +2371,6 @@
     tr.querySelector(".type-input").value = cleanType(row.type);
     const handleRowEdit = (input) => {
       captureInputUndo(input, "project row edit");
-      if (!isCityLocationMode() && (input.classList.contains("lon-input") || input.classList.contains("lat-input"))) {
-        tr.dataset.cityId = "";
-        tr.dataset.cityName = "";
-        tr.dataset.cityNameFr = "";
-        tr.dataset.cityProvince = "";
-        projectRowCityControllers.get(String(tr.dataset.rowId))?.setValue("");
-      }
       updateRowTitles(tr);
       updateRowAnnotationPreview(tr);
       syncCoordinateClearButtons(tr);
@@ -2362,7 +2386,8 @@
         const coordinateField = input.classList.contains("lon-input") ? "Lon" : input.classList.contains("lat-input") ? "Lat" : "";
         if (coordinateField) {
           if (toNumber(input.value) !== "") input.value = formatProjectCoordinate(input.value);
-          tr.dataset[`coord${coordinateField}`] = input.value;
+          tr.dataset[`exact${coordinateField}`] = input.value;
+          deriveProjectRegionFromExactCoordinates(tr);
         }
         handleRowEdit(input);
       });
@@ -2465,21 +2490,10 @@
   function syncAnchorCoordinateInputs(tr, row = null) {
     if (!tr) return;
     const current = row || readRowElement(tr);
-    const useRegion = isRegionLocationMode();
-    const lonInput = tr.querySelector(".lon-input");
-    const latInput = tr.querySelector(".lat-input");
-    if (lonInput) {
-      if (!useRegion) tr.dataset.coordLon = lonInput.value;
-      lonInput.disabled = useRegion;
-      lonInput.value = useRegion ? "" : tr.dataset.coordLon || lonInput.value;
-    }
-    if (latInput) {
-      if (!useRegion) tr.dataset.coordLat = latInput.value;
-      latInput.disabled = useRegion;
-      latInput.value = useRegion ? "" : tr.dataset.coordLat || latInput.value;
-    }
-    tr.classList.toggle("is-region-anchored", Boolean(useRegion));
-    tr.classList.toggle("is-city-anchored", isCityLocationMode());
+    tr.dataset.anchor = current.anchor;
+    tr.classList.toggle("is-region-anchored", current.anchor === "region");
+    tr.classList.toggle("is-city-anchored", current.anchor === "city");
+    tr.classList.toggle("has-location-issue", Boolean(current.locationIssue));
   }
 
   function updateRowAnnotationPreview(tr, row = null) {
@@ -2505,19 +2519,17 @@
 
   function getProjectRowState(tr) {
     const row = readRowElement(tr);
-    const hasName = Boolean(row && row.name);
-    const hasLon = row && row.lon !== "";
-    const hasLat = row && row.lat !== "";
-    const hasAnyCoordinate = Boolean(hasLon || hasLat);
-    const hasBothCoordinates = Boolean(hasLon && hasLat);
-    const hasRegionAnchor = Boolean(row && row.anchor === "region" && row.region);
-    const hasCityAnchor = Boolean(row && row.anchor === "city" && row.cityId && hasBothCoordinates);
-    const isRegionMode = isRegionLocationMode();
-    const isCityMode = isCityLocationMode();
-    const isBlank = !hasName && !hasAnyCoordinate && !hasRegionAnchor && !(row && row.cityId);
-    const isMissingCoordinate = row && !isBlank && (isRegionMode ? !hasRegionAnchor : isCityMode ? !hasCityAnchor : hasAnyCoordinate && !hasBothCoordinates);
-    const isCallout = row && !isRegionMode && !isCityMode && !isBlank && hasName && !hasAnyCoordinate;
-    const isMapped = !isBlank && (isRegionMode ? hasRegionAnchor : isCityMode ? hasCityAnchor : hasBothCoordinates);
+    const hasName = Boolean(row && (row.name || row.nameFr));
+    const hasLocationData = Boolean(row && (
+      row.exactLon !== ""
+      || row.exactLat !== ""
+      || row.cityId
+      || row.region
+    ));
+    const isBlank = !hasName && !hasLocationData;
+    const isMissingCoordinate = Boolean(row && !isBlank && row.locationIssue);
+    const isCallout = Boolean(row && !isBlank && hasName && !row.locationIssue && row.locationSource === "unlocated");
+    const isMapped = Boolean(row && !isBlank && row.locationSource !== "unlocated");
     return { isBlank, isMapped, isCallout, isMissingCoordinate, row };
   }
 
@@ -2543,11 +2555,7 @@
   function getCoordinateIssueRows() {
     return getTableRows()
       .map(readRowElement)
-      .filter(row => row && (isRegionLocationMode()
-        ? row.anchor === "region" && !row.region && (row.name || row.nameFr)
-        : isCityLocationMode()
-          ? row.anchor === "city" && !row.cityId && (row.name || row.nameFr)
-          : ((row.lon === "") !== (row.lat === ""))));
+      .filter(row => row && row.locationIssue);
   }
 
   function updatePreviewState() {
@@ -2640,11 +2648,16 @@
     const latInput = tr.querySelector(".lat-input");
     const regionInput = tr.querySelector(".region-input");
     const cityInput = tr.querySelector(".cityLocationInput");
-    const target = isRegionLocationMode() && regionInput && !regionInput.value
-      ? regionInput
-      : isCityLocationMode() && cityInput && !tr.dataset.cityId
-        ? cityInput
-        : lonInput && lonInput.value === ""
+    const row = readRowElement(tr);
+    const target = row && row.hasPartialExactCoordinates && lonInput && lonInput.value === ""
+      ? lonInput
+      : row && row.hasPartialExactCoordinates && latInput && latInput.value === ""
+        ? latInput
+        : row && row.cityId && (row.cityLon === "" || row.cityLat === "") && cityInput
+          ? cityInput
+          : row && row.locationSource === "region" && regionInput && !regionInput.value
+            ? regionInput
+            : lonInput && lonInput.value === ""
           ? lonInput
           : latInput && latInput.value === ""
             ? latInput
@@ -2841,10 +2854,10 @@
       let statusTitle = "";
       if (badge) {
         if (state.isMissingCoordinate) {
-          badge.textContent = t(isCityLocationMode() ? "table.status.missingCity" : "table.status.missingCoordinate");
+          badge.textContent = t("table.status.locationIssue");
           statusText = t("table.status.missing");
           statusState = "missing";
-          statusTitle = t("table.status.missingCoordinateTitle");
+          statusTitle = t("table.status.locationIssueTitle");
           badge.title = statusTitle;
         } else if (state.isCallout) {
           badge.textContent = t("table.status.callout");
@@ -2915,11 +2928,7 @@
       const calloutsOption = els.projectFilterSelect.querySelector('option[value="callouts"]');
       if (allOption) allOption.textContent = t("toolbar.filters.allCount", { count: dataRows });
       if (missingOption) {
-        missingOption.textContent = t(isRegionLocationMode()
-          ? "toolbar.filters.missingRegionsCount"
-          : isCityLocationMode()
-            ? "toolbar.filters.missingCitiesCount"
-            : "toolbar.filters.missingCoordinatesCount", { count: missingRows });
+        missingOption.textContent = t("toolbar.filters.locationIssuesCount", { count: missingRows });
       }
       if (calloutsOption) calloutsOption.textContent = t("toolbar.filters.noCoordinateCalloutsCount", { count: calloutRows });
       els.projectFilterSelect.value = activeProjectFilter;
@@ -2948,20 +2957,21 @@
 
   function readRowElement(tr) {
     if (!tr) return null;
-    return {
+    return applyProjectLocationHierarchy({
       rowId: tr.dataset.rowId,
       name: activeAuthoringLanguage === "en" ? tr.querySelector(".name-input").value.trim() : tr.dataset.nameEn || "",
       nameFr: activeAuthoringLanguage === "fr" ? tr.querySelector(".name-input").value.trim() : tr.dataset.nameFr || "",
       footnote: normalizeFootnote(tr.querySelector(".footnote-input").value),
       type: cleanType(tr.querySelector(".type-input").value),
-      lon: isRegionLocationMode() ? "" : toNumber(tr.querySelector(".lon-input").value),
-      lat: isRegionLocationMode() ? "" : toNumber(tr.querySelector(".lat-input").value),
-      anchor: getProjectLocationAnchor(),
+      exactLon: toNumber(tr.querySelector(".lon-input").value),
+      exactLat: toNumber(tr.querySelector(".lat-input").value),
       region: String(tr.querySelector(".region-input")?.value || tr.dataset.region || "").trim(),
       cityId: String(tr.dataset.cityId || "").trim(),
       cityName: String(tr.dataset.cityName || "").trim(),
       cityNameFr: String(tr.dataset.cityNameFr || "").trim(),
       cityProvince: String(tr.dataset.cityProvince || "").trim(),
+      cityLon: toNumber(tr.dataset.cityLon),
+      cityLat: toNumber(tr.dataset.cityLat),
       labelStyle: normalizeLabelStyle(tr.dataset.labelStyle),
       content: normalizeAnnotationContent(tr.dataset.content),
       labelBorder: tr.dataset.labelBorder === "true",
@@ -2970,7 +2980,7 @@
       leaderLineWidth: normalizeLeaderLineWidthOverride(tr.querySelector(".leader-line-width-input")?.value),
       leaderLineColour: normalizeHexColour(tr.querySelector(".leader-line-colour-input")?.value, ""),
       labelMaxChars: normalizeLabelMaxCharsOverride(tr.dataset.labelMaxChars)
-    };
+    });
   }
 
   function updateProjectRowField(rowId, field, value, options = {}) {
@@ -2991,21 +3001,14 @@
     if (field === "footnote") tr.querySelector(".footnote-input").value = normalizeFootnote(value);
     if (field === "type") tr.querySelector(".type-input").value = cleanType(value);
     if (field === "lon") {
-      tr.dataset.coordLon = formatProjectCoordinate(value);
-      tr.querySelector(".lon-input").value = tr.dataset.coordLon;
+      tr.dataset.exactLon = formatProjectCoordinate(value);
+      tr.querySelector(".lon-input").value = tr.dataset.exactLon;
     }
     if (field === "lat") {
-      tr.dataset.coordLat = formatProjectCoordinate(value);
-      tr.querySelector(".lat-input").value = tr.dataset.coordLat;
+      tr.dataset.exactLat = formatProjectCoordinate(value);
+      tr.querySelector(".lat-input").value = tr.dataset.exactLat;
     }
-    if ((field === "lon" || field === "lat") && !isCityLocationMode()) {
-      tr.dataset.cityId = "";
-      tr.dataset.cityName = "";
-      tr.dataset.cityNameFr = "";
-      tr.dataset.cityProvince = "";
-      projectRowCityControllers.get(String(rowId))?.setValue("");
-    }
-    if (field === "anchor") tr.dataset.anchor = getProjectLocationAnchor();
+    if (field === "lon" || field === "lat") deriveProjectRegionFromExactCoordinates(tr);
     if (field === "region") {
       tr.dataset.region = String(value || "").trim();
       const regionInput = tr.querySelector(".region-input");
@@ -3093,7 +3096,7 @@
       });
     });
     const selectedFields = Array.from(selectedProjectCells).map(key => parseProjectCellKey(key).field);
-    const hasCoordinate = selectedFields.some(field => field === "lon" || field === "lat" || field === "region");
+    const hasCoordinate = selectedFields.some(field => field === "lon" || field === "lat" || field === "region" || field === "city");
     if (els.bulkClearCoordinatesBtn) els.bulkClearCoordinatesBtn.disabled = !hasCoordinate;
     updateDeleteButtonState();
   }
@@ -3499,11 +3502,11 @@
     if (propertiesProjectCityController && propertiesProjectCityController !== sourceController) {
       propertiesProjectCityController.setValue(row.cityId, getProjectCityFallbackLabel(row));
     }
-    const regionInput = els.propertiesSelectionControls?.querySelector('[data-city-derived="region"]');
-    const coordinatesInput = els.propertiesSelectionControls?.querySelector('[data-city-derived="coordinates"]');
+    const regionInput = els.propertiesSelectionControls?.querySelector('[data-property-field="region"]');
+    const sourceText = els.propertiesSelectionControls?.querySelector("[data-location-source]");
     const status = els.propertiesSelectionControls?.querySelector(".properties-record-status");
-    if (regionInput) regionInput.value = row.region ? getRegionNameById(row.region) : "";
-    if (coordinatesInput) coordinatesInput.value = row.lon !== "" && row.lat !== "" ? `${row.lat}, ${row.lon}` : "";
+    if (regionInput) regionInput.value = row.region || "";
+    if (sourceText) sourceText.textContent = getProjectLocationSourceLabel(row.locationSource);
     if (status) status.firstChild.textContent = `${getProjectRowPropertyStatus(row)} `;
   }
 
@@ -3515,24 +3518,18 @@
       tr.dataset.cityName = String(city.name || "");
       tr.dataset.cityNameFr = String(city.name_fr || city.name || "");
       tr.dataset.cityProvince = String(city.prov || "");
-      tr.dataset.coordLon = formatProjectCoordinate(city.lon);
-      tr.dataset.coordLat = formatProjectCoordinate(city.lat);
+      tr.dataset.cityLon = formatProjectCoordinate(city.lon);
+      tr.dataset.cityLat = formatProjectCoordinate(city.lat);
       tr.dataset.region = regionId;
-      tr.querySelector(".lon-input").value = tr.dataset.coordLon;
-      tr.querySelector(".lat-input").value = tr.dataset.coordLat;
       if (regionId) regionVisibility[regionId] = true;
     } else {
       tr.dataset.cityId = "";
       tr.dataset.cityName = "";
       tr.dataset.cityNameFr = "";
       tr.dataset.cityProvince = "";
-      tr.dataset.coordLon = "";
-      tr.dataset.coordLat = "";
-      tr.dataset.region = "";
-      tr.querySelector(".lon-input").value = "";
-      tr.querySelector(".lat-input").value = "";
+      tr.dataset.cityLon = "";
+      tr.dataset.cityLat = "";
     }
-    tr.dataset.anchor = "city";
     syncProjectRowRegionInput(tr);
     const row = readRowElement(tr);
     const rowController = projectRowCityControllers.get(String(tr.dataset.rowId));
@@ -5177,8 +5174,9 @@
   function getProjectRegionCounts(rows = getRows()) {
     const counts = {};
     rows.forEach(row => {
-      if (row.lon === "" || row.lat === "") return;
-      const regionId = row.anchor === "region" ? row.region : getRegionIdForPoint(Number(row.lon), Number(row.lat));
+      const regionId = row.anchor === "region"
+        ? row.region
+        : row.lon !== "" && row.lat !== "" ? getRegionIdForPoint(Number(row.lon), Number(row.lat)) : "";
       if (!regionId) return;
       counts[regionId] = (counts[regionId] || 0) + 1;
     });
@@ -8048,7 +8046,7 @@
     }
     const issues = getReviewIssueCount(report);
     return issues
-      ? `<strong>${escapeHtml(t("quality.banner.review.title", { count: t("summary.issueCount", { count: issues, label: issues === 1 ? t("summary.issueSingular") : t("summary.issuePlural") }) }))}</strong><button type="button" class="primary-action" data-property-action="open-map">${escapeHtml(t("quality.action.locateFirst"))}</button>`
+      ? `<strong>${escapeHtml(t("quality.banner.review.title", { count: t("summary.issueCount", { count: issues, label: issues === 1 ? t("summary.issueSingular") : t("summary.issuePlural") }) }))}</strong><button type="button" class="primary-action" data-property-action="open-map">${escapeHtml(t("quality.action.reviewOnMap"))}</button>`
       : `<strong>${escapeHtml(t("quality.banner.ready.title"))}</strong><span>${escapeHtml(t("quality.banner.ready.body"))}</span>`;
   }
 
@@ -8212,11 +8210,11 @@
     return `
       <div class="quality-card-grid">
         ${metadataCard}
-        ${qualityCard(t("quality.metric.offCanvasPoints"), String(report.offCanvasPoints || 0), report.offCanvasPoints ? "danger" : "ok", report.offCanvasPoints ? t("quality.metric.reviewOffCanvasPoints") : t("quality.metric.noOffCanvasPoints"), "", report.offCanvasPoints ? { name: "open-map", label: t("quality.action.locateFirst") } : null)}
-        ${qualityCard(t("quality.metric.labelOverlaps"), String(report.overlaps), report.overlaps ? "review" : "ok", report.overlaps ? t("quality.metric.reviewTighten") : t("quality.metric.noOverlaps"), "", report.overlaps ? { name: "open-map", label: t("quality.action.locateFirst") } : null)}
-        ${qualityCard(t("quality.metric.leaderCrossings"), report.crossings ? String(report.crossings) : "0", report.crossings ? "review" : "ok", report.crossings ? t("quality.metric.reviewCrossings") : t("quality.metric.noCrossings"), "", report.crossings ? { name: "open-map", label: t("quality.action.locateFirst") } : null)}
-        ${qualityCard(t("quality.metric.longestLeader"), longestLeader, report.longLines ? "review" : "ok", report.longLines ? t("quality.metric.reviewLongest") : t("quality.metric.withinLimit"), "", report.longLines ? { name: "open-map", label: t("quality.action.locateFirst") } : null)}
-        ${qualityCard(t("quality.metric.labelsNearEdge"), String(report.labelsNearEdge || 0), report.labelsNearEdge ? "review" : "ok", report.labelsNearEdge ? t("quality.metric.reviewEdge") : t("quality.metric.noEdge"), "", report.labelsNearEdge ? { name: "open-map", label: t("quality.action.locateFirst") } : null)}
+        ${qualityCard(t("quality.metric.offCanvasPoints"), String(report.offCanvasPoints || 0), report.offCanvasPoints ? "danger" : "ok", report.offCanvasPoints ? t("quality.metric.reviewOffCanvasPoints") : t("quality.metric.noOffCanvasPoints"), "", report.offCanvasPoints ? { name: "open-map", label: t("quality.action.reviewOnMap") } : null)}
+        ${qualityCard(t("quality.metric.labelOverlaps"), String(report.overlaps), report.overlaps ? "review" : "ok", report.overlaps ? t("quality.metric.reviewTighten") : t("quality.metric.noOverlaps"), "", report.overlaps ? { name: "open-map", label: t("quality.action.reviewOnMap") } : null)}
+        ${qualityCard(t("quality.metric.leaderCrossings"), report.crossings ? String(report.crossings) : "0", report.crossings ? "review" : "ok", report.crossings ? t("quality.metric.reviewCrossings") : t("quality.metric.noCrossings"), "", report.crossings ? { name: "open-map", label: t("quality.action.reviewOnMap") } : null)}
+        ${qualityCard(t("quality.metric.longestLeader"), longestLeader, report.longLines ? "review" : "ok", report.longLines ? t("quality.metric.reviewLongest") : t("quality.metric.withinLimit"), "", report.longLines ? { name: "open-map", label: t("quality.action.reviewOnMap") } : null)}
+        ${qualityCard(t("quality.metric.labelsNearEdge"), String(report.labelsNearEdge || 0), report.labelsNearEdge ? "review" : "ok", report.labelsNearEdge ? t("quality.metric.reviewEdge") : t("quality.metric.noEdge"), "", report.labelsNearEdge ? { name: "open-map", label: t("quality.action.reviewOnMap") } : null)}
       </div>
     `;
   }
@@ -8272,14 +8270,18 @@
   }
 
   function getProjectRowPropertyStatus(row) {
-    const hasLon = row && row.lon !== "";
-    const hasLat = row && row.lat !== "";
-    if (row && row.anchor === "region" && row.region) return t("project.status.mappedRegion");
-    if (row && row.anchor === "city" && row.cityId && hasLon && hasLat) return t("project.status.mappedCity");
-    if (row && row.anchor === "city") return t("project.status.missingCity");
-    if (hasLon && hasLat) return t("project.status.mapped");
-    if (hasLon || hasLat) return t("project.status.coordinateIssue");
+    if (row && row.locationIssue) return t("project.status.coordinateIssue");
+    if (row && row.locationSource === "region") return t("project.status.mappedRegion");
+    if (row && row.locationSource === "city") return t("project.status.mappedCity");
+    if (row && row.locationSource === "coordinates") return t("project.status.mapped");
     return t("project.status.callout");
+  }
+
+  function getProjectLocationSourceLabel(source) {
+    if (source === "coordinates") return t("properties.location.source.coordinates");
+    if (source === "city") return t("properties.location.source.city");
+    if (source === "region") return t("properties.location.source.region");
+    return t("properties.location.source.unlocated");
   }
 
   function renderRowPropertyControls(row, options = {}) {
@@ -8293,6 +8295,8 @@
       ...row,
       lon: formatProjectCoordinate(row.lon),
       lat: formatProjectCoordinate(row.lat),
+      exactLon: formatProjectCoordinate(row.exactLon),
+      exactLat: formatProjectCoordinate(row.exactLat),
       labelMaxChars: normalizeLabelMaxCharsOverride(row.labelMaxChars)
     };
     return properties.renderRowPropertyControls({
@@ -8303,9 +8307,8 @@
       advancedOpen: Boolean(options.advancedOpen),
       typeOptions: getTypeOptions(row.type),
       status,
+      locationSourceLabel: getProjectLocationSourceLabel(row.locationSource),
       regionOptions: getRegionRows().map(region => ({ value: region.id, label: region.name })),
-      cityRegionLabel: row.region ? getRegionNameById(row.region) : "",
-      projectLocationMode: activeProjectLocationMode,
       authoringLanguage: activeAuthoringLanguage,
       globalLabelMaxChars: normalizeLabelMaxChars(els.labelCharsInput.value),
       inheritedLeaderLineWidth,
@@ -12737,7 +12740,7 @@
   }
 
   const projectFormat = "plotypus-project";
-  const currentProjectVersion = 9;
+  const currentProjectVersion = 10;
   const currentAppVersion = String(appConfig.appVersion || "2026.07.14");
 
   function validateAndNormalizeProject(rawProject) {

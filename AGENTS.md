@@ -89,7 +89,9 @@ The established five-step guide is:
 
 Keep the existing workflow icons. “Markers” and “QA” are compact workflow labels; longer workspace or explanatory labels may remain where clarity requires them. Do not rename internal keys or persisted data merely to match display copy.
 
-Reference-city UI has one home: **Markers**, and only while the user chooses **Locate by City**. Do not expose it in startup, Map baselayer, Map Document Properties, settings, or a generic catalogue entry point. City data is bundled and offline. A chosen city creates or locates a project marker; it is not independent baselayer decoration.
+Reference-city UI has one home: **Markers**. It appears in the City table-column view and in a selected marker's progressive location controls; do not expose it in startup, Map baselayer, Map Document Properties, settings, or a generic catalogue entry point. City data is bundled and offline. A chosen city creates or locates a project marker; it is not independent baselayer decoration.
+
+Marker location is a per-marker hierarchy: **Province or territory → City → Exact coordinates**. The most precise complete value determines placement, while broader values remain available as fallbacks. Exact coordinates must not infer a city, switching the visible location columns must never rewrite marker data, and clearing a precise value must reveal—not silently delete—the next valid fallback.
 
 Use plain, task-oriented copy. A first-time user should be able to answer: what should I do next, where do I do it, and what will happen? Avoid unexplained numbers, icon-only meaning, technical implementation terms, and instructional paragraphs that duplicate visible controls.
 

@@ -128,13 +128,14 @@ test("legacy baselayer reference cities are removed when a project is normalized
   assert.equal(Object.prototype.hasOwnProperty.call(restored.baselayer, "referenceCities"), false);
 });
 
-test("city selection is available only from Markers in City location mode", () => {
+test("city selection stays within Markers and the catalogue remains a City-view action", () => {
   const indexSource = fs.readFileSync(path.join(repoRoot, "index.html"), "utf8");
   const propertiesSource = fs.readFileSync(path.join(repoRoot, "src", "properties.js"), "utf8");
   const appSource = fs.readFileSync(path.join(repoRoot, "src", "app.js"), "utf8");
   const projectCityMounts = indexSource.match(/id="projectCitiesField"/g) || [];
 
   assert.equal(projectCityMounts.length, 1);
+  assert.match(propertiesSource, /id="projectCityPropertiesField"/);
   assert.doesNotMatch(propertiesSource, /referenceCities(?:Properties|Baselayer)Field/);
   assert.doesNotMatch(indexSource, /referenceCities(?:Field|BaselayerField)|region-reference-cities-panel/);
   assert.match(indexSource, /id="pointCatalogPresetsPanel"[\s\S]*id="projectCitiesField"/);
@@ -221,10 +222,14 @@ test("city-located project points survive project and CSV export", () => {
     cityId: toronto.id,
     cityName: toronto.name,
     cityNameFr: toronto.name_fr,
-    cityProvince: toronto.prov
+    cityProvince: toronto.prov,
+    cityLon: toronto.lon,
+    cityLat: toronto.lat,
+    exactLon: "",
+    exactLat: ""
   };
   const snapshot = projectIo.createProjectSnapshot({
-    version: 9,
+    version: 10,
     boundary: "canada",
     projectLocationMode: "cities",
     rows: [row],
@@ -233,6 +238,7 @@ test("city-located project points survive project and CSV export", () => {
   });
   assert.equal(snapshot.projectLocationMode, "cities");
   assert.equal(snapshot.rows[0].cityId, toronto.id);
+  assert.equal(snapshot.rows[0].cityLon, toronto.lon);
   assert.equal(snapshot.rows[0].name, "Housing project");
 
   const csv = projectIo.createCsvExport({
@@ -242,7 +248,7 @@ test("city-located project points survive project and CSV export", () => {
     getCategoryText: value => value,
     getCategoryForType: value => value
   });
-  assert.deepEqual(JSON.parse(JSON.stringify(csv.columns)), ["name", "name_fr", "footnote", "type", "type_fr", "city", "hideLine"]);
+  assert.deepEqual(JSON.parse(JSON.stringify(csv.columns)), ["name", "name_fr", "footnote", "type", "type_fr", "region", "city", "hideLine"]);
   assert.equal(csv.rows[0].city, "Toronto, ON");
   assert.equal(csv.rows[0].name, "Housing project");
 });

@@ -76,12 +76,16 @@
         type: cleanType(row.type),
         lon: row.lon,
         lat: row.lat,
+        exactLon: row.exactLon === "" || row.exactLon === undefined ? "" : row.exactLon,
+        exactLat: row.exactLat === "" || row.exactLat === undefined ? "" : row.exactLat,
         anchor: row.anchor || "coord",
         region: row.region || "",
         cityId: row.cityId || "",
         cityName: row.cityName || "",
         cityNameFr: row.cityNameFr || "",
         cityProvince: row.cityProvince || "",
+        cityLon: row.cityLon === "" || row.cityLon === undefined ? "" : row.cityLon,
+        cityLat: row.cityLat === "" || row.cityLat === undefined ? "" : row.cityLat,
         labelStyle: row.labelStyle || "compact",
         content: Array.isArray(row.content) ? row.content : [],
         labelBorder: Boolean(row.labelBorder),
@@ -133,20 +137,26 @@
       footnote: row.footnote,
       type: getCategoryLabel(row.type),
       type_fr: getCategoryText(getCategoryForType(row.type), "fr"),
-      lon: row.lon,
-      lat: row.lat,
+      lon: row.exactLon === undefined ? row.lon : row.exactLon,
+      lat: row.exactLat === undefined ? row.lat : row.exactLat,
       region: row.region || "",
       city: [row.cityName || row.cityNameFr || "", row.cityProvince || ""].filter(Boolean).join(", "),
       hideLine: row.hideLine ? "yes" : ""
     }));
-    const usesCities = projectLocationMode === "cities" || (rows || []).some(row => row && row.anchor === "city");
+    const usesCoordinates = projectLocationMode === "coordinates" || (rows || []).some(row => row && (
+      (row.exactLon !== "" && row.exactLon !== undefined)
+      || (row.exactLat !== "" && row.exactLat !== undefined)
+    ));
+    const usesCities = projectLocationMode === "cities" || (rows || []).some(row => row && row.cityId);
+    const usesRegions = projectLocationMode === "regions" || (rows || []).some(row => row && row.region);
+    const locationColumns = [
+      ...(usesRegions ? ["region"] : []),
+      ...(usesCities ? ["city"] : []),
+      ...(usesCoordinates ? ["lon", "lat"] : [])
+    ];
     return {
       rows: exportRows,
-      columns: usesCities
-        ? ["name", "name_fr", "footnote", "type", "type_fr", "city", "hideLine"]
-        : projectLocationMode === "regions" || (rows || []).some(row => row && row.anchor === "region")
-        ? ["name", "name_fr", "footnote", "type", "type_fr", "region", "hideLine"]
-        : ["name", "name_fr", "footnote", "type", "type_fr", "lon", "lat", "hideLine"]
+      columns: ["name", "name_fr", "footnote", "type", "type_fr", ...locationColumns, "hideLine"]
     };
   }
 

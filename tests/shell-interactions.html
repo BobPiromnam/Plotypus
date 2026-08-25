@@ -1770,11 +1770,11 @@
             const importedProvinceRow = doc.querySelector("#projectTable tbody tr[data-row-id]");
             assert(checks, "Province sample imports as a resolved region anchor", importedProvinceRow?.dataset.anchor === "region" && importedProvinceRow?.dataset.region === "Ontario" && !importedProvinceRow?.querySelector(".lon-input")?.value && !importedProvinceRow?.querySelector(".lat-input")?.value, `${importedProvinceRow?.dataset.anchor || ""}/${importedProvinceRow?.dataset.region || ""}`);
             doc.querySelector("[data-project-location-mode='coordinates']")?.click();
-            await waitFor(() => doc.querySelector("#projectTable")?.dataset.locationMode === "coordinates" && importedProvinceRow?.dataset.anchor === "coord", 2000);
-            assert(checks, "Switching a province-only import to Coordinates leaves it unlocated", importedProvinceRow?.dataset.region === "Ontario" && !importedProvinceRow?.querySelector(".lon-input")?.value && !importedProvinceRow?.querySelector(".lat-input")?.value, `${importedProvinceRow?.dataset.region || ""}/${importedProvinceRow?.querySelector(".lon-input")?.value || ""}/${importedProvinceRow?.querySelector(".lat-input")?.value || ""}`);
+            await waitFor(() => doc.querySelector("#projectTable")?.dataset.locationMode === "coordinates", 2000);
+            assert(checks, "Switching location columns does not rewrite a province-only marker", importedProvinceRow?.dataset.anchor === "region" && importedProvinceRow?.dataset.region === "Ontario" && !importedProvinceRow?.querySelector(".lon-input")?.value && !importedProvinceRow?.querySelector(".lat-input")?.value, `${importedProvinceRow?.dataset.anchor || ""}/${importedProvinceRow?.dataset.region || ""}`);
             doc.querySelector("[data-project-location-mode='regions']")?.click();
             await waitFor(() => doc.querySelector("#projectTable")?.dataset.locationMode === "regions" && importedProvinceRow?.dataset.anchor === "region", 2000);
-            assert(checks, "Returning to Province restores the imported region", importedProvinceRow?.dataset.region === "Ontario");
+            assert(checks, "Returning to Province shows the preserved imported region", importedProvinceRow?.dataset.region === "Ontario");
 
             const cityTransfer = new frame.contentWindow.DataTransfer();
             cityTransfer.items.add(new frame.contentWindow.File([
@@ -1788,18 +1788,18 @@
             doc.querySelector("#confirmCsvMapBtn")?.click();
             await waitFor(() => dialog.hidden && doc.querySelector("#projectTable")?.dataset.locationMode === "cities" && doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.cityId === "ca-qc-montreal", 4000);
             const importedCityRow = doc.querySelector("#projectTable tbody tr[data-row-id]");
-            const importedCityLongitude = importedCityRow.querySelector(".lon-input")?.value || "";
-            const importedCityLatitude = importedCityRow.querySelector(".lat-input")?.value || "";
-            assert(checks, "City sample imports as an exact catalogue city with its province and coordinates", importedCityRow?.dataset.anchor === "city" && importedCityRow?.dataset.region === "Quebec" && Boolean(importedCityLongitude && importedCityLatitude), `${importedCityRow?.dataset.anchor || ""}/${importedCityRow?.dataset.region || ""}/${importedCityLongitude}/${importedCityLatitude}`);
+            const importedCityLongitude = importedCityRow.dataset.cityLon || "";
+            const importedCityLatitude = importedCityRow.dataset.cityLat || "";
+            assert(checks, "City sample imports with catalogue coordinates and its containing province", importedCityRow?.dataset.anchor === "city" && importedCityRow?.dataset.region === "Quebec" && Boolean(importedCityLongitude && importedCityLatitude) && !importedCityRow.querySelector(".lon-input")?.value && !importedCityRow.querySelector(".lat-input")?.value, `${importedCityRow?.dataset.anchor || ""}/${importedCityRow?.dataset.region || ""}/${importedCityLongitude}/${importedCityLatitude}`);
             doc.querySelector("[data-project-location-mode='regions']")?.click();
-            await waitFor(() => doc.querySelector("#projectTable")?.dataset.locationMode === "regions" && importedCityRow?.dataset.anchor === "region", 2000);
-            assert(checks, "Switching a City import to Province keeps its containing province and city assignment", importedCityRow.dataset.region === "Quebec" && importedCityRow.dataset.cityId === "ca-qc-montreal", `${importedCityRow.dataset.region}/${importedCityRow.dataset.cityId}`);
+            await waitFor(() => doc.querySelector("#projectTable")?.dataset.locationMode === "regions", 2000);
+            assert(checks, "Showing Province columns keeps the City marker and its containing province", importedCityRow.dataset.anchor === "city" && importedCityRow.dataset.region === "Quebec" && importedCityRow.dataset.cityId === "ca-qc-montreal", `${importedCityRow.dataset.anchor}/${importedCityRow.dataset.region}/${importedCityRow.dataset.cityId}`);
             doc.querySelector("[data-project-location-mode='coordinates']")?.click();
-            await waitFor(() => doc.querySelector("#projectTable")?.dataset.locationMode === "coordinates" && importedCityRow?.dataset.anchor === "coord", 2000);
-            assert(checks, "Switching a City import to Coordinates restores its exact catalogue coordinates", importedCityRow.querySelector(".lon-input")?.value === importedCityLongitude && importedCityRow.querySelector(".lat-input")?.value === importedCityLatitude && importedCityRow.dataset.cityId === "ca-qc-montreal", `${importedCityRow.querySelector(".lon-input")?.value}/${importedCityRow.querySelector(".lat-input")?.value}/${importedCityRow.dataset.cityId}`);
+            await waitFor(() => doc.querySelector("#projectTable")?.dataset.locationMode === "coordinates", 2000);
+            assert(checks, "Showing Exact coordinates leaves a City marker intact and its override fields blank", importedCityRow.dataset.anchor === "city" && !importedCityRow.querySelector(".lon-input")?.value && !importedCityRow.querySelector(".lat-input")?.value && importedCityRow.dataset.cityId === "ca-qc-montreal", `${importedCityRow.dataset.anchor}/${importedCityRow.querySelector(".lon-input")?.value}/${importedCityRow.querySelector(".lat-input")?.value}/${importedCityRow.dataset.cityId}`);
             doc.querySelector("[data-project-location-mode='cities']")?.click();
             await waitFor(() => doc.querySelector("#projectTable")?.dataset.locationMode === "cities" && importedCityRow?.dataset.anchor === "city", 2000);
-            assert(checks, "Returning to City restores the imported catalogue city", importedCityRow.dataset.cityId === "ca-qc-montreal" && importedCityRow.querySelector(".cityLocationInput")?.value.startsWith("Montréal"), `${importedCityRow.dataset.cityId}/${importedCityRow.querySelector(".cityLocationInput")?.value || ""}`);
+            assert(checks, "Returning to City shows the preserved catalogue city", importedCityRow.dataset.cityId === "ca-qc-montreal" && importedCityRow.querySelector(".cityLocationInput")?.value.startsWith("Montréal"), `${importedCityRow.dataset.cityId}/${importedCityRow.querySelector(".cityLocationInput")?.value || ""}`);
             if (accessibilityAudit) {
               input.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
               await waitFor(() => dialog.hidden === false, 2000);
@@ -1861,7 +1861,7 @@
             await waitFor(() => doc.querySelectorAll("#projectTable tbody tr[data-row-id]").length === initialProjectRows + 1);
             const torontoRow = Array.from(doc.querySelectorAll("#projectTable tbody tr[data-row-id]")).find(row => row.dataset.cityId === "ca-on-toronto");
             const torontoCity = frame.contentWindow.PLOTYPUS_CITIES?.find(city => city.id === "ca-on-toronto");
-            assert(checks, "City autosuggest creates a blank Project-point row with a separate city location", doc.body.dataset.workspaceView === "projects" && doc.querySelector("#projectTable")?.dataset.locationMode === "cities" && torontoRow?.dataset.anchor === "city" && torontoRow?.dataset.region === "Ontario" && torontoRow.querySelector(".name-input")?.value === "" && Number(torontoRow.querySelector(".lat-input")?.value) === Number(Number(torontoCity?.lat).toFixed(2)) && Number(torontoRow.querySelector(".lon-input")?.value) === Number(Number(torontoCity?.lon).toFixed(2)), `${doc.querySelector("#projectTable")?.dataset.locationMode || ""}/${torontoRow?.dataset.anchor || ""}/${torontoRow?.dataset.region || ""}/${torontoRow?.querySelector(".lat-input")?.value || ""}/${torontoRow?.querySelector(".lon-input")?.value || ""}`);
+            assert(checks, "City autosuggest creates a blank marker with city coordinates and an exact-coordinate fallback", doc.body.dataset.workspaceView === "projects" && doc.querySelector("#projectTable")?.dataset.locationMode === "cities" && torontoRow?.dataset.anchor === "city" && torontoRow?.dataset.region === "Ontario" && torontoRow.querySelector(".name-input")?.value === "" && Number(torontoRow.dataset.cityLat) === Number(Number(torontoCity?.lat).toFixed(2)) && Number(torontoRow.dataset.cityLon) === Number(Number(torontoCity?.lon).toFixed(2)) && !torontoRow.querySelector(".lat-input")?.value && !torontoRow.querySelector(".lon-input")?.value, `${doc.querySelector("#projectTable")?.dataset.locationMode || ""}/${torontoRow?.dataset.anchor || ""}/${torontoRow?.dataset.region || ""}/${torontoRow?.dataset.cityLat || ""}/${torontoRow?.dataset.cityLon || ""}`);
             const rowCityField = torontoRow?.querySelector(".cityLocationInput");
             const rowCityIcon = torontoRow?.querySelector(".refCitySearchIcon");
             const rowCityInputRect = rowCityField?.getBoundingClientRect();
@@ -2403,7 +2403,7 @@
           await waitFor(() => applicationSettingsMenu?.hidden, 2000);
           const expectedFrenchIntroTitles = {
             preview: "Carte",
-            projects: "Points de projet",
+            projects: "Marqueurs",
             regions: "Fond de carte",
             translate: "Traduire",
             quality: "AQ"
@@ -2471,8 +2471,10 @@
               assert(checks, "Project row Properties labels rich/compact controls as Extra info in French", /Infos supplémentaires/.test(doc.querySelector("#propertiesSelectionControls")?.textContent || ""), doc.querySelector("#propertiesSelectionControls")?.textContent || "");
               assert(checks, "Properties no longer expose per-point anchor radios", !doc.querySelector("#propertiesSelectionControls input[data-property-field='anchor']"));
               assert(checks, "Properties no longer expose chart controls", !doc.querySelector("#propertiesSelectionControls [data-property-field='chart']") && !doc.querySelector("#propertiesSelectionControls [data-property-action='add-chart-slice']"));
+              assert(checks, "Marker Properties present Province, City, and Exact coordinates as one progressive hierarchy", doc.querySelectorAll("#propertiesSelectionControls .location-hierarchy-level").length === 3 && /Coordonnées exactes/.test(doc.querySelector("#propertiesSelectionControls [data-location-source]")?.textContent || ""), doc.querySelector("#propertiesSelectionControls .location-hierarchy")?.textContent || "");
               doc.querySelector("[data-project-location-mode='regions']")?.click();
-            await waitFor(() => doc.querySelector("#projectTable")?.dataset.locationMode === "regions" && doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.anchor === "region", 2000);
+            await waitFor(() => doc.querySelector("#projectTable")?.dataset.locationMode === "regions", 2000);
+            assert(checks, "Changing visible location columns preserves each marker's placement source", doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.anchor === "coord", doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.anchor || "");
             const projectTable = doc.querySelector("#projectTable");
             const lonHeaderDisplay = frame.contentWindow.getComputedStyle(projectTable.querySelector(".lon-col")).display;
             const latHeaderDisplay = frame.contentWindow.getComputedStyle(projectTable.querySelector(".lat-col")).display;
@@ -2494,6 +2496,13 @@
             const regionCellRight = regionCell.getBoundingClientRect().right;
             assert(checks, "Region select dropdown arrow stays inside the Region column", regionInputStyle.boxSizing === "border-box" && regionInputRight <= regionCellRight + 0.5 && regionInputRight < statusLeft, `input=${regionInputRight}, region=${regionCellRight}, status=${statusLeft}, box=${regionInputStyle.boxSizing}`);
             firstProjectRow?.dispatchEvent(new frame.contentWindow.MouseEvent("click", { bubbles: true }));
+            const exactLongitudeForAnnotation = await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-field='lon']"), 2000);
+            exactLongitudeForAnnotation.value = "";
+            exactLongitudeForAnnotation.dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+            await waitFor(() => doc.querySelector("#propertiesSelectionControls [data-property-field='lat']"), 2000);
+            doc.querySelector("#propertiesSelectionControls [data-property-field='lat']").value = "";
+            doc.querySelector("#propertiesSelectionControls [data-property-field='lat']").dispatchEvent(new frame.contentWindow.Event("change", { bubbles: true }));
+            await waitFor(() => !doc.querySelector("#projectTable tbody tr[data-row-id]")?.querySelector(".lon-input")?.value && !doc.querySelector("#projectTable tbody tr[data-row-id]")?.querySelector(".lat-input")?.value, 2000);
             const regionSelectForAnnotation = await waitFor(() => doc.querySelector("#propertiesSelectionControls select[data-property-field='region']"), 2000);
             const firstAvailableRegion = Array.from(regionSelectForAnnotation.options).find(option => option.value);
             if (firstAvailableRegion) {
@@ -2663,7 +2672,8 @@
             const firstRowDataset = doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset || {};
             assert(checks, "Unified annotation edits preserve anchor and rich image content together", firstRowDataset.anchor === "region" && firstRowDataset.labelStyle === "rich" && /Paragraphe riche/.test(firstRowDataset.content || "") && /Puce riche/.test(firstRowDataset.content || "") && /Image riche/.test(firstRowDataset.content || "") && /data:image\/png;base64/.test(firstRowDataset.content || ""), [firstRowDataset.anchor || "", firstRowDataset.labelStyle || "", firstRowDataset.content || ""].join(" "));
             doc.querySelector("[data-project-location-mode='coordinates']")?.click();
-            await waitFor(() => doc.querySelector("#projectTable")?.dataset.locationMode === "coordinates" && doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.anchor === "coord", 2000);
+            await waitFor(() => doc.querySelector("#projectTable")?.dataset.locationMode === "coordinates", 2000);
+            assert(checks, "Showing Exact coordinates does not discard a marker's Province fallback", doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.anchor === "region" && doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.region === firstAvailableRegion?.value, `${doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.anchor || ""}/${doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.region || ""}`);
 
             doc.querySelector("input[data-property-field='labelStyle'][value='compact']")?.click();
             await waitFor(() => doc.querySelector("#projectTable tbody tr[data-row-id]")?.dataset.labelStyle === "compact", 2000);
@@ -2696,7 +2706,7 @@
           }
           if (requestedWorkspace === "quality") {
             const qualityText = `${doc.querySelector("#qualitySummaryBanner")?.textContent || ""} ${doc.querySelector("#statusBox")?.textContent || ""}`;
-            assert(checks, "Application language setting switches QA copy to French", /problèmes à réviser|Éléments à corriger|Localiser le premier|Vérification de la disposition mise à jour/.test(qualityText), qualityText);
+            assert(checks, "Application language setting switches QA copy to French", /problèmes à réviser|Éléments à corriger|Examiner sur la carte|Vérification de la disposition mise à jour/.test(qualityText), qualityText);
           }
           const rawPropertiesKeyPattern = /\b(?:properties|toolbar|dialog|region|quality|translate|status|project|table|settings|categories)\.[A-Za-z0-9_.-]+/;
           const frenchPropertiesText = doc.querySelector("#propertiesPanel")?.textContent || "";

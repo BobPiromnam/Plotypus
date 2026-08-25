@@ -55,6 +55,12 @@
 
   function summarizeProjectRows(rows) {
     return (rows || []).reduce((summary, row) => {
+      if (row && row.locationIssue !== undefined) {
+        if (row.locationSource && row.locationSource !== "unlocated") summary.mapped += 1;
+        else summary.callouts += 1;
+        if (row.locationIssue) summary.coordinateIssues += 1;
+        return summary;
+      }
       if (row && row.anchor === "region") {
         if (row.region) summary.mapped += 1;
         else summary.coordinateIssues += 1;

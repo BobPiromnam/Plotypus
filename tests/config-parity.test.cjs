@@ -291,6 +291,15 @@ test("English and French i18n dictionaries expose the same keys", () => {
   );
 });
 
+test("QA review actions describe their map destination in both languages", () => {
+  const i18n = loadBundledI18n();
+
+  assert.equal(i18n.dictionaries.en["quality.action.reviewOnMap"], "Review on map");
+  assert.equal(i18n.dictionaries.fr["quality.action.reviewOnMap"], "Examiner sur la carte");
+  assert.equal(Object.hasOwn(i18n.dictionaries.en, "quality.action.locateFirst"), false);
+  assert.equal(Object.hasOwn(i18n.dictionaries.fr, "quality.action.locateFirst"), false);
+});
+
 test("application settings expose localized browser-preference and language-separation copy", () => {
   const i18n = loadBundledI18n();
   const expected = {

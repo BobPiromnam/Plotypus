@@ -8,6 +8,7 @@ function loadApi() {
   const appSource = fs.readFileSync(path.join(__dirname, "..", "src", "app.js"), "utf8");
   const geometrySource = fs.readFileSync(path.join(__dirname, "..", "src", "geometry.js"), "utf8");
   const markerColourSource = fs.readFileSync(path.join(__dirname, "..", "src", "marker-colour.js"), "utf8");
+  const locationHierarchySource = fs.readFileSync(path.join(__dirname, "..", "src", "location-hierarchy.js"), "utf8");
   const labelLayoutSource = fs.readFileSync(path.join(__dirname, "..", "src", "label-layout.js"), "utf8");
   const projectIoSource = fs.readFileSync(path.join(__dirname, "..", "src", "project-io.js"), "utf8");
   const regionMatchingSource = fs.readFileSync(path.join(__dirname, "..", "src", "region-matching.js"), "utf8");
@@ -54,6 +55,7 @@ function loadApi() {
   vm.runInNewContext(geometrySource, context, { filename: "geometry.js" });
   vm.runInNewContext(markerColourSource, context, { filename: "marker-colour.js" });
   windowStub.PLOTYPUS_MARKER_COLOUR = context.PLOTYPUS_MARKER_COLOUR;
+  vm.runInNewContext(locationHierarchySource, context, { filename: "location-hierarchy.js" });
   vm.runInNewContext(labelLayoutSource, context, { filename: "label-layout.js" });
   vm.runInNewContext(projectIoSource, context, { filename: "project-io.js" });
   vm.runInNewContext(regionMatchingSource, context, { filename: "region-matching.js" });

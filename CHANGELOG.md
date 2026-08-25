@@ -31,6 +31,15 @@ Earlier project history remains available in the Git commit log.
 
 ### Changed
 
+- Renamed the generic QA “Locate first” action to “Review on map” so its
+  destination and purpose are clear before users leave the QA workspace.
+- Replaced the global Markers location mode with a per-marker Province or
+  territory → City → Exact coordinates hierarchy. More precise values now
+  override broader fallbacks without deleting them, and the toolbar only
+  changes which location columns are visible for editing.
+- Reworked marker Properties to show all three location levels together with a
+  clear “Marker positioned using” status, while preserving legacy project data
+  through the version 10 project format.
 - Leader-line colour resolution now uses a point's manual override first, then
   an enabled custom-icon category colour, and finally the document-wide colour.
 - Custom-icon leader-line settings are preserved in saved projects and SVG

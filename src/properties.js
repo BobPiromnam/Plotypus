@@ -318,7 +318,6 @@
       status = "",
       globalLabelMaxChars = 24,
       regionOptions = [],
-      projectLocationMode = "coordinates",
       authoringLanguage = "en",
       escapeHtml,
       iconSvg = () => ""
@@ -328,7 +327,6 @@
     const safeLabelKey = escapeHtml(labelKey);
     const hasLabelMaxCharsOverride = row.labelMaxChars !== "" && row.labelMaxChars !== undefined;
     const effectiveLabelMaxChars = hasLabelMaxCharsOverride ? row.labelMaxChars : globalLabelMaxChars;
-    const anchor = projectLocationMode === "regions" ? "region" : projectLocationMode === "cities" ? "city" : "coord";
     const leaderLineWidth = row.leaderLineWidth === "" || row.leaderLineWidth === undefined || row.leaderLineWidth === null
       ? ""
       : String(row.leaderLineWidth);
@@ -348,7 +346,7 @@
     const titleLabel = labelStyle === "rich" ? t("properties.annotation.title") : t("properties.field.projectName");
     const titleFrLabel = labelStyle === "rich" ? t("properties.annotation.titleFr") : t("properties.field.projectNameFr");
     const regionSelectOptions = regionOptions.length
-      ? regionOptions.map(region => `<option value="${escapeHtml(region.value)}"${region.value === row.region ? " selected" : ""}>${escapeHtml(region.label)}</option>`).join("")
+      ? `<option value="">${escapeHtml(t("properties.annotation.chooseRegion"))}</option>${regionOptions.map(region => `<option value="${escapeHtml(region.value)}"${region.value === row.region ? " selected" : ""}>${escapeHtml(region.label)}</option>`).join("")}`
       : `<option value="">${escapeHtml(t("properties.annotation.noRegions"))}</option>`;
     const segmented = (field, current, choices) => `
       <div class="annotation-segmented" role="group">
@@ -471,33 +469,44 @@
           </select>
         </label>
         <section class="annotation-property-section">
-          <h3 class="type-eyebrow">${escapeHtml(t(anchor === "region" ? "properties.field.region" : anchor === "city" ? "properties.field.city" : "properties.field.coordinates"))}</h3>
-          ${anchor === "region" ? `
-            <label>
-              ${propertyFieldLabel(options, t("properties.field.region"))}
-              <select data-property-field="region">${regionSelectOptions}</select>
-            </label>` : anchor === "city" ? `
-            <div id="projectCityPropertiesField"></div>
-            <div class="properties-inline-grid city-derived-fields">
-              <label>
-                ${propertyFieldLabel(options, t("properties.field.cityDerived"), "auto")}
-                <input type="text" data-city-derived="region" value="${escapeHtml(options.cityRegionLabel || "")}" readonly>
-              </label>
-              <label>
-                ${propertyFieldLabel(options, t("properties.field.cityCoordinates"), "auto")}
-                <input class="type-numeric-data" type="text" data-city-derived="coordinates" value="${escapeHtml(row.lon !== "" && row.lat !== "" ? `${row.lat}, ${row.lon}` : "")}" readonly>
-              </label>
-            </div>` : `
-            <div class="properties-inline-grid">
-              <label>
-                ${propertyFieldLabel(options, t("properties.field.longitude"))}
-                <input class="type-numeric-data property-numeric-input" type="text" inputmode="decimal" data-property-field="lon" value="${escapeHtml(row.lon === "" ? "" : String(row.lon))}">
-              </label>
-              <label>
-                ${propertyFieldLabel(options, t("properties.field.latitude"))}
-                <input class="type-numeric-data property-numeric-input" type="text" inputmode="decimal" data-property-field="lat" value="${escapeHtml(row.lat === "" ? "" : String(row.lat))}">
-              </label>
-            </div>`}
+          <h3 class="type-eyebrow">${escapeHtml(t("properties.location.title"))}</h3>
+          <p class="properties-muted type-supporting">${escapeHtml(t("properties.location.help"))}</p>
+          <p class="location-hierarchy-status type-caption">
+            <span>${escapeHtml(t("properties.location.positionedUsing"))}</span>
+            <strong data-location-source>${escapeHtml(options.locationSourceLabel || t("properties.location.source.unlocated"))}</strong>
+          </p>
+          <div class="location-hierarchy">
+            <section class="location-hierarchy-level">
+              <div class="location-hierarchy-level-heading">
+                <span class="location-hierarchy-step type-caption" aria-hidden="true">1</span>
+                <h4 class="type-control-label">${escapeHtml(t("properties.location.level.region"))}</h4>
+              </div>
+              <select data-property-field="region" aria-label="${escapeHtml(t("properties.location.level.region"))}">${regionSelectOptions}</select>
+            </section>
+            <section class="location-hierarchy-level">
+              <div class="location-hierarchy-level-heading">
+                <span class="location-hierarchy-step type-caption" aria-hidden="true">2</span>
+                <h4 class="type-control-label">${escapeHtml(t("properties.location.level.city"))}</h4>
+              </div>
+              <div id="projectCityPropertiesField"></div>
+            </section>
+            <section class="location-hierarchy-level">
+              <div class="location-hierarchy-level-heading">
+                <span class="location-hierarchy-step type-caption" aria-hidden="true">3</span>
+                <h4 class="type-control-label">${escapeHtml(t("properties.location.level.coordinates"))}</h4>
+              </div>
+              <div class="properties-inline-grid">
+                <label>
+                  ${propertyFieldLabel(options, t("properties.field.longitude"))}
+                  <input class="type-numeric-data property-numeric-input" type="text" inputmode="decimal" data-property-field="lon" value="${escapeHtml(row.exactLon === "" ? "" : String(row.exactLon))}">
+                </label>
+                <label>
+                  ${propertyFieldLabel(options, t("properties.field.latitude"))}
+                  <input class="type-numeric-data property-numeric-input" type="text" inputmode="decimal" data-property-field="lat" value="${escapeHtml(row.exactLat === "" ? "" : String(row.exactLat))}">
+                </label>
+              </div>
+            </section>
+          </div>
         </section>
         <section class="annotation-property-section">
           <h3 class="type-eyebrow">${escapeHtml(t("properties.field.labelStyle"))}</h3>
