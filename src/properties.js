@@ -167,7 +167,7 @@
           <h3 class="type-control-label">${escapeHtml(label)}</h3>
           <strong${valueClass}>${escapeHtml(value)}</strong>
         </header>
-        <p class="type-supporting">${escapeHtml(description)}</p>
+        ${description ? `<p class="type-supporting">${escapeHtml(description)}</p>` : ""}
         ${(detail || action) ? `
           <footer>
             <span class="type-caption">${escapeHtml(detail || "")}</span>
@@ -205,15 +205,12 @@
     return `
       <div class="properties-form" data-property-kind="document">
         <details class="properties-accordion document-property-section" data-properties-accordion="map-style">
-          <summary class="properties-accordion-summary type-summary-heading"><span>${escapeHtml(t("properties.section.mapStyle"))}</span></summary>
+          <summary class="properties-accordion-summary type-summary-heading"><span>${escapeHtml(t("properties.section.mapStyle"))}</span><span class="properties-summary-value type-caption">${escapeHtml(values.mapStyleName || "")}</span></summary>
           <div class="properties-accordion-body">
             <div class="properties-control-group">
-              <label class="properties-field-group">
-                ${propertyFieldLabel(options, t("properties.field.mapStylePreset"), null)}
-                <select class="properties-select" data-map-proxy="mapStylePresetInput">
-                  ${selectOptions.mapStyle || ""}
-                </select>
-              </label>
+              <button id="mapStyleGalleryBtn" class="btn-default" type="button" data-property-action="change-map-style" data-style-gallery-open aria-expanded="${Boolean(values.styleGalleryOpen)}" aria-controls="mapStyleGallery">${escapeHtml(t("gallery.change"))}</button>
+              <label class="properties-field-group">${propertyFieldLabel(options, t("gallery.labels"), null)}<select class="properties-select" data-layout-proxy="labelDisplayInput"><option value="names"${values.labelDisplay !== "numbers" ? " selected" : ""}>${escapeHtml(t("gallery.names"))}</option><option value="numbers"${values.labelDisplay === "numbers" ? " selected" : ""}>${escapeHtml(t("gallery.numbers"))}</option></select><span class="properties-field-help type-caption">${escapeHtml(t("gallery.numberHelp"))}</span></label>
+              <label class="properties-field-group">${propertyFieldLabel(options, t("gallery.regionColours"), null)}<select class="properties-select" data-layout-proxy="regionColourModeInput"><option value="data"${values.regionColourMode !== "decorative" ? " selected" : ""}>${escapeHtml(t("gallery.dataColours"))}</option><option value="decorative"${values.regionColourMode === "decorative" ? " selected" : ""}>${escapeHtml(t("gallery.decorativeColours"))}</option></select><span class="properties-field-help type-caption">${escapeHtml(t("gallery.decorativeHelp"))}</span></label>
             </div>
           </div>
         </details>
@@ -454,6 +451,8 @@
     return `
       <div class="properties-form" data-property-kind="${escapeHtml(kind)}" data-row-id="${rowId}" data-label-key="${safeLabelKey}">
         <div class="properties-record-status type-caption">${escapeHtml(status)} ${propertyOriginIcon(options, "auto")}</div>
+        <label>${propertyFieldLabel(options, t("number.field"))}<input class="type-numeric-data" type="number" min="1" step="1" inputmode="numeric" data-property-field="mapNumber" value="${escapeHtml(row.mapNumber || "")}"><span class="properties-field-help type-caption">${escapeHtml(t("number.help"))}</span></label>
+        ${options.numberWarning ? `<p class="properties-muted type-supporting" role="status">${escapeHtml(options.numberWarning)}</p>` : ""}
         <label>
           ${propertyFieldLabel(options, titleLabel)}
           <input type="text" data-property-field="name" value="${escapeHtml(row.name || "")}">

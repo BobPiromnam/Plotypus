@@ -115,6 +115,7 @@
   const markerColour = window.PLOTYPUS_MARKER_COLOUR;
   const locationHierarchy = window.PLOTYPUS_LOCATION_HIERARCHY;
   const projectIo = window.PLOTYPUS_PROJECT_IO;
+  const numberedMap = window.PLOTYPUS_NUMBERED_MAP;
   const workspace = window.PLOTYPUS_WORKSPACE;
   const regionMatching = window.PLOTYPUS_REGION_MATCHING;
   const properties = window.PLOTYPUS_PROPERTIES;
@@ -227,6 +228,7 @@
   const defaultCsvColumnAliases = {
     name: ["name", "project", "project name", "english name", "nom anglais", "nom du projet anglais"],
     nameFr: ["name_fr", "nom", "nom du projet", "french name", "fr name", "project fr", "project name fr", "nom_fr"],
+    mapNumber: ["mapNumber", "map_number", "map number", "number", "numéro", "numero"],
     footnote: ["footnote", "footnote marker", "note", "superscript"],
     type: ["type", "category", "project type", "categorie", "catégorie", "type de projet"],
     typeFr: ["type_fr", "type fr", "categorie", "catégorie", "categorie francaise", "catégorie française", "category fr", "french type", "type francais", "type français"],
@@ -443,6 +445,18 @@
     resetRegionColoursBtn: document.querySelector("#resetRegionColoursBtn"),
     boundaryInput: document.querySelector("#boundaryInput"),
     mapStylePresetInput: document.querySelector("#mapStylePresetInput"),
+    labelDisplayInput: document.querySelector("#labelDisplayInput"),
+    regionColourModeInput: document.querySelector("#regionColourModeInput"),
+    mapStyleGallery: document.querySelector("#mapStyleGallery"),
+    mapStyleGalleryHelp: document.querySelector("#mapStyleGalleryHelp"),
+    mapStyleGalleryCards: document.querySelector("#mapStyleGalleryCards"),
+    closeMapStyleGalleryBtn: document.querySelector("#closeMapStyleGalleryBtn"),
+    exportCompanionHtmlBtn: document.querySelector("#exportCompanionHtmlBtn"),
+    exportCompanionCsvBtn: document.querySelector("#exportCompanionCsvBtn"),
+    previewCompanionTableBtn: document.querySelector("#previewCompanionTableBtn"),
+    companionTableDialog: document.querySelector("#companionTableDialog"),
+    companionTableNote: document.querySelector("#companionTableNote"),
+    companionTableContent: document.querySelector("#companionTableContent"),
     regionPresetInput: document.querySelector("#regionPresetInput"),
     svg: d3.select("#mapSvg"),
     statusBox: document.querySelector("#statusBox"),
@@ -463,6 +477,11 @@
     startupSetupForm: document.querySelector("#startupSetupForm"),
     startupBaselayerOptions: Array.from(document.querySelectorAll("[data-startup-baselayer]")),
     startupMapStyleInput: document.querySelector("#startupMapStyleInput"),
+    startupChooseStyleBtn: document.querySelector("#startupChooseStyleBtn"),
+    startupStyleName: document.querySelector("#startupStyleName"),
+    startupStylePreview: document.querySelector("#startupStylePreview"),
+    startupStyleGalleryScreen: document.querySelector("#startupStyleGalleryScreen"),
+    propertiesDocumentBtn: document.querySelector("#propertiesDocumentBtn"),
     startupBookSizeInput: document.querySelector("#startupBookSizeInput"),
     startupImageSizeInput: document.querySelector("#startupImageSizeInput"),
     startupLabelCharsInput: document.querySelector("#startupLabelCharsInput"),
@@ -2076,6 +2095,7 @@
         type: "image",
         assetRef: String(item.assetRef || item.src || item.url || "").trim(),
         caption: normalizeLocalizedText(item.caption || item.alt || {}),
+        ...(item.alt ? { alt: normalizeLocalizedText(item.alt) } : {}),
         displaySize: normalizeRichLabelImageDisplaySize(item.displaySize ?? item.imageSize ?? item.displayWidth)
       };
       if (naturalWidth && naturalHeight) {
@@ -2228,6 +2248,7 @@
   }
 
   function getLabelStylePreview(row) {
+    if (els.labelDisplayInput?.value === "numbers") return String(row.mapNumber || "?");
     if (row && row.labelStyle === "rich") {
       const count = Array.isArray(row.content) ? row.content.length : 0;
       return t("table.label.rich", { count, unit: t(count === 1 ? "table.label.item" : "table.label.items") });
@@ -2258,6 +2279,7 @@
       rowId: row && row.rowId ? String(row.rowId) : "",
       name: String(getField(row, csvColumnAliases.name) || "").trim(),
       nameFr: String(getField(row, csvColumnAliases.nameFr) || row.nameFr || "").trim(),
+      mapNumber: String(getField(row, csvColumnAliases.mapNumber) ?? "").trim(),
       footnote: normalizeFootnote(getField(row, csvColumnAliases.footnote)),
       type: cleanType(getField(row, csvColumnAliases.type) || getDefaultCategory().label),
       typeFr: String(getField(row, csvColumnAliases.typeFr) || row.typeFr || "").trim(),
@@ -2286,7 +2308,12 @@
     lastImportMessages = importMessages;
     hideCsvImportPreview();
     if (!options.preserveManualPositions) {
+      const numberMapScale = els.labelDisplayInput?.value === "numbers" ? normalizeMapScale(els.mapScaleInput.value) : null;
       clearAllLanguageLayouts();
+      if (numberMapScale !== null) {
+        els.mapScaleInput.value = numberMapScale;
+        ["en", "fr"].forEach(language => { getLanguageLayoutState(language).mapScale = numberMapScale; });
+      }
     }
     nextRowId = 1;
     selectedProjectCells.clear();
@@ -2304,6 +2331,7 @@
       addRow(normalized, { container: fragment, deferRefresh: true });
     });
     els.tableBody.appendChild(fragment);
+    if (els.labelDisplayInput?.value === "numbers") assignMissingMapNumbers();
     updateDeleteButtonState();
     refreshProjectTableUx();
     renderCategoryEditors();
@@ -2328,6 +2356,7 @@
     tr.dataset.rowId = rowId;
     tr.tabIndex = 0;
     tr.setAttribute("aria-selected", "false");
+    tr.dataset.mapNumber = String(row.mapNumber || "");
     tr.dataset.nameEn = row.name || "";
     tr.dataset.nameFr = row.nameFr || "";
     tr.dataset.labelMaxChars = normalizeLabelMaxCharsOverride(row.labelMaxChars);
@@ -2427,6 +2456,10 @@
     updateRowAnnotationPreview(tr);
     syncCoordinateClearButtons(tr);
     if (!options.deferRefresh) {
+      if (els.labelDisplayInput?.value === "numbers") {
+        assignMissingMapNumbers();
+        updateRowAnnotationPreview(tr);
+      }
       updateDeleteButtonState();
       refreshProjectTableUx();
     }
@@ -2959,6 +2992,7 @@
     if (!tr) return null;
     return applyProjectLocationHierarchy({
       rowId: tr.dataset.rowId,
+      mapNumber: tr.dataset.mapNumber || "",
       name: activeAuthoringLanguage === "en" ? tr.querySelector(".name-input").value.trim() : tr.dataset.nameEn || "",
       nameFr: activeAuthoringLanguage === "fr" ? tr.querySelector(".name-input").value.trim() : tr.dataset.nameFr || "",
       footnote: normalizeFootnote(tr.querySelector(".footnote-input").value),
@@ -2998,6 +3032,7 @@
       tr.dataset.nameFr = String(value || "").trim();
       if (activeAuthoringLanguage === "fr") tr.querySelector(".name-input").value = String(value || "");
     }
+    if (field === "mapNumber") tr.dataset.mapNumber = String(value || "").trim();
     if (field === "footnote") tr.querySelector(".footnote-input").value = normalizeFootnote(value);
     if (field === "type") tr.querySelector(".type-input").value = cleanType(value);
     if (field === "lon") {
@@ -3336,6 +3371,7 @@
     });
     if (!els.workflowNextStep || !els.workflowNextBtn) return;
     const target = nextStep ? nextStep.name : "export";
+    els.workflowNextStep.hidden = Boolean(nextStep && target === activeDataTable);
     els.workflowNextStep.dataset.state = nextStep ? "next" : "complete";
     els.workflowNextBtn.dataset.workflowTarget = target;
     if (els.workflowNextEyebrow) els.workflowNextEyebrow.textContent = t(nextStep ? "workflow.next" : "workflow.ready");
@@ -3734,6 +3770,7 @@
     renderImageSizeOptions();
     renderFontOptions();
     renderMapStyleOptions();
+    if (els.mapStyleGallery && !els.mapStyleGallery.hidden) renderStyleGallery();
     renderStartupSetupSelectOptions();
     renderRegionPresetOptions();
     renderRegionStatusVisibilityControls();
@@ -4337,19 +4374,16 @@
     const bookSizeValue = useAppValues ? els.bookSizeInput.value : els.startupBookSizeInput.value;
     const imageSizeValue = useAppValues ? els.imageSizeInput.value : els.startupImageSizeInput.value;
 
-    els.startupMapStyleInput.innerHTML = Object.keys(mapStylePresets).map(presetId => (
-      `<option value="${escapeHtml(presetId)}">${escapeHtml(getMapStylePresetLabel(presetId, mapStylePresets[presetId]))}</option>`
-    )).join("");
     els.startupMapStyleInput.value = Object.prototype.hasOwnProperty.call(mapStylePresets, mapStyleValue)
       ? mapStyleValue
       : defaultMapStylePreset;
+    renderStartupStyleChoice();
 
     els.startupBookSizeInput.innerHTML = Object.entries(imageSizePresets).map(([value, preset]) => (
       `<option value="${escapeHtml(value)}">${escapeHtml(tOr(`properties.size.book.${value}`, preset.label || value))}</option>`
     )).join("");
     els.startupBookSizeInput.value = imageSizePresets[bookSizeValue] ? bookSizeValue : layoutDefaults.bookSizeInput;
     renderStartupImageSizeOptions(imageSizeValue);
-    syncSingleOptionSelect(els.startupMapStyleInput);
     syncSingleOptionSelect(els.startupBookSizeInput);
   }
 
@@ -4966,6 +5000,8 @@
     const scaleTypography = (value, floor) => Math.max(floor, Math.round(value * labelDensityScale));
     return {
       outputMode,
+      labelDisplay: els.labelDisplayInput?.value === "numbers" ? "numbers" : "names",
+      regionColourMode: els.regionColourModeInput?.value === "decorative" ? "decorative" : "data",
       bookSize,
       imageSize: imageSize.value,
       width: imageSize.width,
@@ -5000,6 +5036,9 @@
   }
 
   function applySettings(settings = {}) {
+    if (els.labelDisplayInput) els.labelDisplayInput.value = settings.labelDisplay === "numbers" ? "numbers" : "names";
+    if (els.regionColourModeInput) els.regionColourModeInput.value = settings.regionColourMode === "decorative" ? "decorative" : "data";
+    syncStyleGalleryState();
     const matchedPreset = findImageSizePresetByDimensions(settings.width, settings.height);
     const hasSizeSetting = settings.bookSize !== undefined || settings.imageSize !== undefined || settings.width !== undefined || settings.height !== undefined;
     if (hasSizeSetting) {
@@ -5239,7 +5278,9 @@
     const comparisonValues = includedValues.length ? includedValues : regions.map(region => region.value);
     regions.forEach(region => {
       if (!regionColourOverrides[region.id]) {
-        regionFills[region.id] = getColourForRegionValue(region.value, comparisonValues);
+        regionFills[region.id] = els.regionColourModeInput?.value === "decorative"
+          ? getMapStylePreset(currentMapStylePreset).regionFills?.[region.id] || getCurrentRegionColourSet()[region.index % getCurrentRegionColourSet().length]
+          : getColourForRegionValue(region.value, comparisonValues);
       }
     });
     if (options.refreshRowsOnly) {
@@ -5496,12 +5537,416 @@
     refreshMapPropertiesIfActive();
   }
 
+  function assignMissingMapNumbers() {
+    if (!numberedMap) return;
+    numberedMap.assignMissingNumbers(getRows()).forEach(row => {
+      const tr = getRowElementById(row.rowId);
+      if (tr) tr.dataset.mapNumber = row.mapNumber;
+    });
+  }
+
+  function getMapNumberWarning(row) {
+    if (!numberedMap) return "";
+    if (!numberedMap.normalizeNumber(row.mapNumber)) {
+      return row.mapNumber || getSettings().labelDisplay === "numbers" ? t("number.invalid") : "";
+    }
+    const number = numberedMap.normalizeNumber(row.mapNumber);
+    return numberedMap.findNumberIssues(getRows()).conflicts.some(issue => issue.number === number)
+      ? t("number.conflict", { number }) : "";
+  }
+
+  function getNumberedCategory(category) {
+    const ink = getCssVar("--map-ink", "#222222");
+    return { ...category, colour: "#ffffff", stroke: ink, customIcon: null };
+  }
+
+  let styleGalleryContext = "document";
+  let styleGalleryReturnFocus = null;
+  const styleGalleryHome = els.mapStyleGallery?.parentElement;
+
+  function syncStyleGalleryState() {
+    if (!els.mapStyleGallery) return;
+    const count = els.mapStyleGallery.querySelector("[data-style-count]");
+    if (count) count.textContent = t("gallery.count", { count: Object.keys(mapStylePresets).length });
+    const display = els.labelDisplayInput?.value || "names";
+    const header = document.querySelector(".annotation-preview-col [data-i18n]");
+    if (header) {
+      header.dataset.i18n = display === "numbers" ? "number.field" : "table.label";
+      header.textContent = t(header.dataset.i18n);
+    }
+    els.mapStyleGallery.querySelectorAll("[data-label-display]").forEach(button => {
+      const selected = button.dataset.labelDisplay === display;
+      button.setAttribute("aria-pressed", String(selected));
+      button.classList.toggle("is-active", selected);
+    });
+    const selectedStyle = styleGalleryContext === "setup" ? els.startupMapStyleInput.value : currentMapStylePreset;
+    els.mapStyleGallery.querySelectorAll(".map-style-card").forEach(card => {
+      const selected = card.dataset.styleId === selectedStyle;
+      card.classList.toggle("is-active", selected);
+      card.querySelector("[data-style-current]").hidden = !selected;
+      card.querySelector("[data-style-apply]").setAttribute("aria-pressed", String(selected));
+    });
+  }
+
+  function openStyleGallery(trigger, context = "document") {
+    if (!els.mapStyleGallery) return;
+    styleGalleryContext = context;
+    styleGalleryReturnFocus = trigger || document.activeElement;
+    if (context === "setup") {
+      els.startupStyleGalleryScreen.appendChild(els.mapStyleGallery);
+      setStartupScreen("style", { focus: false });
+    } else {
+      styleGalleryHome.insertBefore(els.mapStyleGallery, styleGalleryHome.querySelector(".preview-panel"));
+      if (propertiesDrawerMedia.matches) setPropertiesDrawerOpen(false);
+    }
+    els.mapStyleGallery.hidden = false;
+    document.querySelectorAll("[data-style-gallery-open]").forEach(button => button.setAttribute("aria-expanded", "true"));
+    renderStyleGallery();
+    els.closeMapStyleGalleryBtn.focus();
+  }
+
+  function closeStyleGallery({ restoreFocus = true } = {}) {
+    if (!els.mapStyleGallery || els.mapStyleGallery.hidden) return;
+    els.mapStyleGallery.hidden = true;
+    document.querySelectorAll("[data-style-gallery-open]").forEach(button => button.setAttribute("aria-expanded", "false"));
+    if (styleGalleryContext === "setup") {
+      setStartupScreen("setup", { focus: false });
+      styleGalleryHome.insertBefore(els.mapStyleGallery, styleGalleryHome.querySelector(".preview-panel"));
+    }
+    if (restoreFocus) {
+      const target = styleGalleryReturnFocus?.isConnected ? styleGalleryReturnFocus : document.querySelector("#mapStyleGalleryBtn");
+      if (target && els.propertiesPanel.contains(target)) {
+        if (propertiesDrawerMedia.matches) setPropertiesDrawerOpen(true);
+        else setPropertiesCollapsed(false, { persist: false });
+        const section = target.closest("details");
+        if (section) section.open = true;
+      }
+      target?.focus();
+    }
+    styleGalleryReturnFocus = null;
+    styleGalleryContext = "document";
+  }
+
+  async function renderStylePreview(element, id, geo) {
+    const preset = mapStylePresets[id];
+    if (!preset || !element) return;
+    const theme = preset.exampleKind === "regional-briefing" ? null : await loadStylePreviewTheme(preset);
+    if (!element.isConnected || (element === els.startupStylePreview && id !== els.startupMapStyleInput.value)) return;
+    const svg = d3.select(element);
+    svg.selectAll("*").remove();
+    svg.attr("viewBox", "0 0 240 180");
+    if (preset.exampleKind === "regional-briefing") renderRegionalBriefingStylePreview(svg, geo, preset);
+    else renderProjectStylePreview(svg, geo, preset, theme);
+  }
+
+  async function renderStartupStyleChoice() {
+    if (!els.startupStyleName || !els.startupStylePreview) return;
+    const id = els.startupMapStyleInput.value;
+    els.startupStyleName.textContent = getMapStylePresetLabel(id, mapStylePresets[id]);
+    try {
+      const raw = await loadLocalBoundary(boundarySources.canada);
+      if (!raw || id !== els.startupMapStyleInput.value) return;
+      await renderStylePreview(els.startupStylePreview, id, normalizeBoundaryGeoJson(raw, boundarySources.canada));
+    } catch (error) {
+      console.warn("Could not render the startup style preview.", error);
+    }
+  }
+
+  const stylePreviewThemes = new Map();
+
+  function loadStylePreviewTheme(preset) {
+    if (stylePreviewThemes.has(preset.stylesheet)) return stylePreviewThemes.get(preset.stylesheet);
+    const theme = new Promise(resolve => {
+      const colours = { boundary: "#ffffff", ink: "#222222", background: "#ffffff", boxBorder: "#333333" };
+      const frame = document.createElement("iframe");
+      frame.hidden = true;
+      frame.tabIndex = -1;
+      frame.setAttribute("aria-hidden", "true");
+      document.body.appendChild(frame);
+      const previewDocument = frame.contentDocument;
+      const link = previewDocument.createElement("link");
+      link.rel = "stylesheet";
+      // Read the preset's real theme without applying it to the open document.
+      // Computed variables avoid cssRules origin restrictions in direct-file mode.
+      link.href = new URL(preset.stylesheet, document.baseURI).href;
+      link.onload = () => {
+        try {
+          const variables = { boundary: "--map-boundary", ink: "--map-ink", background: "--map-background", boxBorder: "--map-box-border" };
+          const style = frame.contentWindow.getComputedStyle(previewDocument.documentElement);
+          Object.entries(variables).forEach(([key, variable]) => {
+            colours[key] = style.getPropertyValue(variable).trim() || colours[key];
+          });
+        } catch (error) {
+          console.warn("Could not read gallery theme colours.", error);
+        }
+        frame.remove();
+        resolve(colours);
+      };
+      link.onerror = () => { frame.remove(); resolve(colours); };
+      previewDocument.head.appendChild(link);
+    });
+    stylePreviewThemes.set(preset.stylesheet, theme);
+    return theme;
+  }
+
+  async function renderStyleGallery() {
+    const cards = els.mapStyleGalleryCards;
+    if (!cards) return;
+    const isSetup = styleGalleryContext === "setup";
+    const helpKey = isSetup ? "gallery.setupHelp" : "gallery.help";
+    els.mapStyleGalleryHelp.dataset.i18n = helpKey;
+    els.mapStyleGalleryHelp.textContent = t(helpKey);
+    els.mapStyleGallery.querySelectorAll("[data-gallery-document-only]").forEach(element => { element.hidden = isSetup; });
+    cards.innerHTML = Object.keys(mapStylePresets).map(id => {
+      const name = getMapStylePresetLabel(id, mapStylePresets[id]);
+      const descriptionKey = `gallery.description.${id}`;
+      const description = t(descriptionKey) === descriptionKey ? t("gallery.description.custom") : t(descriptionKey);
+      return `<article class="map-style-card" data-style-id="${escapeHtml(id)}">
+        <svg class="map-style-preview" viewBox="0 0 240 180" aria-hidden="true" focusable="false"></svg>
+        <div class="map-style-card-title"><strong class="type-card-title">${escapeHtml(name)}</strong><span class="type-caption" data-style-current hidden>${escapeHtml(t("gallery.current"))}</span></div>
+        <p class="map-style-card-description type-supporting">${escapeHtml(description)}</p>
+        <div class="map-style-card-actions"><button type="button" class="btn-default" data-style-apply="${escapeHtml(id)}" aria-pressed="false" aria-label="${escapeHtml(t(isSetup ? "gallery.chooseNamed" : "gallery.applyNamed", { name }))}">${escapeHtml(t(isSetup ? "gallery.choose" : "gallery.apply"))}</button>
+        ${isSetup ? "" : `<button type="button" class="btn-quiet" data-style-example="${escapeHtml(id)}" aria-label="${escapeHtml(t("gallery.exampleNamed", { name }))}">${escapeHtml(t("gallery.example"))}</button>`}</div></article>`;
+    }).join("");
+    const firstCard = cards.firstElementChild;
+    syncStyleGalleryState();
+    try {
+      const raw = await loadLocalBoundary(boundarySources.canada);
+      if (!raw || cards !== els.mapStyleGalleryCards || cards.firstElementChild !== firstCard) return;
+      const geo = normalizeBoundaryGeoJson(raw, boundarySources.canada);
+      await Promise.all(Array.from(cards.querySelectorAll(".map-style-card"), async card => {
+        if (cards.firstElementChild !== firstCard) return;
+        await renderStylePreview(card.querySelector("svg"), card.dataset.styleId, geo);
+      }));
+    } catch (error) {
+      console.warn("Could not render bundled gallery previews.", error);
+    }
+  }
+
+  function appendStylePreviewMarker(parent, category, x, y, size) {
+    const marker = parent.append(() => createMarkerElement(category));
+    if (category.shape === "circle") marker.attr("cx", x).attr("cy", y).attr("r", size);
+    else if (category.shape === "square") marker.attr("x", x - size).attr("y", y - size).attr("width", size * 2).attr("height", size * 2);
+    else marker.attr("d", markerPath(category.shape, size)).attr("transform", `translate(${x},${y})`);
+    return marker;
+  }
+
+  function renderProjectStylePreview(svg, geo, preset, theme) {
+    const displayNumbers = preset.defaultLabelDisplay === "numbers" || els.labelDisplayInput.value === "numbers";
+    const projection = d3.geoConicConformal().parallels([49, 77]).rotate([96, 0]).center([0, 61]).fitExtent([[52, 5], [232, 150]], geo);
+    const path = d3.geoPath(projection);
+    const categories = appConfig.categorySettings.slice(0, 2).map((category, index) => ({ ...category, ...preset.categoryStyles[index] }));
+    svg.attr("data-preview-label-display", displayNumbers ? "numbers" : "names");
+    svg.append("g").selectAll("path").data(geo.features).join("path")
+      .attr("class", "map-style-preview-region").attr("data-region-id", getRegionId)
+      .attr("d", path).attr("fill", (feature, index) => preset.regionFills?.[getRegionId(feature, index)] || preset.regionColours[index % preset.regionColours.length])
+      .attr("stroke", theme.boundary).attr("stroke-width", 0.6);
+    const leaders = svg.append("g");
+    const annotations = svg.append("g");
+    // A few legible examples communicate each style's symbols and labelling;
+    // the thumbnail is not a miniature inventory of the starter's locations.
+    const points = [
+      { coordinate: [-125, 68], label: [8, 65] },
+      { coordinate: [-129, 55], label: [8, 119] },
+      { coordinate: [-106, 53], label: [63, 170] },
+      { coordinate: [-82, 47], label: [127, 170] },
+      { coordinate: [-60, 53], label: [179, 97] }
+    ];
+    points.forEach(({ coordinate, label }, index) => {
+      const [x, y] = projection(coordinate);
+      const category = categories[index % categories.length];
+      const group = annotations.append("g").attr("class", "map-style-preview-annotation").attr("data-marker-shape", category.shape);
+      if (displayNumbers) {
+        const badge = group.append("g").attr("transform", `translate(${x},${y})`);
+        const background = badge.append(category.shape === "circle" || category.shape === "square" ? "rect" : "path");
+        if (category.shape === "circle" || category.shape === "square") {
+          background.attr("x", -6).attr("y", -6).attr("width", 12).attr("height", 12).attr("rx", category.shape === "circle" ? 6 : 0);
+        } else background.attr("d", markerPath(category.shape, 6));
+        background.attr("fill", theme.background).attr("stroke", theme.ink).attr("stroke-width", 1);
+        badge.append("text").attr("class", "map-style-preview-label map-type-size-8").attr("fill", theme.ink)
+          .attr("text-anchor", "middle").attr("dominant-baseline", "central").text(index + 1);
+      } else {
+        const [labelX, labelY] = label;
+        const text = group.append("text").attr("class", "map-style-preview-label map-type-size-8")
+          .attr("x", labelX).attr("y", labelY).attr("fill", theme.ink)
+          .text(t("gallery.previewProject", { number: index + 1 }));
+        const labelWidth = text.node().getComputedTextLength();
+        const endX = labelX < x ? labelX + labelWidth + 3 : labelX - 3;
+        const leaderPath = `M${x},${y}L${endX},${labelY - 3}`;
+        leaders.append("path").attr("d", leaderPath).attr("fill", "none").attr("stroke", theme.background).attr("stroke-width", 3);
+        leaders.append("path").attr("d", leaderPath).attr("fill", "none")
+          .attr("stroke", layoutDefaults.leaderColourInput || "#333333").attr("stroke-width", 1);
+        appendStylePreviewMarker(group, category, x, y, 3).attr("class", "map-style-preview-marker")
+          .attr("fill", category.colour).attr("stroke", category.stroke).attr("stroke-width", 1);
+      }
+    });
+    const legend = svg.append("g").attr("class", "map-style-preview-legend").attr("transform", "translate(7,7)");
+    legend.append("rect").attr("width", 107).attr("height", 30).attr("fill", theme.background).attr("stroke", theme.boxBorder).attr("stroke-width", 0.6);
+    categories.forEach((category, index) => {
+      appendStylePreviewMarker(legend, category, 8, 9 + index * 12, 3).attr("fill", displayNumbers ? theme.background : category.colour)
+        .attr("stroke", displayNumbers ? theme.ink : category.stroke).attr("stroke-width", 1);
+      legend.append("text").attr("class", "map-style-preview-label map-type-size-6").attr("x", 15).attr("y", 11 + index * 12)
+        .attr("fill", theme.ink).text(currentUiLanguage === "fr" ? category.labelFr : category.label);
+    });
+  }
+
+  function renderRegionalBriefingStylePreview(svg, geo, preset) {
+    const composition = window.PLOTYPUS_MAP_COMPOSITION;
+    const settings = { width: 720, height: 540, mapScale: 107, mapOffsetX: 22, mapOffsetY: -4,
+      mapLanguage: currentUiLanguage, labelSizePt: 12, labelMaxChars: 42, outputMode: "web", fontFamily: defaultFontFamily };
+    const projection = createProjection(geo, settings, boundarySources.canada);
+    const path = d3.geoPath(projection);
+    svg.attr("viewBox", `0 0 ${settings.width} ${settings.height}`);
+    svg.append("g").selectAll("path").data(geo.features).join("path")
+      .attr("d", path).attr("fill", (feature, index) => preset.regionFills[getRegionId(feature, index)])
+      .attr("stroke", "#ffffff").attr("stroke-width", 1);
+    const leaders = svg.append("g");
+    const markers = svg.append("g");
+    const labels = svg.append("g");
+    const positions = composition.regionalPositions(settings.width, settings.height);
+    // This card depicts the illustrated starter example, which loads in Names mode.
+    // Use its real content, artwork and geometry without altering the open document.
+    composition.createRegionalRows(window.PLOTYPUS_BRIEFING_ARTWORK).forEach(row => {
+      const [x, y] = projection([row.lon, row.lat]);
+      const position = positions[`row:${row.rowId}`];
+      const placed = { ...row, ...makeLabelBox(row, position.side, settings), x, y,
+        labelX: position.x, labelY: position.y, labelSide: position.side };
+      const end = lineEnd(placed);
+      const leaderPath = `M${x},${y}L${end.x},${end.y}`;
+      leaders.append("path").attr("d", leaderPath).attr("fill", "none").attr("stroke", "#ffffff").attr("stroke-width", 3);
+      leaders.append("path").attr("d", leaderPath).attr("fill", "none").attr("stroke", row.leaderLineColour).attr("stroke-width", 1.5);
+      markers.append("circle").attr("cx", x).attr("cy", y).attr("r", 4)
+        .attr("fill", row.leaderLineColour).attr("stroke", "#ffffff").attr("stroke-width", 1.5);
+      const block = labels.append("g").attr("class", "map-style-briefing-block").attr("data-region", row.type);
+      placed.lines.forEach(line => {
+        if (line.role === "image") {
+          block.append("image").attr("href", line.assetRef)
+            .attr("x", position.x).attr("y", position.y - labelFontSize(placed) + line.baselineOffset)
+            .attr("width", line.imageWidth).attr("height", line.imageHeight).attr("preserveAspectRatio", "xMinYMin meet");
+        } else {
+          block.append("text").attr("x", position.x).attr("y", position.y + line.baselineOffset)
+            .attr("class", `map-style-briefing-copy ${line.role === "title" ? "map-style-briefing-title " : ""}${mapTypographySizeClass(line.fontSize)}`)
+            .attr("fill", line.role === "title" ? preset.headingColours[row.leaderLineColour] : "#222222").text(lineText(line));
+        }
+      });
+    });
+  }
+
+  function createGalleryExampleRows() {
+    // Illustrative locations, not a transcription of the reference map's project data.
+    const locations = [
+      [-122.5, 49.3], [-123.2, 49.1], [-120, 54], [-123, 55], [-129, 54], [-126.5, 56.5], [-130, 57.5], [-124.5, 59],
+      [-134, 62.5], [-125, 68], [-116, 64], [-114, 60.7], [-113.5, 53.5], [-111, 57], [-105, 68], [-68.5, 63.7],
+      [-102, 54], [-94.2, 58.8], [-97.2, 50.5], [-83, 49], [-79.4, 43.7], [-75.7, 45.4], [-73.6, 45.5], [-71, 50],
+      [-69, 56], [-66.6, 46], [-56.5, 49], [-82, 42.5]
+    ];
+    const strategyNumbers = new Set([1, 9, 14, 18, 23, 25, 27]);
+    return locations.map(([lon, lat], index) => {
+      const number = index === 27 ? 23 : index + 1;
+      return { mapNumber: String(number), name: tFor("en", "example.project", { number }), nameFr: tFor("fr", "example.project", { number }),
+        lon, lat, type: strategyNumbers.has(number) ? "strategy" : "referred" };
+    });
+  }
+
+  async function handleStyleGalleryClick(event) {
+    const button = event.target.closest("[data-style-apply], [data-style-example]");
+    if (!button || button.disabled) return;
+    const id = button.dataset.styleApply || button.dataset.styleExample;
+    if (!mapStylePresets[id]) return;
+    if (styleGalleryContext === "setup") {
+      els.startupMapStyleInput.value = id;
+      renderStartupStyleChoice();
+      closeStyleGallery();
+      return;
+    }
+    if (button.dataset.styleApply) {
+      pushAppUndoHistory("map style change");
+      applyMapStylePreset(id);
+      refreshMapPropertiesIfActive();
+      setStatusMessage(t("gallery.applied", { name: getMapStylePresetLabel(id, mapStylePresets[id]) }), "ok");
+      closeStyleGallery();
+      return;
+    }
+    pushAppUndoHistory("load sample data");
+    els.mapStyleGalleryCards.querySelectorAll("button").forEach(item => { item.disabled = true; });
+    setStatusMessage(t("gallery.loading"), "info");
+    try {
+      await changeBoundary("canada");
+      if (mapStylePresets[id].exampleKind === "regional-briefing") {
+        loadRegionalBriefingExample(id);
+        setStatusMessage(t("gallery.loadedRegional"), "ok");
+        closeStyleGallery();
+        return;
+      }
+      clearAllLanguageLayouts();
+      applyCategorySettings(appConfig.categorySettings);
+      Object.keys(mapDetails).forEach(key => { mapDetails[key] = ""; });
+      mapDetails.titleEn = tFor("en", "example.title");
+      mapDetails.titleFr = tFor("fr", "example.title");
+      activeProjectLocationMode = "coordinates";
+      syncProjectLocationModeUi();
+      applySettings({ ...getSettings(), bookSize: "letter", imageSize: "two-thirds", labelSizePt: 18, mapScale: 110,
+        showLegend: true, showCallouts: false, compactFurniture: true, hideLeaderLines: false, lockMarkerCoordinates: true,
+        labelDisplay: id === "project-atlas" ? "numbers" : els.labelDisplayInput.value });
+      ["en", "fr"].forEach(language => {
+        const layout = getLanguageLayoutState(language);
+        layout.mapScale = 110;
+        layout.mapOffsetY = 28;
+        layout.manualBoxPositions = { legend: { x: 18, y: 68 } };
+      });
+      setRows(createGalleryExampleRows(), [], { render: false, preserveManualPositions: true });
+      setCurrentManualBoxPositions({ legend: { x: 18, y: 68 } });
+      applyMapStylePreset(id);
+      updateMapDetailsState();
+      setDocumentPropertiesContext();
+      setStatusMessage(t("gallery.loaded"), "ok");
+      closeStyleGallery();
+    } catch (error) {
+      setStatusMessage(t("gallery.loadFailed", { message: error.message || String(error) }), "danger");
+    } finally {
+      els.mapStyleGalleryCards.querySelectorAll("button").forEach(item => { item.disabled = false; });
+      syncStyleGalleryState();
+    }
+  }
+
   function renderMapStyleOptions() {
     els.mapStylePresetInput.innerHTML = Object.keys(mapStylePresets).map(presetId => {
       const preset = mapStylePresets[presetId];
       return `<option value="${escapeHtml(presetId)}">${escapeHtml(getMapStylePresetLabel(presetId, preset))}</option>`;
     }).join("");
     els.mapStylePresetInput.value = currentMapStylePreset;
+  }
+
+  function loadRegionalBriefingExample(id) {
+    const composition = window.PLOTYPUS_MAP_COMPOSITION;
+    clearAllLanguageLayouts();
+    Object.keys(mapDetails).forEach(key => { mapDetails[key] = ""; });
+    mapDetails.textEn = tFor("en", "example.regionalNote");
+    mapDetails.textFr = tFor("fr", "example.regionalNote");
+    applyCategorySettings(composition.regions.map(region => ({
+      id: region.id, label: region.name, labelFr: region.nameFr, shape: "circle", colour: region.colour,
+      stroke: "#ffffff", markerSize: 4, lineWidth: 1.5
+    })));
+    activeProjectLocationMode = "coordinates";
+    syncProjectLocationModeUi();
+    applySettings({ ...getSettings(), bookSize: "landscape", imageSize: "full", labelSizePt: 12, mapScale: 107,
+      labelDisplay: "names", regionColourMode: "decorative", showLegend: false, showCallouts: false,
+      hideLeaderLines: false, routeDenseLeaders: false, showLineCasing: true, lockMarkerCoordinates: true, labelMaxChars: 42 });
+    regionFills = composition.regionFills();
+    regionColourOverrides = {};
+    setRows(composition.createRegionalRows(window.PLOTYPUS_BRIEFING_ARTWORK), [], { render: false, preserveManualPositions: true });
+    const settings = getSettings();
+    ["en", "fr"].forEach(language => {
+      const layout = getLanguageLayoutState(language);
+      layout.mapScale = 107;
+      layout.mapOffsetX = 22;
+      layout.mapOffsetY = -4;
+      layout.manualLabelPositions = composition.regionalPositions(settings.width, settings.height);
+    });
+    setCurrentManualLabelPositions(composition.regionalPositions(settings.width, settings.height));
+    applyMapStylePreset(id);
+    updateMapDetailsState();
+    setDocumentPropertiesContext();
   }
 
   function applyMapStylePreset(presetId, options = {}) {
@@ -5514,10 +5959,17 @@
     els.themeStylesheet.setAttribute("href", preset.stylesheet);
 
     if (shouldApplyMapColours) {
+      if (preset.defaultLabelDisplay === "numbers") {
+        els.labelDisplayInput.value = "numbers";
+        els.regionColourModeInput.value = "decorative";
+        assignMissingMapNumbers();
+      }
+      if (preset.regionFills && currentBoundary === "canada") els.regionColourModeInput.value = "decorative";
       const settings = getSettings();
       preset.categoryStyles.forEach((style, index) => {
         const category = categorySettings[index];
         if (!category) return;
+        if (style.shape) category.shape = normalizeMarkerShape(style.shape);
         category.colour = style.colour;
         category.stroke = style.stroke;
         category.markerSize = normalizeMarkerSize(style.markerSize, category.markerSize || settings.markerSize, 4, 30);
@@ -5530,6 +5982,8 @@
       updateTypeOptions();
     }
 
+    syncStyleGalleryState();
+    getTableRows().forEach(tr => updateRowAnnotationPreview(tr));
     if (shouldRender) requestPreviewRefresh();
   }
 
@@ -5707,6 +6161,7 @@
             const dimensions = getRichLabelImageDimensions(block);
             imageLine.assetRef = block.assetRef;
             imageLine.caption = getLocalizedPairText(block.caption, settings.mapLanguage);
+            imageLine.alt = getLocalizedPairText(block.alt || block.caption, settings.mapLanguage);
             imageLine.imageWidth = dimensions.width;
             imageLine.imageHeight = dimensions.height;
             lines.push(imageLine);
@@ -5725,6 +6180,7 @@
   }
 
   function getRenderedLabelTextAnchor(row) {
+    if (row?.numberedBadge) return "middle";
     return row && (row.labelSide === "top" || row.labelSide === "bottom")
       ? "middle"
       : row && row.labelSide === "left"
@@ -5733,6 +6189,7 @@
   }
 
   function getRenderedLabelTextX(row) {
+    if (row?.numberedBadge) return row.labelX;
     if (!row || (row.labelSide !== "top" && row.labelSide !== "bottom")) {
       return Number(row && row.labelX) || 0;
     }
@@ -5852,8 +6309,7 @@
     return a.y - b.y || a.x - b.x;
   }
 
-  function createProjection(geo, settings) {
-    const source = boundarySources[currentBoundary] || boundarySources.canada;
+  function createProjection(geo, settings, source = boundarySources[currentBoundary] || boundarySources.canada) {
     const mapExtent = source.projection === "world"
       ? [[settings.width * 0.06, settings.height * 0.10], [settings.width * 0.94, settings.height * 0.74]]
       : [[settings.width * 0.09, settings.height * 0.07], [settings.width * 0.91, settings.height * 0.78]];
@@ -6041,6 +6497,7 @@
       fontFamily,
       getLabelLineFontWeight(line)
     ));
+    textLines.forEach((line, index) => { line.measuredWidth = lineWidths[index]; });
     const baseTextWidth = Math.max(...lineWidths, 0);
     const lastTextLine = textLines[textLines.length - 1] || asLabelLine("");
     const lastLineFontSize = Number(lastTextLine.fontSize) || fontSize;
@@ -6666,6 +7123,11 @@
   }
 
   function chooseFeasibleMapLayoutContext(visibleGeo, rows, baseSettings, options = {}) {
+    const sampleRows = Array.isArray(rows) ? rows.filter(row => row.lon !== "" && row.lat !== "" && row.name) : [];
+    const editorialSample = currentBoundary === "canada" && sampleRows.length > 0
+      && sampleRows.every(row => window.PLOTYPUS_MAP_COMPOSITION?.sampleCandidates(row, baseSettings).length);
+    const searchDeadline = editorialSample
+      ? performanceNow() + renderPerformanceBudgets.autoPlaceMs * .8 : Infinity;
     const requestedMapScale = normalizeMapScale(baseSettings.mapScale);
     if (!Array.isArray(rows) || rows.length === 0) {
       return {
@@ -6690,7 +7152,9 @@
         { mapOffsetX: 0, mapOffsetY: 0 },
         { mapOffsetX: -baseSettings.width * 0.024, mapOffsetY: baseSettings.height * 0.06 }
       ].slice(0, 2)
-      : [{ mapOffsetX: 0, mapOffsetY: 0 }];
+      : currentBoundary === "canada"
+        ? [{ mapOffsetX: baseSettings.width * .025, mapOffsetY: baseSettings.height * .035 }, { mapOffsetX: 0, mapOffsetY: 0 }]
+        : [{ mapOffsetX: 0, mapOffsetY: 0 }];
 
     function orderedTranslations(preferredTranslation = null) {
       if (!preferredTranslation) return translationCandidates;
@@ -6705,15 +7169,29 @@
       let sawBudgetExhaustion = false;
       let bestAttemptDiagnostic = null;
       for (const translation of orderedTranslations(preferredTranslation)) {
+        if (phase.startsWith("refine") && performanceNow() >= searchDeadline) break;
         const settings = { ...baseSettings, ...translation, mapScale: scale };
         const context = createMapLayoutContext(visibleGeo, rows, settings);
         const labelRows = context.mappedRows.filter(row => row.name);
+        if (currentBoundary === "canada" && window.PLOTYPUS_MAP_COMPOSITION) {
+          const composition = window.PLOTYPUS_MAP_COMPOSITION;
+          settings.compositionCandidates = Object.fromEntries(labelRows.map(row => [getLabelKey(row),
+            currentMapStylePreset === "regional-briefing" ? composition.regionalCandidates(row, settings) : composition.sampleCandidates(row, settings)]));
+        }
         settings.layoutObstacles = getLayoutBoxObstacles(settings, context.calloutRows);
         settings.labelTouchesLand = createProjectedLandMaskQuery(visibleGeo, context.projection, settings);
         const feasibility = assessPerimeterFeasibility(labelRows, settings, context.mapBounds, settings.layoutObstacles);
         const { seedWithHeuristic = false, ...constraintOptions } = solverOptions;
+        const compositionWarmStart = settings.compositionCandidates
+          && labelRows.length && labelRows.every(row => settings.compositionCandidates[getLabelKey(row)]?.length)
+          ? labelRows.map(row => {
+            const candidate = settings.compositionCandidates[getLabelKey(row)][0];
+            return { ...row, ...makeLabelBox(row, candidate.side, settings, context.mapBounds),
+              labelKey: getLabelKey(row), labelSide: candidate.side, labelX: candidate.x, labelY: candidate.y, candidateKind: "composition" };
+          })
+          : null;
         const heuristicWarmStart = !warmStart && seedWithHeuristic
-          ? layoutLabelsWithoutManualPositions(labelRows, settings, context.mapBounds)
+          ? compositionWarmStart || layoutLabelsWithoutManualPositions(labelRows, settings, context.mapBounds)
           : null;
         const effectiveWarmStart = warmStart || heuristicWarmStart;
         const finalizedHeuristic = heuristicWarmStart
@@ -6734,6 +7212,7 @@
           }
           : solveConflictFreeLayout(labelRows, settings, context.mapBounds, {
             ...constraintOptions,
+            timeBudgetMs: phase.startsWith("refine") ? Math.max(0, searchDeadline - performanceNow()) : undefined,
             warmStart: effectiveWarmStart,
             preferWarmStart: !referenceCanvas && Array.isArray(effectiveWarmStart) && effectiveWarmStart.length > 0
           });
@@ -6805,9 +7284,10 @@
     // largest conflict-free layout within the bounded search budget.
     const coarseStep = 10;
     let bestSolved = null;
+    const coarseMaxScale = editorialSample ? Math.min(95, searchMaxScale) : searchMaxScale;
     const coarseScales = referenceCanvas
       ? Array.from({ length: Math.floor((searchMaxScale - minScale) / 5) + 1 }, (_, index) => searchMaxScale - index * 5)
-      : Array.from({ length: Math.floor((searchMaxScale - minScale) / coarseStep) + 1 }, (_, index) => searchMaxScale - index * coarseStep);
+      : Array.from({ length: Math.floor((coarseMaxScale - minScale) / coarseStep) + 1 }, (_, index) => coarseMaxScale - index * coarseStep);
     const coarseMisses = [];
     for (const scale of coarseScales) {
       const result = tryScale(scale, "coarse", {
@@ -6868,6 +7348,7 @@
 
     if (bestSolved) {
       for (let scale = bestSolved.settings.mapScale + 1; scale <= searchMaxScale; scale += 1) {
+        if (performanceNow() >= searchDeadline) break;
         const preferredTranslation = {
           mapOffsetX: Number(bestSolved.settings.mapOffsetX) || 0,
           mapOffsetY: Number(bestSolved.settings.mapOffsetY) || 0
@@ -6881,7 +7362,7 @@
           minConflictsOnly: true
         }, bestSolved.placed, preferredTranslation);
 
-        if (!result.candidate && result.sawBudgetExhaustion) {
+        if (!result.candidate && result.sawBudgetExhaustion && performanceNow() < searchDeadline) {
           result = tryScale(scale, "refine-retry", {
             maxCandidatesPerLabel: 36,
             maxNodes: 40000,
@@ -6938,6 +7419,7 @@
       row.rowId,
       row.name,
       row.nameFr,
+      row.mapNumber || "",
       row.footnote,
       row.type,
       row.lon,
@@ -6967,6 +7449,7 @@
       resizeMap: resizeMap ? 1 : 0,
       boundary: currentBoundary,
       mapStyle: currentMapStylePreset,
+      labelDisplay: settings.labelDisplay,
       regions: getVisibleRegionSignature(),
       regionStatuses,
       regionColourOverrides,
@@ -7044,6 +7527,29 @@
   }
 
   function computeLanguageLayout(visibleGeo, rows, baseSettings, resizeMap, options = {}) {
+    if (baseSettings.labelDisplay === "numbers" && numberedMap) {
+      const requestedMapScale = baseSettings.mapScale;
+      if (resizeMap) {
+        const natural = createMapLayoutContext(visibleGeo, [], { ...baseSettings, mapScale: 100, mapOffsetX: 0, mapOffsetY: 0 });
+        const bounds = natural.mapBounds;
+        const top = baseSettings.title ? 66 : 20;
+        const mapScale = normalizeMapScale(100 * Math.min((baseSettings.width - 40) / (bounds.x1 - bounds.x0), (baseSettings.height - top - 20) / (bounds.y1 - bounds.y0)));
+        const extentCenterY = baseSettings.height * (boundarySources[currentBoundary]?.projection === "world" ? 0.42 : 0.425);
+        baseSettings = { ...baseSettings, mapScale,
+          mapOffsetX: -(mapScale / 100) * ((bounds.x0 + bounds.x1) / 2 - baseSettings.width / 2),
+          mapOffsetY: (top + baseSettings.height - 20) / 2 - extentCenterY - (mapScale / 100) * ((bounds.y0 + bounds.y1) / 2 - extentCenterY) };
+      }
+      const layoutContext = createMapLayoutContext(visibleGeo, rows, baseSettings);
+      if (resizeMap) layoutContext.requestedMapScale = requestedMapScale;
+      const placed = numberedMap.layoutBadges(layoutContext.mappedRows, {
+        width: baseSettings.width, height: baseSettings.height,
+        sizeForRow: row => getCategoryMarkerSize(getCategory(row.type), baseSettings),
+        manual: manualLabelPositions,
+        obstacles: getLayoutBoxObstacles(baseSettings, layoutContext.calloutRows),
+        autoPlace: options.ignoreManualPositions === true
+      });
+      return { settings: baseSettings, layoutContext, placed };
+    }
     const selectedLayoutContext = resizeMap
       ? chooseFeasibleMapLayoutContext(visibleGeo, rows, baseSettings, options)
       : createMapLayoutContext(visibleGeo, rows, baseSettings);
@@ -7058,7 +7564,16 @@
   }
 
   function layoutLabels(points, settings, mapBounds, options = {}) {
-    const placed = layoutLabelsWithoutManualPositions(points, settings, mapBounds);
+    const fullyManual = options.applyManual !== false && points.every(point => {
+      const manual = manualLabelPositions[getLabelKey(point)];
+      return manual && Number.isFinite(manual.x) && Number.isFinite(manual.y);
+    });
+    const placed = fullyManual
+      ? points.map((point, index) => {
+        const side = manualLabelPositions[getLabelKey(point)].side || preferredSide(point, settings, mapBounds);
+        return { ...point, ...makeLabelBox(point, side, settings, mapBounds), layoutId: "label-" + index, labelKey: getLabelKey(point), labelSide: side, anchor: side === "left" ? "end" : "start" };
+      })
+      : layoutLabelsWithoutManualPositions(points, settings, mapBounds);
     const positioned = applyManualLabelPositions(placed, options.applyManual !== false);
     positioned.forEach(label => {
       const constrained = constrainLabelToCanvas(label, settings);
@@ -7077,7 +7592,7 @@
   }
 
   function getLabelKey(row) {
-    return row.rowId ? `row:${row.rowId}` : getLegacyLabelKey(row);
+    return row.rowId ? `${row.numberedBadge ? "badge:" : ""}row:${row.rowId}` : getLegacyLabelKey(row);
   }
 
   function getLegacyLabelKey(row) {
@@ -7092,13 +7607,56 @@
     });
   }
 
-  function rememberLabelPositions(placed) {
-    setCurrentManualLabelPositions(collectLabelPositions(placed));
+  function rememberLabelPositions(placed, labelDisplay = "names") {
+    const inactive = Object.fromEntries(Object.entries(manualLabelPositions).filter(([key]) => labelDisplay === "numbers" ? !key.startsWith("badge:") : key.startsWith("badge:")));
+    const current = labelDisplay === "numbers"
+      ? Object.fromEntries(placed.map(row => [row.labelKey, { x: row.labelX, y: row.labelY, side: row.labelSide }]))
+      : collectLabelPositions(placed);
+    setCurrentManualLabelPositions({ ...inactive, ...current });
   }
 
   function lineEnd(d) {
+    if (d.numberedBadge) {
+      const dx = d.x - d.labelX, dy = d.y - d.labelY;
+      const distance = Math.hypot(dx, dy);
+      const radius = d.badgeRadius + 1;
+      const category = getCategory(d.type);
+      const divisor = category.shape === "square" ? Math.max(Math.abs(dx), Math.abs(dy)) : distance;
+      if (divisor <= radius) return { x: d.x, y: d.y };
+      return { x: d.labelX + dx * radius / divisor, y: d.labelY + dy * radius / divisor };
+    }
     const box = labelBackgroundRect(d);
     const gap = 4;
+    if (d.labelStyle === "rich") {
+      // A rich block's enclosing rectangle can include large empty corners.
+      // Find the nearest occupied line or image instead of ending in that space.
+      const textX = getRenderedLabelTextX(d);
+      const anchor = getRenderedLabelTextAnchor(d);
+      const occupied = (d.lines || []).flatMap(line => {
+        if (line.role === "image") {
+          const width = Math.min(d.textWidth, Number(line.imageWidth));
+          const height = Number(line.imageHeight);
+          if (!(width > 0 && height > 0)) return [];
+          const visual = labelVisualBox(d);
+          const x = d.labelSide === "left" ? visual.x1 - width : visual.x0;
+          const y = d.labelY - labelFontSize(d) + (Number(line.baselineOffset) || 0);
+          return [{ x0: x, y0: y, x1: x + width, y1: y + height }];
+        }
+        const width = Number(line.measuredWidth);
+        if (!(width > 0)) return [];
+        const fontSize = Number(line.fontSize) || labelFontSize(d);
+        const x = textX - (anchor === "end" ? width : anchor === "middle" ? width / 2 : 0);
+        const baseline = d.labelY + (Number(line.baselineOffset) || 0);
+        return [{ x0: x, y0: baseline - fontSize, x1: x + width, y1: baseline + fontSize * .2 }];
+      });
+      const nearest = (occupied.length ? occupied : [box]).map(rect => ({
+        rect, x: clamp(d.x, rect.x0, rect.x1), y: clamp(d.y, rect.y0, rect.y1)
+      })).sort((a, b) => Math.hypot(d.x - a.x, d.y - a.y) - Math.hypot(d.x - b.x, d.y - b.y))[0];
+      return {
+        x: nearest.x + (d.x < nearest.rect.x0 ? -gap : d.x > nearest.rect.x1 ? gap : 0),
+        y: nearest.y + (d.y < nearest.rect.y0 ? -gap : d.y > nearest.rect.y1 ? gap : 0)
+      };
+    }
     if (d.labelSide === "left") return { x: box.x1 + gap, y: box.centerY };
     if (d.labelSide === "right") return { x: box.x0 - gap, y: box.centerY };
     if (d.labelSide === "top") return { x: box.centerX, y: box.y1 + gap };
@@ -7106,6 +7664,7 @@
   }
 
   function labelVisualBox(d, pad = 0) {
+    if (d.numberedBadge && numberedMap) return numberedMap.badgeRect(d, pad);
     const x = d.labelSide === "left" ? d.labelX - d.textWidth : d.labelX;
     const y = d.labelY - labelFontSize(d);
     const width = d.textWidth;
@@ -7121,6 +7680,7 @@
   }
 
   function labelBackgroundRect(d) {
+    if (d.numberedBadge && numberedMap) return numberedMap.badgeRect(d, 1);
     const paddingScale = Number(d.collisionPaddingScale) || 1;
     const padX = Math.max(4, 8 * paddingScale);
     const padY = Math.max(2.5, 5 * paddingScale);
@@ -7749,6 +8309,11 @@
     const settings = getSettings();
     const checklist = [];
     const emptyCategories = getEmptyCategoryLabels(rows);
+    if (settings.labelDisplay === "numbers" && numberedMap) {
+      const issues = numberedMap.findNumberIssues(rows);
+      checklist.push(checklistItem(issues.invalid.length || issues.conflicts.length ? "warning" : "ok", t("number.qa.title"),
+        issues.invalid.length || issues.conflicts.length ? t("number.qa.issues", { invalid: issues.invalid.length, conflicts: issues.conflicts.length }) : t("number.qa.ok")));
+    }
     const pngMegapixels = settings.width * settings.height * 4 / 1000000;
     const boundaryLabel = getBoundaryLabel(currentBoundary, currentUiLanguage);
     const regionNoun = t(currentBoundary === "canada" ? "quality.regionNoun.canada" : "quality.regionNoun.world");
@@ -7932,6 +8497,7 @@
   function setPropertiesContext(title, subtitle, hint, controlsHtml = "", selection = null) {
     if (mapScaleControlsVisible && !isBaselayerPropertiesSelection(selection)) hideMapScaleControls();
     activePropertiesSelection = selection;
+    if (els.propertiesDocumentBtn) els.propertiesDocumentBtn.hidden = activeDataTable !== "preview" || !selection || ["document", "category"].includes(selection.kind);
     highlightActiveProjectRow(selection && selection.rowId ? selection.rowId : null);
     if (els.propertiesTitle) els.propertiesTitle.textContent = title;
     if (els.propertiesSubtitle) {
@@ -8013,6 +8579,12 @@
     renderPropertiesForActiveState({ kind: "document" });
   }
 
+  function returnToDocumentProperties() {
+    setDocumentPropertiesContext();
+    if (propertiesDrawerMedia.matches) setPropertiesDrawerOpen(true);
+    else setPropertiesCollapsed(false, { persist: false });
+  }
+
   function focusCategoryEditor(selector = ".properties-back-button", { preventScroll = true } = {}) {
     window.requestAnimationFrame(() => {
       els.propertiesSelectionControls?.querySelector(selector)?.focus({ preventScroll });
@@ -8046,7 +8618,7 @@
     }
     const issues = getReviewIssueCount(report);
     return issues
-      ? `<strong>${escapeHtml(t("quality.banner.review.title", { count: t("summary.issueCount", { count: issues, label: issues === 1 ? t("summary.issueSingular") : t("summary.issuePlural") }) }))}</strong><button type="button" class="primary-action" data-property-action="open-map">${escapeHtml(t("quality.action.reviewOnMap"))}</button>`
+      ? `<strong>${escapeHtml(t("quality.banner.review.title", { count: t("summary.issueCount", { count: issues, label: issues === 1 ? t("summary.issueSingular") : t("summary.issuePlural") }) }))}</strong>`
       : `<strong>${escapeHtml(t("quality.banner.ready.title"))}</strong><span>${escapeHtml(t("quality.banner.ready.body"))}</span>`;
   }
 
@@ -8187,22 +8759,28 @@
   function renderQualityMetrics() {
     const report = lastLayout && lastLayout.report;
     const metadataMissing = getMapDetailsMissingFields().length;
+    const rows = getRows();
+    const numberIssues = numberedMap && getSettings().labelDisplay === "numbers" ? numberedMap.findNumberIssues(rows) : null;
+    const numberCard = numberIssues && rows.length ? qualityCard(t("number.qa.title"),
+      numberIssues.invalid.length || numberIssues.conflicts.length ? t("number.qa.issues", { invalid: numberIssues.invalid.length, conflicts: numberIssues.conflicts.length }) : t("number.qa.ok"),
+      numberIssues.invalid.length || numberIssues.conflicts.length ? "review" : "ok", numberIssues.invalid.length || numberIssues.conflicts.length ? t("companion.previewHelp") : "", "",
+      { name: "preview-companion-table", label: t("companion.preview") }) : "";
     const metadataCard = qualityCard(
       t("quality.metric.mapDetails"),
       metadataMissing ? t("quality.metric.missingCount", { count: metadataMissing }) : t("quality.metric.complete"),
       metadataMissing ? "danger" : "ok",
       t("quality.metric.mapDetailsBody"),
-      metadataMissing ? t("quality.metric.mapDetailsMissing") : t("quality.metric.mapDetailsComplete"),
+      metadataMissing ? "" : t("quality.metric.mapDetailsComplete"),
       metadataMissing ? { name: "open-map-details", label: t("quality.metric.addDetails") } : null
     );
     if (qualityRefreshError || isQualityRefreshPending()) {
       const state = qualityRefreshError ? "danger" : "neutral";
       const value = qualityRefreshError ? t("summary.qualityUnavailable") : t("summary.qualityChecking");
       const description = qualityRefreshError ? t("quality.banner.failed.body") : t("quality.banner.checking.body");
-      return `<div class="quality-card-grid">${metadataCard}${qualityCard(t("quality.metric.layoutAnalysis"), value, state, description)}</div>`;
+      return `<div class="quality-card-grid">${metadataCard}${numberCard}${qualityCard(t("quality.metric.layoutAnalysis"), value, state, description)}</div>`;
     }
     if (!report) {
-      return `<div class="quality-card-grid">${metadataCard}</div>`;
+      return `<div class="quality-card-grid">${metadataCard}${numberCard}</div>`;
     }
     const longestLeader = report.longestLeaderName
       ? `${Math.round(report.longestLeaderLength)} pt - ${report.longestLeaderName}`
@@ -8210,6 +8788,7 @@
     return `
       <div class="quality-card-grid">
         ${metadataCard}
+        ${numberCard}
         ${qualityCard(t("quality.metric.offCanvasPoints"), String(report.offCanvasPoints || 0), report.offCanvasPoints ? "danger" : "ok", report.offCanvasPoints ? t("quality.metric.reviewOffCanvasPoints") : t("quality.metric.noOffCanvasPoints"), "", report.offCanvasPoints ? { name: "open-map", label: t("quality.action.reviewOnMap") } : null)}
         ${qualityCard(t("quality.metric.labelOverlaps"), String(report.overlaps), report.overlaps ? "review" : "ok", report.overlaps ? t("quality.metric.reviewTighten") : t("quality.metric.noOverlaps"), "", report.overlaps ? { name: "open-map", label: t("quality.action.reviewOnMap") } : null)}
         ${qualityCard(t("quality.metric.leaderCrossings"), report.crossings ? String(report.crossings) : "0", report.crossings ? "review" : "ok", report.crossings ? t("quality.metric.reviewCrossings") : t("quality.metric.noCrossings"), "", report.crossings ? { name: "open-map", label: t("quality.action.reviewOnMap") } : null)}
@@ -8233,12 +8812,15 @@
   function renderDocumentPropertyControls() {
     return properties.renderDocumentPropertyControls({
       selectOptions: {
-        mapStyle: selectOptionsHtml(els.mapStylePresetInput),
         fontFamily: selectOptionsHtml(els.fontFamilyInput),
         bookSize: selectOptionsHtml(els.bookSizeInput),
         imageSize: selectOptionsHtml(els.imageSizeInput)
       },
       values: {
+        mapStyleName: getMapStylePresetLabel(currentMapStylePreset, mapStylePresets[currentMapStylePreset]),
+        styleGalleryOpen: !els.mapStyleGallery?.hidden,
+        labelDisplay: els.labelDisplayInput?.value || "names",
+        regionColourMode: els.regionColourModeInput?.value || "data",
         labelSize: els.labelSizeInput ? els.labelSizeInput.value : "",
         mapScale: els.mapScaleInput ? els.mapScaleInput.value : "",
         markerSize: els.markerSizeInput ? els.markerSizeInput.value : "",
@@ -8301,6 +8883,7 @@
     };
     return properties.renderRowPropertyControls({
       row: displayRow,
+      numberWarning: getMapNumberWarning(row),
       kind: options.kind || "row",
       labelKey,
       manual: canResetLabel,
@@ -8836,7 +9419,14 @@
       } else {
         input.value = event.target.value;
       }
-      handleLayoutSettingsChange({ target: input });
+      if (["labelDisplayInput", "regionColourModeInput"].includes(layoutProxy)) {
+        if (layoutProxy === "labelDisplayInput" && input.value === "numbers") assignMissingMapNumbers();
+        else applyRegionColoursByValue(false);
+        syncStyleGalleryState();
+        if (!els.mapStyleGallery.hidden) renderStyleGallery();
+        getTableRows().forEach(tr => updateRowAnnotationPreview(tr));
+        requestPreviewRefresh();
+      } else handleLayoutSettingsChange({ target: input });
       if (activePropertiesSelection && activePropertiesSelection.kind === "map") {
         setMapPropertiesContext();
       } else {
@@ -8995,6 +9585,14 @@
     const button = event.target.closest("[data-property-action]");
     if (!button) return;
     const action = button.dataset.propertyAction;
+    if (action === "change-map-style") {
+      openStyleGallery(button);
+      return;
+    }
+    if (action === "preview-companion-table") {
+      openCompanionTablePreview(button);
+      return;
+    }
 
     if (action === "apply-marker-size") {
       event.stopPropagation();
@@ -9104,7 +9702,7 @@
         });
         return;
       }
-      setDocumentPropertiesContext();
+      returnToDocumentProperties();
       renderCategoryEditors();
       window.requestAnimationFrame(() => {
         els.categoryList?.querySelector(`.legend-item-select[data-category-id="${window.CSS && CSS.escape ? CSS.escape(categoryId) : categoryId}"]`)?.focus({ preventScroll: true });
@@ -9955,7 +10553,7 @@
     svg.attr("height", settings.height);
 
     svg.append("title").text(settings.title || tFor(settings.mapLanguage, "status.customMapTitle"));
-    svg.append("desc").text(tFor(settings.mapLanguage, "map.svgDescription", { boundary: getBoundaryLabel(currentBoundary, settings.mapLanguage) }));
+    svg.append("desc").text(settings.labelDisplay === "numbers" ? tFor(settings.mapLanguage, "map.numberedDescription") : tFor(settings.mapLanguage, "map.svgDescription", { boundary: getBoundaryLabel(currentBoundary, settings.mapLanguage) }));
 
     if (settings.title) {
       const denseCompact = settings.bookSize === "compact" && settings.imageSize === "half";
@@ -10046,7 +10644,7 @@
       });
 
     const placed = layoutBundle.placed;
-    rememberLabelPositions(placed);
+    rememberLabelPositions(placed, settings.labelDisplay);
     const placedByRowId = new Map(placed.map(row => [row.rowId, row]));
     const sourceRowsByRowId = new Map(rows.map(row => [String(row.rowId), row]));
     const sourceRowForLayout = row => sourceRowsByRowId.get(String(row.rowId)) || row;
@@ -10054,7 +10652,7 @@
       const sourceRow = sourceRowForLayout(row);
       return sourceRow && sourceRow.anchor === "region" ? sourceRow.region || null : null;
     };
-    const markerRows = mappedRows.map(row => placedByRowId.get(row.rowId) || row);
+    const markerRows = settings.labelDisplay === "numbers" ? mappedRows : mappedRows.map(row => placedByRowId.get(row.rowId) || row);
     const leaderRows = settings.hideLeaderLines ? [] : placed.filter(row => !row.hideLine);
     const report = analyzeLayout(placed, settings, projectedProblems, hiddenRegionProblems, mapBounds, mappedRows);
     lastLayout = {
@@ -10109,7 +10707,7 @@
     const markers = markerLayer.selectAll(".marker")
       .data(markerRows)
       .join(function (enter) {
-        return enter.append(d => createMarkerElement(getCategory(d.type)));
+        return enter.append(d => settings.labelDisplay === "numbers" ? document.createElementNS("http://www.w3.org/2000/svg", "circle") : createMarkerElement(getCategory(d.type)));
       })
       .attr("class", d => `marker marker-${cleanType(d.type)}${getCategory(d.type).customIcon ? " marker-custom-icon" : ""}${settings.lockMarkerCoordinates ? " is-locked" : ""}${isPointOffCanvas(d, settings) ? " is-off-canvas" : ""}`)
       .attr("data-layout-id", d => d.layoutId)
@@ -10118,7 +10716,9 @@
       .each(function (d) {
         const category = getCategory(d.type);
         const node = d3.select(this);
-        if (category.customIcon) {
+        if (settings.labelDisplay === "numbers") {
+          node.attr("fill", getCssVar("--map-ink", "#222222")).attr("stroke", "#ffffff");
+        } else if (category.customIcon) {
           node
             .attr("href", category.customIcon.dataUrl)
             .attr("xlink:href", category.customIcon.dataUrl)
@@ -10128,7 +10728,7 @@
             .attr("fill", category.colour)
             .attr("stroke", category.stroke);
         }
-        moveMarkerNode(node, d, { markerSize: getCategoryMarkerSize(category, settings) });
+        moveMarkerNode(node, d, { markerSize: settings.labelDisplay === "numbers" ? 2.5 : getCategoryMarkerSize(category, settings) });
       })
       .on("click", (event, d) => {
         event.stopPropagation();
@@ -10136,6 +10736,9 @@
       });
     if (!settings.lockMarkerCoordinates) attachMarkerDragging(markers, projection, settings);
 
+    if (settings.labelDisplay === "numbers") {
+      drawNumberedBadges(svg, placed, settings);
+    } else {
     const labelBackgroundLayer = svg.append("g").attr("class", "label-background-layer");
     labelBackgroundLayer.selectAll("rect")
       .data(placed)
@@ -10174,11 +10777,12 @@
     });
     attachLabelDragging(labels);
     drawRichLabelImages(svg, placed, settings);
+    }
 
     if (settings.showCallouts && calloutRows.length) drawCallouts(svg, calloutRows, settings, mapBounds);
     if (settings.showLegend && rows.length) drawLegend(svg, settings, mapBounds);
     if (mapScaleControlsVisible) drawMapScaleControls(svg, settings, mapBounds);
-    if (renderOutputMode === "web") drawLabelWidthControls(svg, placed, settings);
+    if (renderOutputMode === "web" && settings.labelDisplay !== "numbers") drawLabelWidthControls(svg, placed, settings);
     completeQualityRefreshFromRender();
     updateStatus(rows, mappedRows, calloutRows, report, true);
     restoreActiveQualityLocateTarget();
@@ -10206,6 +10810,9 @@
         .attr("class", `${role === "separator" ? "label-line label-separator" : `label-line label-${role}`} ${mapTypographySizeClass(lineFontSize)}`)
         .attr("x", textX)
         .attr("dy", lineAdvance)
+        .attr("fill", currentMapStylePreset === "regional-briefing" && role === "title"
+          ? getMapStylePreset(currentMapStylePreset).headingColours?.[getCategory(row.type).colour] || getCssVar("--map-ink", "#222222")
+          : null)
         .text(role === "separator" ? "" : lineText(line));
       if (index === row.lines.length - 1 && row.footnote) {
         appendSuperscript(text, row.footnote, lineFontSize);
@@ -10214,6 +10821,7 @@
   }
 
   function refreshRenderedLabel(rowId) {
+    if (getSettings().labelDisplay === "numbers") return false;
     if (!lastLayout || !Array.isArray(lastLayout.placed) || !lastLayout.settings || !lastLayout.mapBounds) return false;
     const row = readRowElement(getRowElementById(rowId));
     if (!row) return false;
@@ -10508,8 +11116,10 @@
             event.stopPropagation();
             setRowPropertiesContext("label", row, { labelKey: row.labelKey, manual: Boolean(manualLabelPositions[row.labelKey]) });
           });
-        if (line.caption) group.append("title").text(line.caption);
+        if (line.alt || line.caption) group.append("title").text(line.alt || line.caption);
         group.append("image")
+          .attr("role", "img")
+          .attr("aria-label", line.alt || line.caption || null)
           .attr("href", line.assetRef)
           .attr("xlink:href", line.assetRef)
           .attr("preserveAspectRatio", "xMidYMid meet");
@@ -10723,6 +11333,89 @@
             setStatusMessage(t("status.mapSizeChanged"), "ok");
           }
         }));
+  }
+
+  function positionNumberedBadge(group, row, settings) {
+    const radius = row.badgeRadius;
+    const category = getNumberedCategory(getCategory(row.type));
+    group.attr("transform", `translate(${row.labelX},${row.labelY})`);
+    const background = group.select(".map-label-background").attr("fill", category.colour).attr("stroke", category.stroke);
+    if (category.shape === "circle" || category.shape === "square") {
+      background.attr("x", -radius).attr("y", -radius).attr("width", radius * 2).attr("height", radius * 2).attr("rx", category.shape === "circle" ? radius : 0);
+    } else background.attr("d", markerPath(category.shape, radius));
+    // Patch only connector paths. Badge paths have their own geometry.
+    els.svg.selectAll(".leader-line, .leader-casing").filter(d => d && d.rowId === row.rowId).attr("d", linePath(row, settings));
+  }
+
+  function moveNumberedBadge(group, row, x, y, settings) {
+    row.labelX = Math.max(row.badgeRadius + 2, Math.min(settings.width - row.badgeRadius - 2, x));
+    row.labelY = Math.max(row.badgeRadius + 2, Math.min(settings.height - row.badgeRadius - 2, y));
+    manualLabelPositions[row.labelKey] = { x: row.labelX, y: row.labelY, side: row.labelSide };
+    positionNumberedBadge(group, row, settings);
+  }
+
+  function drawNumberedBadges(svg, placed, settings) {
+    const groups = svg.append("g").attr("class", "numbered-badge-layer").selectAll("g").data(placed).join("g")
+      .attr("class", "numbered-badge").attr("data-layout-id", row => row.layoutId).attr("data-row-id", row => row.rowId)
+      .attr("tabindex", 0).attr("role", "button")
+      .attr("aria-label", row => t("number.badgeAria", { number: row.badgeText, title: getLabelText(row) }))
+      .on("click", (event, row) => {
+        event.stopPropagation();
+        setRowPropertiesContext("label", row, { labelKey: row.labelKey, manual: Boolean(manualLabelPositions[row.labelKey]) });
+      })
+      .on("keydown", function (event, row) {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          setRowPropertiesContext("label", row, { labelKey: row.labelKey, manual: true });
+          return;
+        }
+        const delta = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[event.key];
+        if (!delta) return;
+        event.preventDefault();
+        event.stopPropagation();
+        pushAppUndoHistory("numbered badge move");
+        const step = event.shiftKey ? 10 : 1;
+        moveNumberedBadge(d3.select(this), row, row.labelX + delta[0] * step, row.labelY + delta[1] * step, settings);
+        invalidatePatchedLayoutQuality();
+        refreshActiveRowProperties();
+        setStatusMessage(t("number.moved", { number: row.mapNumber }), "ok");
+      });
+    groups.each(function (row) {
+      const group = d3.select(this);
+      const category = getNumberedCategory(getCategory(row.type));
+      group.append(category.shape === "circle" || category.shape === "square" ? "rect" : "path")
+        .attr("class", "map-label-background is-numbered");
+      const fontSize = normalizeMapTypographySize(Math.min(14, row.badgeRadius * 1.2, row.badgeRadius * 2.5 / row.badgeText.length));
+      group.append("text").attr("class", `map-label is-numbered ${mapTypographySizeClass(fontSize)}`)
+        .attr("x", 0).attr("y", 0).attr("text-anchor", "middle").attr("dominant-baseline", "central")
+        .text(row.badgeText);
+      positionNumberedBadge(group, row, settings);
+    });
+    groups.call(d3.drag()
+      .on("start", function (event, row) {
+        beginLayoutQualityDrag();
+        row.badgeDragHistoryPushed = false;
+        row.badgeDragStart = { x: row.labelX, y: row.labelY };
+        row.dragAxis = null;
+        d3.select(this).classed("is-dragging", true);
+      })
+      .on("drag", function (event, row) {
+        if (!row.badgeDragHistoryPushed) {
+          pushAppUndoHistory("numbered badge move");
+          markLayoutQualityDirty();
+          row.badgeDragHistoryPushed = true;
+        }
+        const next = constrainShiftDrag(row.badgeDragStart, { x: row.labelX + event.dx, y: row.labelY + event.dy }, row, event);
+        moveNumberedBadge(d3.select(this), row, next.x, next.y, settings);
+      })
+      .on("end", function (event, row) {
+        delete row.badgeDragStart;
+        delete row.badgeDragHistoryPushed;
+        delete row.dragAxis;
+        d3.select(this).classed("is-dragging", false);
+        endLayoutQualityDrag();
+        refreshActiveRowProperties();
+      }));
   }
 
   function attachLabelDragging(labels) {
@@ -11343,7 +12036,7 @@
   }
 
   function getOpenDialogElement() {
-    return [els.feedbackDialog, els.confirmationDialog, els.startupDialog, els.csvMapDialog, els.pointCatalogDialog, els.mapDetailsDialog]
+    return [els.feedbackDialog, els.confirmationDialog, els.startupDialog, els.csvMapDialog, els.pointCatalogDialog, els.mapDetailsDialog, els.companionTableDialog]
       .find(dialog => dialog && !dialog.hidden) || null;
   }
 
@@ -11752,18 +12445,29 @@
     };
   }
 
+  function getLegendMarkerSize(category, settings) {
+    const denseCompact = settings.compactFurniture !== false && Number(settings.labelDensityScale) < 1;
+    return Math.max(denseCompact ? 4 : 8, Math.min(denseCompact ? 9 : 18, getCategoryMarkerSize(category, settings)));
+  }
+
   function getLegendBoxLayout(settings) {
     const compact = settings.compactFurniture !== false;
     const denseCompact = compact && Number(settings.labelDensityScale) < 1;
-    const rowMetrics = getFurnitureRowMetrics(settings);
+    const rowMetrics = { ...getFurnitureRowMetrics(settings) };
+    const numberMarkerSize = settings.labelDisplay === "numbers" ? Math.max(0, ...categorySettings.map(category => getLegendMarkerSize(category, settings))) : 0;
+    if (numberMarkerSize) {
+      rowMetrics.markerX = Math.max(rowMetrics.markerX, numberMarkerSize + 6);
+      rowMetrics.textX = Math.max(rowMetrics.textX, rowMetrics.markerX + numberMarkerSize + 6);
+    }
     const textSizeRender = normalizeMapTypographySize(compact
       ? Math.max(denseCompact ? 5 : 7, Math.round(settings.labelSizeRender * 0.78))
       : settings.labelSizeRender);
     const headingSize = Math.max(settings.labelSize, Math.round(settings.labelSize * 1.02));
     const headingSizeRender = normalizeMapTypographySize(Math.max(settings.labelSizeRender, Math.round(settings.labelSizeRender * 1.02)));
-    const rowHeight = compact
+    const textRowHeight = compact
       ? Math.max(denseCompact ? 14 : 18, Math.round(textSizeRender * 2.1))
       : Math.max(34, Math.round(settings.labelSize * 2.45));
+    const rowHeight = Math.max(textRowHeight, numberMarkerSize * 2 + (numberMarkerSize ? 6 : 0));
     const headingHeight = compact
       ? Math.max(denseCompact ? 12 : 16, Math.round(headingSizeRender * (denseCompact ? 1.8 : 2)))
       : Math.max(31, Math.round(headingSize * 2.1));
@@ -11854,6 +12558,7 @@
   }
 
   function getNarrowCalloutLabelLines(row, settings, maxChars) {
+    if (settings.labelDisplay === "numbers") return [asLabelLine(numberedMap.normalizeNumber(row.mapNumber) || "?", settings.mapLanguage, "title")];
     return getLabelLines(row, {
       ...settings,
       labelMaxChars: Math.max(12, maxChars)
@@ -12219,8 +12924,7 @@
 
     categorySettings.forEach((category, index) => {
       const itemY = verticalPadding + headingHeight + index * rowHeight + rowHeight / 2;
-      const denseCompact = settings.compactFurniture !== false && Number(settings.labelDensityScale) < 1;
-      const legendMarkerSize = Math.max(denseCompact ? 4 : 8, Math.min(denseCompact ? 9 : 18, getCategoryMarkerSize(category, settings)));
+      const legendMarkerSize = getLegendMarkerSize(category, settings);
       drawMarkerSymbol(group, category, markerX, itemY, legendMarkerSize)
         .classed("legend-category-marker", true)
         .attr("data-category-id", category.id);
@@ -12391,6 +13095,7 @@
   }
 
   function drawMarkerSymbol(svg, category, cx, cy, size) {
+    if (getSettings().labelDisplay === "numbers") category = getNumberedCategory(category);
     const markerData = { x: cx, y: cy, type: category.id };
     if (category.customIcon) {
       const image = svg.append("image")
@@ -12602,7 +13307,9 @@
       .leader-casing { fill: none; stroke: ${mapBackground}; stroke-linecap: round; stroke-linejoin: round; }
       .leader-line { fill: none; stroke-linecap: round; stroke-linejoin: round; }
       .leader-line:not([stroke]) { stroke: ${leader}; }
-      .map-label-background { fill: none; stroke: none; }
+      .map-label-background:not(.is-numbered) { fill: none; stroke: none; }
+      .map-label-background.is-numbered { fill: ${mapBackground}; stroke-width: 1.5; }
+      .map-label.is-numbered { fill: ${ink}; font-weight: 700; font-variant-numeric: tabular-nums; }
       .map-label-background.has-label-border { fill: none; stroke: ${ink}; stroke-width: 1.2; vector-effect: non-scaling-stroke; }
       .map-label { font-family: ${fontFamily}; font-weight: 700; fill: ${ink}; }
       .map-label .label-paragraph, .map-label .label-bullet, .map-label .label-caption { font-weight: 400; }
@@ -12637,7 +13344,14 @@
       clone.setAttribute("data-output", "web");
     }
 
-    clone.querySelectorAll(".map-scale-controls, .distance-markers, .box-controls").forEach(node => node.remove());
+    clone.querySelectorAll(".map-scale-controls, .distance-markers, .box-controls, .label-width-control-layer, .marker-boundary-warning").forEach(node => node.remove());
+    const rowsById = new Map(getRows().map(row => [String(row.rowId), row]));
+    clone.querySelectorAll(".numbered-badge").forEach(node => {
+      node.removeAttribute("tabindex");
+      node.removeAttribute("role");
+      const row = rowsById.get(node.dataset.rowId);
+      if (row) node.setAttribute("aria-label", tFor(currentMapLanguage, "number.exportAria", { number: numberedMap.normalizeNumber(row.mapNumber) || "?", title: getLabelText(row) }));
+    });
 
     const style = document.createElementNS("http://www.w3.org/2000/svg", "style");
     style.textContent = getExportCss(outputMode);
@@ -12649,12 +13363,16 @@
     if (outputMode === renderOutputMode) return cloneCurrentSvgForExport(outputMode);
 
     const previousOutputMode = renderOutputMode;
+    const previousLabels = cloneCoordinateMap(manualLabelPositions);
+    const previousBoxes = cloneCoordinateMap(manualBoxPositions);
     try {
       renderOutputMode = outputMode;
       render();
       return cloneCurrentSvgForExport(outputMode);
     } finally {
       renderOutputMode = previousOutputMode;
+      setCurrentManualLabelPositions(previousLabels);
+      setCurrentManualBoxPositions(previousBoxes);
       render();
     }
   }
@@ -12725,6 +13443,62 @@
     }
   }
 
+  function prepareCompanionRows() {
+    let rows = getRows();
+    if (rows.some(row => !String(row.mapNumber || "").trim())) {
+      pushAppUndoHistory("map numbers");
+      assignMissingMapNumbers();
+      rows = getRows();
+      getTableRows().forEach(tr => updateRowAnnotationPreview(tr));
+      requestPreviewRefresh();
+    }
+    return rows;
+  }
+
+  function openCompanionTablePreview(trigger) {
+    const rows = prepareCompanionRows();
+    const language = currentMapLanguage;
+    const entries = numberedMap.companionRows(rows, language, (type, locale) => {
+      const category = getCategory(type);
+      return locale === "fr" ? category.labelFr : category.label;
+    });
+    const issues = numberedMap.findNumberIssues(rows);
+    const needsReview = issues.invalid.length || issues.conflicts.length || entries.some(entry => !entry.title.trim() || !entry.category.trim());
+    els.companionTableNote.textContent = [t("companion.note"), needsReview ? t("companion.reviewNeeded") : ""].filter(Boolean).join(" ");
+    els.companionTableContent.lang = language;
+    const headers = ["companion.number", "companion.project", "companion.category"].map(key => tFor(language, key));
+    els.companionTableContent.innerHTML = rows.length ? `<table><caption class="type-supporting">${escapeHtml(tFor(language, "companion.summary", { projects: entries.length, locations: rows.length }))}</caption><thead><tr>${headers.map(header => `<th scope="col">${escapeHtml(header)}</th>`).join("")}</tr></thead><tbody>${entries.map(entry => `<tr><th scope="row" class="type-numeric-data">${escapeHtml(entry.number || "?")}</th><td>${escapeHtml(entry.title)}</td><td>${escapeHtml(entry.category)}</td></tr>`).join("")}</tbody></table>` : `<p>${escapeHtml(t("companion.noRows"))}</p>`;
+    els.companionTableDialog.querySelectorAll("[data-companion-export]").forEach(button => { button.disabled = !rows.length; });
+    setExportMenuOpen(false);
+    openDialog(els.companionTableDialog, trigger || els.exportMenuBtn);
+  }
+
+  function exportCompanionTable(format) {
+    const rows = prepareCompanionRows();
+    if (!rows.length) {
+      setStatusMessage(t("companion.noRows"), "warning");
+      return;
+    }
+    const language = currentMapLanguage;
+    const entries = numberedMap.companionRows(rows, language, (type, locale) => {
+      const category = getCategory(type);
+      return locale === "fr" ? category.labelFr : category.label;
+    });
+    const headers = ["companion.number", "companion.project", "companion.category"].map(key => tFor(language, key));
+    const issues = numberedMap.findNumberIssues(rows);
+    const needsReview = issues.invalid.length || issues.conflicts.length || entries.some(entry => !entry.title.trim() || !entry.category.trim());
+    if (format === "csv") {
+      const exportRows = entries.map(entry => ({ [headers[0]]: entry.number, [headers[1]]: entry.title, [headers[2]]: entry.category }));
+      const csv = window.Papa ? Papa.unparse(exportRows, { columns: headers, escapeFormulae: true }) : unparseCsvRows(exportRows, headers);
+      download(`custom-map-project-titles-${language}.csv`, "\ufeff" + csv, "text/csv;charset=utf-8");
+    } else {
+      const title = [getSettings().title, tFor(language, "companion.title")].filter(Boolean).join(" — ");
+      const note = [tFor(language, "companion.note"), needsReview ? tFor(language, "companion.review") : ""].filter(Boolean).join(" ");
+      download(`custom-map-project-titles-${language}.html`, numberedMap.companionHtml(entries, { language, title, headers, note }), "text/html;charset=utf-8");
+    }
+    setStatusMessage(needsReview ? t("companion.review") : t("companion.exported", { language: language === "fr" ? t("dialog.mapDetails.french") : t("dialog.mapDetails.english") }), needsReview ? "warning" : "ok");
+  }
+
   function exportCsv() {
     const csvExport = projectIo.createCsvExport({
       rows: getRows(),
@@ -12740,7 +13514,7 @@
   }
 
   const projectFormat = "plotypus-project";
-  const currentProjectVersion = 10;
+  const currentProjectVersion = 11;
   const currentAppVersion = String(appConfig.appVersion || "2026.07.14");
 
   function validateAndNormalizeProject(rawProject) {
@@ -12757,6 +13531,11 @@
   }
 
   function saveProject() {
+    const invalidNumberIndex = getRows().findIndex(row => row.mapNumber && numberedMap && !numberedMap.normalizeNumber(row.mapNumber));
+    if (invalidNumberIndex >= 0) {
+      setStatusMessage(t("project.error.mapNumber", { index: invalidNumberIndex + 1 }), "danger");
+      return;
+    }
     const project = projectIo.createProjectSnapshot({
       format: projectFormat,
       version: currentProjectVersion,
@@ -12867,13 +13646,15 @@
 
   function setStartupScreen(screenName, options = {}) {
     const showSetup = screenName === "setup";
-    els.startupStartScreen.hidden = showSetup;
+    const showStyle = screenName === "style";
+    els.startupStartScreen.hidden = showSetup || showStyle;
     els.startupSetupForm.hidden = !showSetup;
-    els.startupDialog.dataset.startupScreen = showSetup ? "setup" : "start";
-    els.startupDialog.setAttribute("aria-labelledby", showSetup ? "startupSetupTitle" : "startupTitle");
-    els.startupDialog.setAttribute("aria-describedby", showSetup ? "startupSetupSubtitle" : "startupSubtitle");
+    els.startupStyleGalleryScreen.hidden = !showStyle;
+    els.startupDialog.dataset.startupScreen = showStyle ? "style" : showSetup ? "setup" : "start";
+    els.startupDialog.setAttribute("aria-labelledby", showStyle ? "mapStyleGalleryTitle" : showSetup ? "startupSetupTitle" : "startupTitle");
+    els.startupDialog.setAttribute("aria-describedby", showStyle ? "mapStyleGalleryHelp" : showSetup ? "startupSetupSubtitle" : "startupSubtitle");
     if (options.focus === false) return;
-    const focusTarget = showSetup
+    const focusTarget = showStyle ? els.closeMapStyleGalleryBtn : showSetup
       ? els.startupBaselayerOptions.find(option => option.dataset.selected === "true")
       : els.startupStartNewBtn;
     focusTarget?.focus({ preventScroll: true });
@@ -12897,6 +13678,7 @@
   }
 
   function closeStartupDialog() {
+    if (styleGalleryContext === "setup") closeStyleGallery({ restoreFocus: false });
     startupDialogDismissed = true;
     closeDialog(els.startupDialog);
     setStartupScreen("start", { focus: false });
@@ -12907,6 +13689,7 @@
     if (key === "feedback") return els.feedbackDialog;
     if (key === "map-details") return els.mapDetailsDialog;
     if (key === "point-catalog") return els.pointCatalogDialog;
+    if (key === "companion-table") return els.companionTableDialog;
     return els.csvMapDialog;
   }
 
@@ -12980,9 +13763,9 @@
       saveLayoutPreferences();
       await changeBoundary(boundary);
       applyRegionPreset(regionPreset);
-      setActiveDataTab("preview");
+      setActiveDataTab("projects");
       setProjectSaveState("dirty");
-      els.startupDialog._returnFocus = els.previewTableTab;
+      els.startupDialog._returnFocus = els.projectTableTab;
       setStatusMessage(t("status.startupNewProject"), "ok");
       closeStartupDialog();
     } finally {
@@ -12995,6 +13778,7 @@
     if (!dialog) return;
     dialog._returnFocus = returnFocus || document.activeElement;
     dialog.hidden = false;
+    if (dialog.tagName === "DIALOG") dialog.showModal();
     const focusTarget = dialog.querySelector("[data-dialog-initial-focus]")
       || dialog.querySelector("input, textarea, select, button");
     if (focusTarget) focusTarget.focus();
@@ -13002,8 +13786,13 @@
 
   function closeDialog(dialog) {
     if (!dialog || dialog.hidden) return;
+    if (dialog.tagName === "DIALOG" && dialog.open) dialog.close();
     dialog.hidden = true;
     if (dialog === els.feedbackDialog) els.feedbackBtn?.setAttribute("aria-expanded", "false");
+    if (dialog === els.companionTableDialog && !dialog._returnFocus?.isConnected) {
+      els.exportMenuBtn?.focus();
+      return;
+    }
     if (dialog._returnFocus && typeof dialog._returnFocus.focus === "function") dialog._returnFocus.focus();
   }
 
@@ -13209,6 +13998,7 @@
   const csvMapTargets = [
     { key: "name", labelKey: "dialog.csv.field.name", required: true },
     { key: "nameFr", labelKey: "dialog.csv.field.nameFr", required: false },
+    { key: "mapNumber", labelKey: "dialog.csv.field.mapNumber", required: false },
     { key: "type", labelKey: "dialog.csv.field.type", required: false },
     { key: "typeFr", labelKey: "dialog.csv.field.typeFr", required: false },
     { key: "lon", labelKey: "dialog.csv.field.lon", required: false },
@@ -13217,6 +14007,7 @@
   const regionCsvMapTargets = [
     { key: "name", labelKey: "dialog.csv.field.name", required: true },
     { key: "nameFr", labelKey: "dialog.csv.field.nameFr", required: false },
+    { key: "mapNumber", labelKey: "dialog.csv.field.mapNumber", required: false },
     { key: "type", labelKey: "dialog.csv.field.type", required: true },
     { key: "typeFr", labelKey: "dialog.csv.field.typeFr", required: false },
     { key: "region", labelKey: "dialog.csv.field.region", required: true }
@@ -13224,6 +14015,7 @@
   const cityCsvMapTargets = [
     { key: "name", labelKey: "dialog.csv.field.name", required: true },
     { key: "nameFr", labelKey: "dialog.csv.field.nameFr", required: false },
+    { key: "mapNumber", labelKey: "dialog.csv.field.mapNumber", required: false },
     { key: "type", labelKey: "dialog.csv.field.type", required: false },
     { key: "typeFr", labelKey: "dialog.csv.field.typeFr", required: false },
     { key: "city", labelKey: "dialog.csv.field.city", required: true }
@@ -13708,6 +14500,7 @@
       }
 
       const row = normalizeImportedProjectRow(rawRow, index, messages, locationMode);
+      if (row.mapNumber && numberedMap && !numberedMap.normalizeNumber(row.mapNumber)) messages.push(t("project.error.mapNumber", { index: index + 2 }));
       const hasLon = row.lon !== "";
       const hasLat = row.lat !== "";
       const hasRegion = row.anchor === "region" && row.region;
@@ -13733,6 +14526,33 @@
   }
 
   function initEvents() {
+    on(els.startupChooseStyleBtn, "click", () => openStyleGallery(els.startupChooseStyleBtn, "setup"));
+    on(els.propertiesDocumentBtn, "click", () => {
+      returnToDocumentProperties();
+      els.propertiesSelectionControls?.querySelector("summary")?.focus();
+    });
+    on(els.closeMapStyleGalleryBtn, "click", closeStyleGallery);
+    on(els.mapStyleGallery, "keydown", event => { if (event.key === "Escape") { event.stopPropagation(); closeStyleGallery(); } });
+    on(els.mapStyleGalleryCards, "click", handleStyleGalleryClick);
+    on(els.mapStyleGallery, "click", event => {
+      const button = event.target.closest("[data-label-display]");
+      if (!button) return;
+      pushAppUndoHistory("map display setting");
+      els.labelDisplayInput.value = button.dataset.labelDisplay;
+      if (button.dataset.labelDisplay === "numbers") assignMissingMapNumbers();
+      renderStyleGallery();
+      getTableRows().forEach(tr => updateRowAnnotationPreview(tr));
+      requestPreviewRefresh();
+      refreshDocumentPropertiesIfActive();
+    });
+    on(els.exportCompanionHtmlBtn, "click", () => { setExportMenuOpen(false); exportCompanionTable("html"); });
+    on(els.exportCompanionCsvBtn, "click", () => { setExportMenuOpen(false); exportCompanionTable("csv"); });
+    on(els.previewCompanionTableBtn, "click", () => openCompanionTablePreview(els.exportMenuBtn));
+    on(els.companionTableDialog, "click", event => {
+      const format = event.target.closest("[data-companion-export]")?.dataset.companionExport;
+      if (format) exportCompanionTable(format);
+    });
+    on(els.companionTableDialog, "cancel", event => { event.preventDefault(); closeDialog(els.companionTableDialog); });
     on(els.ribbonLoadSampleBtn, "click", () => {
       closeProjectToolbarMenus();
       loadSampleData();
@@ -14051,7 +14871,6 @@
     on(els.propertiesSelectionControls, "focusout", event => clearInputUndoCapture(event.target));
     on(els.propertiesSelectionControls, "click", handlePropertiesControlsClick);
     on(els.qualityMetricsPanel, "click", handlePropertiesControlsClick);
-    on(els.qualitySummaryBanner, "click", handlePropertiesControlsClick);
     on(els.canvasQualityPill, "click", handlePropertiesControlsClick);
     els.translationFilters.forEach(button => {
       on(button, "click", () => setTranslationFilter(button.dataset.translationFilter));

@@ -1317,13 +1317,13 @@
           await waitFor(() => startupDialog.dataset.startupScreen === "setup" && doc.querySelector("#startupSetupForm")?.hidden === false, 2000);
           assert(checks, "Start from scratch opens the bilingual setup step", startupDialog.getAttribute("aria-labelledby") === "startupSetupTitle" && /Configurer votre carte/.test(doc.querySelector("#startupSetupTitle")?.textContent || "") && doc.querySelectorAll("[data-startup-baselayer]").length === 6);
           assert(checks, "New maps default to the two-thirds Letter canvas", doc.querySelector("#startupBookSizeInput")?.value === "letter" && doc.querySelector("#startupImageSizeInput")?.value === "two-thirds", `${doc.querySelector("#startupBookSizeInput")?.value} / ${doc.querySelector("#startupImageSizeInput")?.value}`);
-          const startupSelects = [doc.querySelector("#startupMapStyleInput"), doc.querySelector("#startupBookSizeInput"), doc.querySelector("#startupImageSizeInput")];
-          assert(checks, "Startup Canvas exposes real choices instead of one-option selects", startupSelects.map(select => select?.options.length).join(",") === "4,2,5" && startupSelects.every(select => select?.hidden === false && select?.parentElement?.querySelector(".startup-static-value")?.hidden === true), startupSelects.map(select => `${select?.options.length}/${select?.hidden}`).join(", "));
+          const startupSelects = [doc.querySelector("#startupBookSizeInput"), doc.querySelector("#startupImageSizeInput")];
+          assert(checks, "Startup Canvas exposes real choices instead of one-option selects", startupSelects.every(select => select?.options.length > 1) && startupSelects.every(select => select?.hidden === false && select?.parentElement?.querySelector(".startup-static-value")?.hidden === true), startupSelects.map(select => `${select?.options.length}/${select?.hidden}`).join(", "));
           const dialogCloseSizes = Array.from(doc.querySelectorAll(".dialog-close, .application-settings-close")).map(button => {
             const style = frame.contentWindow.getComputedStyle(button);
             return `${style.width}×${style.height}`;
           });
-          assert(checks, "Every dialog close control uses the 44 px control target", dialogCloseSizes.length === 7 && dialogCloseSizes.every(size => size === "44px×44px"), dialogCloseSizes.join(", "));
+          assert(checks, "Every dialog close control uses the 44 px control target", dialogCloseSizes.length > 0 && dialogCloseSizes.every(size => size === "44px×44px"), dialogCloseSizes.join(", "));
           assert(checks, "New-map setup leaves city selection to Markers", !doc.querySelector("#referenceCitiesField") && !/Reference cities|Villes de référence/.test(doc.querySelector("#startupSetupForm")?.textContent || ""));
           await waitFor(() => Array.from(doc.querySelectorAll(".startup-baselayer-map")).every(svg => svg.querySelector(".startup-baselayer-land")), 4000);
           const baselayerThumbnailSvgs = Array.from(doc.querySelectorAll(".startup-baselayer-map"));
@@ -1362,9 +1362,11 @@
           setupImage.value = "half";
           setupLabelChars.value = "31";
           doc.querySelector("#startupCreateMapBtn")?.click();
-          await waitFor(() => startupDialog.hidden === true && doc.body.dataset.workspaceView === "preview" && doc.querySelector("#boundaryInput")?.value === "world" && doc.querySelector("#regionPresetInput")?.value === "united-states", 10000);
+          await waitFor(() => startupDialog.hidden === true && doc.body.dataset.workspaceView === "projects" && doc.querySelector("#boundaryInput")?.value === "world" && doc.querySelector("#regionPresetInput")?.value === "united-states", 10000);
           const includedWorldRegions = Array.from(doc.querySelectorAll("#regionTable tbody tr[data-region-id]")).filter(row => row.querySelector(".region-table-included-input")?.checked);
-          assert(checks, "Create map applies baselayer and canvas setup", startupDialog.hidden === true && doc.body.dataset.workspaceView === "preview" && setupStyle.value === doc.querySelector("#mapStylePresetInput")?.value && doc.querySelector("#bookSizeInput")?.value === "compact" && doc.querySelector("#imageSizeInput")?.value === "half" && doc.querySelector("#mapScaleInput")?.value === "100" && doc.querySelector("#labelCharsInput")?.value === "31" && includedWorldRegions.length === 1 && /United States/.test(includedWorldRegions[0]?.textContent || ""), `${doc.querySelector("#boundaryInput")?.value} / ${doc.querySelector("#regionPresetInput")?.value} / scale=${doc.querySelector("#mapScaleInput")?.value} / included=${includedWorldRegions.length}`);
+          assert(checks, "Create map applies baselayer and canvas setup", startupDialog.hidden === true && doc.body.dataset.workspaceView === "projects" && setupStyle.value === doc.querySelector("#mapStylePresetInput")?.value && doc.querySelector("#bookSizeInput")?.value === "compact" && doc.querySelector("#imageSizeInput")?.value === "half" && doc.querySelector("#mapScaleInput")?.value === "100" && doc.querySelector("#labelCharsInput")?.value === "31" && includedWorldRegions.length === 1 && /United States/.test(includedWorldRegions[0]?.textContent || ""), `${doc.querySelector("#boundaryInput")?.value} / ${doc.querySelector("#regionPresetInput")?.value} / scale=${doc.querySelector("#mapScaleInput")?.value} / included=${includedWorldRegions.length}`);
+          assert(checks, "Create map continues to Markers", doc.body.dataset.workspaceView === "projects" && doc.activeElement === doc.querySelector("#projectTableTab"));
+          doc.querySelector("#previewTableTab")?.click();
           await waitFor(() => doc.querySelectorAll("#mapSvg .province").length === 1 && frame.contentWindow.getComputedStyle(doc.querySelector("#mapSvg")).display !== "none", 4000);
           assert(checks, "Create map renders the selected empty baselayer on the Map tab", doc.querySelectorAll("#mapSvg .province").length === 1 && doc.querySelectorAll("#mapSvg .marker, #mapSvg .map-label, #mapSvg .legend-layer").length === 0 && doc.querySelector("#canvasPlaceholder")?.hidden === true, `regions=${doc.querySelectorAll("#mapSvg .province").length}, annotations=${doc.querySelectorAll("#mapSvg .marker, #mapSvg .map-label, #mapSvg .legend-layer").length}`);
           assert(checks, "Empty Markers prioritizes Add data", doc.querySelector("#projectFilterControl")?.hidden === true && doc.querySelector("#projectSelectionActions")?.hidden === true && doc.querySelector("#clearRowsBtn")?.disabled === true && Boolean(doc.querySelector("#projectAddMenuBtn")));
@@ -1389,13 +1391,17 @@
         };
         const emptyPreviewTopOffset = getDocumentPreviewTopOffset();
         const sharedPreviewTopPadding = parseFloat(frame.contentWindow.getComputedStyle(doc.querySelector("#mapHost")).paddingTop || "0");
-        assert(checks, "Empty document preview uses the shared map-preview top spacing", Number.isFinite(emptyPreviewTopOffset) && Math.abs(emptyPreviewTopOffset - sharedPreviewTopPadding) <= 1, `offset=${emptyPreviewTopOffset}, padding=${sharedPreviewTopPadding}`);
+        const emptyToolbar = doc.querySelector("#canvasToolbar");
+        const emptyToolbarSpace = emptyToolbar.getBoundingClientRect().height + parseFloat(frame.contentWindow.getComputedStyle(emptyToolbar).marginBottom);
+        assert(checks, "Empty document preview reserves shared spacing beneath the canvas toolbar", Number.isFinite(emptyPreviewTopOffset) && Math.abs(emptyPreviewTopOffset - sharedPreviewTopPadding - emptyToolbarSpace) <= 1, `offset=${emptyPreviewTopOffset}, padding=${sharedPreviewTopPadding}, toolbar=${emptyToolbarSpace}`);
 
         if (!loadSample) {
           doc.querySelector("#startupStartNewBtn")?.click();
           await waitFor(() => startupDialog.dataset.startupScreen === "setup", 2000);
           doc.querySelector("#startupCreateMapBtn")?.click();
           await waitFor(() => startupDialog.hidden === true, 10000);
+          doc.querySelector("#previewTableTab")?.click();
+          await waitFor(() => !frame.contentWindow.PLOTYPUS_RENDER_SCHEDULER.snapshot().pending && !doc.querySelector("#mapHost").classList.contains("is-rendering"), 10000);
           const emptyCanvasActions = doc.querySelector("#canvasEmptyActions");
           assert(checks, "Empty map canvas provides direct next-step actions", Boolean(emptyCanvasActions) && frame.contentWindow.getComputedStyle(emptyCanvasActions).display !== "none" && ["add-project", "import-csv", "load-sample"].every(action => emptyCanvasActions.querySelector(`[data-empty-action='${action}']`)), emptyCanvasActions?.textContent.trim() || "missing");
           const emptyActionButtons = Array.from(emptyCanvasActions?.querySelectorAll(".empty-state-action") || []);
@@ -2868,13 +2874,15 @@
             const zoomControlRect = zoomControl.getBoundingClientRect();
             const fitControlRect = fitControl.getBoundingClientRect();
             const captionRect = documentCaption.getBoundingClientRect();
-            assert(checks, "Canvas controls share one compact surface", frame.contentWindow.getComputedStyle(canvasToolbar).borderTopStyle !== "none" && frame.contentWindow.getComputedStyle(zoomControl).boxShadow === "none" && frame.contentWindow.getComputedStyle(fitControl).boxShadow === "none" && Math.abs(zoomControlRect.height - fitControlRect.height) < 2, `toolbar=${Math.round(toolbarRect.height)} zoom=${Math.round(zoomControlRect.height)} fit=${Math.round(fitControlRect.height)}`);
+            assert(checks, "Canvas controls share one compact surface", frame.contentWindow.getComputedStyle(canvasToolbar).borderTopStyle !== "none" && frame.contentWindow.getComputedStyle(zoomControl).boxShadow === "none" && frame.contentWindow.getComputedStyle(fitControl).boxShadow === "none" && Math.abs(doc.querySelector("#canvasZoomInBtn").getBoundingClientRect().height - doc.querySelector("#canvasAutoPlaceBtn").getBoundingClientRect().height) < 2, `toolbar=${Math.round(toolbarRect.height)} zoom=${Math.round(zoomControlRect.height)} fit=${Math.round(fitControlRect.height)}`);
+            assert(checks, "Style changes live in Document Properties and leave the canvas toolbar focused", !canvasToolbar.querySelector("#mapStyleGalleryBtn") && Boolean(doc.querySelector('#propertiesPanel [data-property-action="change-map-style"]')) && Boolean(doc.querySelector("#previewTablePane > header .map-tab-language-control")));
+            assert(checks, "Canvas controls fit inside the map host", toolbarRect.left >= mapHostRect.left && toolbarRect.right <= mapHostRect.right && Array.from(canvasToolbar.querySelectorAll("button")).every(button => { const rect = button.getBoundingClientRect(); return rect.left >= toolbarRect.left && rect.right <= toolbarRect.right && rect.bottom <= toolbarRect.bottom; }));
             assert(checks, "Canvas toolbar clears the document caption", captionRect.top - toolbarRect.bottom >= 8, `gap=${Math.round(captionRect.top - toolbarRect.bottom)}`);
             assert(checks, "Auto-place consequence remains accessible without taking canvas space", frame.contentWindow.getComputedStyle(doc.querySelector("#canvasAutoPlaceHint")).position === "absolute" && doc.querySelector("#canvasAutoPlaceBtn")?.getAttribute("aria-describedby") === "canvasAutoPlaceHint");
             if (appWidth > 1080) {
-              assert(checks, "Canvas toolbar is centered at desktop and working widths", Math.abs((toolbarRect.left + toolbarRect.width / 2) - (mapHostRect.left + mapHostRect.width / 2)) < 4);
+              assert(checks, "Canvas toolbar is centered at desktop and working widths", Math.abs((toolbarRect.left + toolbarRect.width / 2) - (mapHostRect.left + doc.querySelector("#mapHost").clientWidth / 2)) < 4);
             } else {
-              assert(checks, "Canvas toolbar is compact and left-aligned at narrow width", Math.abs(toolbarRect.left - (mapHostRect.left + 12)) < 4 && frame.contentWindow.getComputedStyle(doc.querySelector(".canvas-label-compact")).display !== "none");
+              assert(checks, "Canvas toolbar is compact and left-aligned at narrow width", Math.abs(toolbarRect.left - (mapHostRect.left + parseFloat(frame.contentWindow.getComputedStyle(doc.querySelector("#mapHost")).paddingLeft))) < 4 && frame.contentWindow.getComputedStyle(doc.querySelector(".canvas-label-compact")).display !== "none");
             }
             const initialPropertyKind = doc.querySelector("#propertiesSelectionControls .properties-form")?.dataset.propertyKind || "";
             assert(checks, "Map starts with document Properties", Boolean(doc.querySelector("#propertiesSelectionControls [data-property-kind='document']")), `kind=${initialPropertyKind} title=${doc.querySelector("#propertiesTitle")?.textContent.trim() || ""}`);

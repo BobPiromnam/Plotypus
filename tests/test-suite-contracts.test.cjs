@@ -105,7 +105,7 @@ test("unit suite has no disabled tests and keeps manual HTML fixtures intentiona
   const htmlFixtures = fs.readdirSync(__dirname)
     .filter(file => file.endsWith(".html"))
     .sort();
-  assert.deepEqual(htmlFixtures, ["shell-interactions.html", "smoke-labels.html"]);
+  assert.deepEqual(htmlFixtures, ["numbered-map-interactions.html", "shell-interactions.html", "smoke-labels.html"]);
 });
 
 test("repository root stays limited to entry points and repository metadata", () => {

@@ -70,6 +70,7 @@
       })),
       rows: (rows || []).map(row => ({
         rowId: row.rowId,
+        mapNumber: row.mapNumber || "",
         name: row.name,
         nameFr: row.nameFr || "",
         footnote: row.footnote,
@@ -132,6 +133,7 @@
       throw new TypeError("CSV export requires category label helpers.");
     }
     const exportRows = (rows || []).map(row => ({
+      map_number: row.mapNumber || "",
       name: row.name,
       name_fr: row.nameFr || "",
       footnote: row.footnote,
@@ -156,7 +158,7 @@
     ];
     return {
       rows: exportRows,
-      columns: ["name", "name_fr", "footnote", "type", "type_fr", ...locationColumns, "hideLine"]
+      columns: [...((rows || []).some(row => row.mapNumber) ? ["map_number"] : []), "name", "name_fr", "footnote", "type", "type_fr", ...locationColumns, "hideLine"]
     };
   }
 

@@ -259,6 +259,10 @@
       };
 
       perimeterCandidates.forEach(addCandidate);
+      (settings.compositionCandidates?.[getLabelKey(item)] || []).forEach(candidate => {
+        const box = makeLabelBox(item, candidate.side, settings, mapBounds);
+        addCandidate({ ...candidate, box });
+      });
       const hardSides = referenceSideOptions(item, settings);
       const candidateSides = hardSides.length ? hardSides : candidateSideOrder(preferred);
       candidateSides.forEach(side => {
@@ -364,7 +368,9 @@
     }
 
     function maxAllowedLeaderLength(settings) {
-      return Math.max(150, settings.width * 0.34);
+      // A clear diagonal across northern ocean is useful in a perimeter map.
+      // Length remains bounded; crossings and land/label collisions still veto it.
+      return Math.max(150, settings.width * (getBoundary() === "canada" ? 0.42 : 0.34));
     }
 
     function placementQualityAcceptable(quality) {
@@ -809,6 +815,7 @@
     function leaderPathPoints(label, settings) {
       const end = lineEnd(label);
       const start = { x: label.x, y: label.y };
+      if (label.numberedBadge) return Math.hypot(end.x - start.x, end.y - start.y) < 0.1 ? [] : [start, end];
       if (!shouldRouteDenseLeader(label, settings)) return [start, end];
 
       if (label.labelSide === "left" || label.labelSide === "right") {
@@ -955,6 +962,7 @@
       const referenceCanvas = settings.bookSize === "compact" && settings.imageSize === "half";
       const candidateKindPriority = label => {
         const kind = label.candidateKind || "radial";
+        if (kind === "composition") return -1;
         if (referenceCanvas) return kind === "inset" ? 0 : kind === "perimeter" ? 1 : 2;
         return kind === "perimeter" ? 0 : kind === "inset" ? 1 : 2;
       };
@@ -1026,6 +1034,8 @@
     }
 
     function solveConflictFreeLayout(points, settings, mapBounds, options = {}) {
+      const deadline = Number.isFinite(options.timeBudgetMs)
+        ? Date.now() + Math.max(0, options.timeBudgetMs) : Infinity;
       if (!Array.isArray(points) || !points.length) {
         return { status: "solved", placed: [], nodesVisited: 0, candidateCount: 0 };
       }
@@ -1103,6 +1113,10 @@
           });
 
           for (let step = 0; step < stepsPerRestart; step += 1) {
+            if (Date.now() >= deadline) {
+              budgetExhausted = true;
+              return { assignment: null, bestAssignment, stepsVisited, bestConflictCount };
+            }
             stepsVisited += 1;
             const conflictCounts = assignment.map((candidate, index) => conflictCountFor(assignment, index, candidate));
             const totalConflicts = conflictCounts.reduce((sum, count) => sum + count, 0) / 2;
@@ -1154,6 +1168,7 @@
         const maxPasses = Math.max(0, Number(options.polishPasses) || 3);
 
         for (let pass = 0; pass < maxPasses; pass += 1) {
+          if (Date.now() >= deadline) break;
           let changed = false;
           for (let index = 0; index < assignment.length; index += 1) {
             const current = assignment[index];
@@ -1194,6 +1209,7 @@
         const maxPairMoves = Math.max(0, Number(options.pairPolishMoves) || 0);
         const pairCandidateLimit = Math.max(2, Number(options.pairPolishCandidates) || 8);
         for (let pairMove = 0; pairMove < maxPairMoves; pairMove += 1) {
+          if (Date.now() >= deadline) break;
           let bestPair = null;
           for (let firstIndex = 0; firstIndex < assignment.length; firstIndex += 1) {
             const firstCurrent = assignment[firstIndex];
@@ -1279,7 +1295,7 @@
 
       if (options.minConflictsOnly === true) {
         return {
-          status: candidateData.truncatedDomainCount > 0 ? "candidate-limited" : "not-found",
+          status: budgetExhausted ? "budget-exhausted" : candidateData.truncatedDomainCount > 0 ? "candidate-limited" : "not-found",
           placed: null,
           nodesVisited: minConflictResult ? minConflictResult.stepsVisited : 0,
           candidateCount,
@@ -1330,7 +1346,7 @@
 
       function search(depth) {
         nodesVisited += 1;
-        if (nodesVisited > maxNodes) {
+        if (nodesVisited > maxNodes || Date.now() >= deadline) {
           budgetExhausted = true;
           return false;
         }

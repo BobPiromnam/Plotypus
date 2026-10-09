@@ -133,6 +133,9 @@
     if (rawProject.rows.length > 10000) throw validationError("Project file contains more than 10,000 rows and was not loaded.", "project.error.rowsTooMany");
     rawProject.rows.forEach((row, index) => {
       if (!isPlainObject(row)) throw validationError(`Project row ${index + 1} must be an object.`, "project.error.rowObject", { index: index + 1 });
+      if (row.mapNumber !== undefined && row.mapNumber !== "" && (!/^[0-9]+$/.test(String(row.mapNumber)) || !Number.isSafeInteger(Number(row.mapNumber)) || Number(row.mapNumber) <= 0)) {
+        throw validationError(`Project row ${index + 1} has an invalid map number.`, "project.error.mapNumber", { index: index + 1 });
+      }
       if (row.leaderLineColour !== undefined && row.leaderLineColour !== "") {
         validateColour(row.leaderLineColour, fieldLabel(`Project row ${index + 1} leader line colour`, "project.error.label.row.leaderLineColour", { index: index + 1 }));
       }

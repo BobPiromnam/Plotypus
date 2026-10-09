@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Plotypus numbered-map interactions</title>
+<style>
+  html, body { height: 100%; margin: 0; font: 14px system-ui, sans-serif; }
+  iframe { width: 100%; height: 100%; border: 0; }
+  #result { position: fixed; bottom: 8px; left: 8px; width: 380px; max-height: 110px; overflow: auto; background: white; border: 1px solid #555; padding: 8px; font: 11px monospace; }
+</style>
+<iframe id="app" title="Plotypus application under test" data-src="../index.html?v=numbered-map-test-20261008"></iframe>
+<pre id="result">Running numbered-map checks…</pre>
+<script>
+  const frame = document.querySelector("#app");
+  const result = document.querySelector("#result");
+  const checks = [];
+  window.featureExports = [];
+  window.styleComparisons = [];
+  const waitFor = (predicate, timeout = 12000) => new Promise((resolve, reject) => {
+    const start = performance.now();
+    function poll() {
+      try { if (predicate()) return resolve(); } catch (_) {}
+      if (performance.now() - start > timeout) return reject(new Error("Timed out waiting for the numbered-map state"));
+      setTimeout(poll, 30);
+    }
+    poll();
+  });
+  const assert = (name, pass, detail = "") => { checks.push({ name, pass: Boolean(pass), detail }); };
+  frame.addEventListener("load", async () => {
+    const win = frame.contentWindow;
+    const doc = win.document;
+    const errors = [];
+    win.addEventListener("error", event => errors.push(event.message));
+    const q = selector => doc.querySelector(selector);
+    const all = selector => [...doc.querySelectorAll(selector)];
+    const click = selector => {
+      if (selector === "#mapStyleGalleryBtn") {
+        if (doc.body.dataset.workspaceView !== "preview") q("#previewTableTab").click();
+        if (q("#propertiesDocumentBtn") && !q("#propertiesDocumentBtn").hidden) q("#propertiesDocumentBtn").click();
+        q('#categoryPropertiesEditor [data-property-action="back-to-document"]')?.click();
+        q('[data-properties-accordion="map-style"]').open = true;
+      }
+      const target = q(selector);
+      if (typeof target.click === "function") target.click();
+      else target.dispatchEvent(new win.MouseEvent("click", { bubbles: true }));
+    };
+    const settle = async () => {
+      await new Promise(resolve => win.requestAnimationFrame(() => win.requestAnimationFrame(resolve)));
+      await waitFor(() => !win.PLOTYPUS_RENDER_SCHEDULER.snapshot().pending && !q("#mapHost").classList.contains("is-rendering"));
+    };
+    const rows = () => all("#projectTable tbody tr").map(row => ({ id: row.dataset.rowId, number: row.dataset.mapNumber, name: row.dataset.nameEn, nameFr: row.dataset.nameFr, lon: row.dataset.exactLon, lat: row.dataset.exactLat }));
+    const badge = () => q('.numbered-badge[data-row-id="1"]');
+    const edit = (selector, value) => { const input = q(selector); input.focus(); input.value = value; input.dispatchEvent(new win.Event("change", { bubbles: true })); };
+    const capture = async (selector) => {
+      const before = window.featureExports.length;
+      click(selector);
+      await waitFor(() => window.featureExports.length > before);
+      await settle();
+      const entry = window.featureExports[window.featureExports.length - 1];
+      entry.text = await entry.blob.text();
+      return entry;
+    };
+    const blobs = new Map();
+    const originalUrl = win.URL.createObjectURL.bind(win.URL);
+    win.URL.createObjectURL = blob => { const url = originalUrl(blob); blobs.set(url, blob); return url; };
+    doc.addEventListener("click", event => {
+      const link = event.target.closest("a[download]");
+      if (!link) return;
+      event.preventDefault();
+      window.featureExports.push({ name: link.download, blob: blobs.get(link.href) });
+    }, true);
+    try {
+      await waitFor(() => q("#startupDialog") && !q("#startupDialog").hidden && all(".province").length);
+      assert("startup avoids a duplicate style route", !q('[data-startup-action="styles"]'));
+      click("#startupStartNewBtn");
+      click("#startupChooseStyleBtn");
+      await waitFor(() => all(".map-style-card").length === 6 && all(".map-style-preview path").length > 5);
+      assert("six offline style previews are available from startup", !q("#mapStyleGallery").hidden && q('[data-style-id="regional-briefing"]'));
+      assert("setup reuses the gallery inside the startup dialog", q("#startupStyleGalleryScreen").contains(q("#mapStyleGallery")) && q("#startupDialog").dataset.startupScreen === "style" && !q('[data-style-example]'));
+      const documentStyleBeforeChoice = q("#mapStylePresetInput").value;
+      const briefingPreview = () => q('[data-style-id="regional-briefing"] .map-style-preview');
+      const briefingArtworkMatches = () => all('[data-style-id="regional-briefing"] .map-style-briefing-block').length === 6
+        && all('[data-style-id="regional-briefing"] .map-style-briefing-block').every(block => block.querySelector("image")?.getAttribute("href") === win.PLOTYPUS_BRIEFING_ARTWORK[block.dataset.region].dataUrl);
+      const briefingFits = () => {
+        const box = briefingPreview().getBBox();
+        return box.x >= 0 && box.y >= 0 && box.x + box.width <= 720 && box.y + box.height <= 540;
+      };
+      assert("regional preview shows the same six bundled silhouettes as the loaded example", briefingArtworkMatches());
+      assert("regional preview includes real English briefing headings and bullets", all('[data-style-id="regional-briefing"] .map-style-briefing-title').length === 6 && briefingPreview().textContent.includes("North / Arctic") && briefingPreview().textContent.includes("support hubs"));
+      assert("the complete illustrated English preview stays inside its landscape canvas", briefingPreview().getAttribute("viewBox") === "0 0 720 540" && briefingFits());
+      assert("gallery controls are not covered by the narrow-screen Properties drawer", !win.matchMedia("(max-width: 1080px)").matches || !doc.body.classList.contains("properties-open"));
+      click('[data-style-apply="project-atlas"]');
+      await settle();
+      assert("setup style choice updates only the draft and restores focus", rows().length === 0 && q("#startupMapStyleInput").value === "project-atlas" && q("#mapStylePresetInput").value === documentStyleBeforeChoice && doc.activeElement === q("#startupChooseStyleBtn"));
+      const setupBeforeDismiss = [q("#startupMapStyleInput").value, q("#startupBookSizeInput").value, q("#startupImageSizeInput").value];
+      click("#startupChooseStyleBtn");
+      q("#closeMapStyleGalleryBtn").dispatchEvent(new win.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      assert("Escape returns from the setup gallery with draft choices intact", q("#startupDialog").dataset.startupScreen === "setup" && !q("#startupDialog").hidden && doc.activeElement === q("#startupChooseStyleBtn") && JSON.stringify(setupBeforeDismiss) === JSON.stringify([q("#startupMapStyleInput").value, q("#startupBookSizeInput").value, q("#startupImageSizeInput").value]));
+      click("#startupCreateMapBtn");
+      await waitFor(() => q("#startupDialog").hidden);
+      assert("creating the styled map starts in Markers", doc.body.dataset.workspaceView === "projects" && q("#labelDisplayInput").value === "numbers" && rows().length === 0);
+      click("#previewTableTab");
+      assert("choosing a style closes the gallery", q("#mapStyleGallery").hidden);
+      const toolbar = q("#canvasToolbar");
+      const toolsRect = toolbar.getBoundingClientRect();
+      const hostRect = q("#mapHost").getBoundingClientRect();
+      assert("canvas controls contain only repeated spatial actions", !toolbar.hidden && !toolbar.querySelector("#mapStyleGalleryBtn") && toolsRect.left >= hostRect.left && toolsRect.right <= hostRect.right);
+      assert("canvas tools reserve space above the document caption", q(".document-preview-caption").getBoundingClientRect().top >= toolsRect.bottom + 8);
+      click("#exportMenuBtn");
+      click("#previewCompanionTableBtn");
+      assert("empty title-table preview explains missing data and disables exports", q("#companionTableContent").textContent.includes("Add project data") && all("#companionTableDialog [data-companion-export]").every(button => button.disabled));
+      click('#companionTableDialog footer [data-dialog-close="companion-table"]');
+      click("#projectTableTab");
+      assert("empty Markers omits a next-step link to itself", q("#workflowNextStep").hidden && q("#projectAddMenuBtn"));
+      click("#previewTableTab");
+      assert("next-step guidance remains when it leads to another workspace", !q("#workflowNextStep").hidden && q("#workflowNextBtn").dataset.workflowTarget === "projects");
+      click("#mapStyleGalleryBtn");
+      click('[data-style-example="project-atlas"]');
+      await waitFor(() => all(".numbered-badge").length === 28 && !q('[data-style-example="project-atlas"]').disabled);
+      await settle();
+      assert("loading an example reveals the map", q("#mapStyleGallery").hidden);
+      const sourceBeforeNavigation = JSON.stringify(rows());
+      for (const selector of ["#mapSvg .marker", "#mapSvg .map-label", "#mapSvg .legend-layer", "#mapSvg .province"]) {
+        click(selector);
+        assert(`${selector}: selected map objects provide a Document route`, !q("#propertiesDocumentBtn").hidden);
+        click("#propertiesDocumentBtn");
+        assert(`${selector}: returning to Document preserves data and exposes Map style`, q("#propertiesDocumentBtn").hidden && q("#mapStyleGalleryBtn") && q("#propertiesTitle").textContent === "Document" && JSON.stringify(rows()) === sourceBeforeNavigation);
+        assert(`${selector}: returning to Document keeps Properties visible`, !q("#propertiesPanel").inert && (win.matchMedia("(max-width: 1080px)").matches ? doc.body.classList.contains("properties-open") : !doc.body.classList.contains("properties-collapsed")));
+      }
+      assert("reference example maps 28 locations and repeats number 23", rows().length === 28 && rows().filter(row => row.number === "23").length === 2);
+      assert("example keeps a large map rather than fitting a name perimeter", Number(q("#mapScaleInput").value) === 110 && q(".map-layer").getBBox().width > 400);
+      assert("every project label contains only its number", all(".map-label").every(node => /^\d+$/.test(node.textContent)));
+      click("#projectTableTab");
+      const numberPreviews = () => all("#projectTable .label-preview-text").map(node => node.textContent);
+      assert("number cells show values once under the shared column heading", numberPreviews().every((value, index) => value === rows()[index].number));
+      const numberHeader = q("#projectTable .annotation-preview-col");
+      assert("Map number is a semantic column header without a misleading Auto icon", numberHeader.textContent.trim() === "Map number" && numberHeader.scope === "col" && !numberHeader.querySelector(".col-auto-chip"));
+      assert("Map number uses the shared header type while numeric values keep their data type", win.getComputedStyle(numberHeader).fontFamily === win.getComputedStyle(q("#projectTable .name-col")).fontFamily && win.getComputedStyle(q("#projectTable .label-preview-text")).fontFamily.includes("IBM Plex Mono"));
+      click("#qualityTableTab");
+      const passingNumbers = q('#qualityMetricsPanel [data-property-action="preview-companion-table"]').closest(".quality-card");
+      assert("passing number checks omit an unnecessary review instruction and keep the table link", passingNumbers.textContent.includes("All map numbers are valid") && !passingNumbers.textContent.includes("Check numbers and titles before exporting"));
+      const detailsCard = q('#qualityMetricsPanel [data-property-action="open-map-details"]').closest(".quality-card");
+      assert("missing document details keep one clear recovery action", detailsCard.textContent.includes("Add details") && !detailsCard.textContent.includes("Add the missing document details"));
+      assert("QA summary omits the duplicate map action while issue cards retain recovery actions", !q("#qualitySummaryBanner button") && q('#qualityMetricsPanel [data-property-action="open-map"]'));
+      click("#projectTableTab");
+      click("#applicationSettingsBtn");
+      click('[data-ui-language="fr"]');
+      click("#applicationSettingsCloseBtn");
+      assert("French number cells stay numeric beneath their translated heading", numberPreviews().every((value, index) => value === rows()[index].number) && numberHeader.textContent.trim() === "Numéro sur la carte");
+      click("#applicationSettingsBtn");
+      click('[data-ui-language="en"]');
+      click("#applicationSettingsCloseBtn");
+      click("#previewTableTab");
+      assert("Document Properties keeps one visual style route and a collapsed current-style summary", q('#propertiesPanel [data-property-action="change-map-style"]') && !q('#propertiesPanel [data-map-proxy="mapStylePresetInput"]') && q('[data-properties-accordion="map-style"] .properties-summary-value').textContent === "Numbered projects");
+      assert("white badges have visible outlines", win.getComputedStyle(badge().querySelector("rect")).stroke !== "none" && win.getComputedStyle(badge().querySelector("rect")).fill !== "none");
+      const legendSymbols = all(".legend-category-marker").map(node => node.getBBox());
+      assert("numbered legend symbols have space below the heading and between rows", legendSymbols[0].y > Number(q(".legend-heading-rule").getAttribute("y1")) && legendSymbols[0].y + legendSymbols[0].height < legendSymbols[1].y);
+      click("#exportMenuBtn");
+      click("#previewCompanionTableBtn");
+      const companionDialog = q("#companionTableDialog");
+      assert("companion preview shows a semantic numbered key before export", companionDialog.open && q("#companionTableContent tbody").children.length === 27 && q("#companionTableContent caption").textContent.includes("28 locations") && q("#companionTableContent th[scope=col]").textContent === "Number");
+      assert("companion preview initially focuses its heading", doc.activeElement === q("#companionTableTitle"));
+      const previewBody = q("#companionTableContent").parentElement;
+      assert("companion preview fits without horizontal scrolling", previewBody.scrollWidth <= previewBody.clientWidth);
+      q('[data-properties-accordion="map-style"]').open = true;
+      q("#mapStyleGalleryBtn").focus();
+      assert("native companion modal keeps the background inert", companionDialog.contains(doc.activeElement));
+      const previewClose = q('#companionTableDialog button[data-dialog-close="companion-table"]');
+      const previewDone = q('#companionTableDialog footer [data-dialog-close="companion-table"]');
+      previewClose.focus();
+      previewClose.dispatchEvent(new win.KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true }));
+      assert("companion preview wraps keyboard focus within the modal", doc.activeElement === previewDone);
+      previewDone.click();
+      assert("closing the companion preview restores the export invoker", !companionDialog.open && doc.activeElement === q("#exportMenuBtn"));
+      const englishLegendPosition = q(".legend-layer").getAttribute("transform");
+      click('[data-map-language="fr"]');
+      await settle();
+      assert("illustrative example starts with the same legend placement in French", englishLegendPosition && q(".legend-layer").getAttribute("transform") === englishLegendPosition);
+      click('[data-map-language="en"]');
+      await settle();
+      const source = JSON.stringify(rows());
+      const beforeMove = badge().getAttribute("transform");
+      const rendersBefore = win.PLOTYPUS_RENDER_PERFORMANCE.snapshot().samples.length;
+      badge().focus();
+      badge().dispatchEvent(new win.KeyboardEvent("keydown", { key: "ArrowRight", shiftKey: true, bubbles: true, cancelable: true }));
+      assert("keyboard badge movement changes placement without changing geographic data", badge().getAttribute("transform") !== beforeMove && JSON.stringify(rows()) === source);
+      assert("moving a badge patches the SVG without a map replot", win.PLOTYPUS_RENDER_PERFORMANCE.snapshot().samples.length === rendersBefore);
+      click("#ribbonUndoBtn");
+      await settle();
+      assert("Undo restores badge movement rather than replacing the example", badge().getAttribute("transform") === beforeMove && rows().length === 28);
+      badge().dispatchEvent(new win.KeyboardEvent("keydown", { key: "ArrowRight", shiftKey: true, bubbles: true, cancelable: true }));
+      const savedPlacement = badge().getAttribute("transform");
+      click("#mapStyleGalleryBtn");
+      click('[data-style-apply="goc-blue"]');
+      await settle();
+      assert("applying another style preserves numbers, rows and placement", q("#labelDisplayInput").value === "numbers" && JSON.stringify(rows()) === source && badge().getAttribute("transform") === savedPlacement);
+      for (const style of ["goc-green", "neutral-print", "high-contrast"]) {
+        click("#mapStyleGalleryBtn");
+        click(`[data-style-apply="${style}"]`);
+        await settle();
+        assert(`Numbers works with ${style}`, all(".numbered-badge").length === 28 && badge().getAttribute("transform") === savedPlacement);
+      }
+      click("#mapStyleGalleryBtn");
+      click('[data-label-display="names"]');
+      await settle();
+      assert("Names restores project-name labels", all(".numbered-badge").length === 0 && q(".map-label").textContent.includes("Example project"));
+      await waitFor(() => q('[data-style-id="goc-blue"] .map-style-preview').dataset.previewLabelDisplay === "names");
+      assert("gallery previews show readable names and both category shapes in Names mode", q('[data-style-id="goc-blue"] .map-style-preview').textContent.includes("Project 1") && all('[data-style-id="goc-blue"] .map-style-preview-marker').some(marker => marker.tagName === "rect") && all('[data-style-id="goc-blue"] .map-style-preview-marker').some(marker => marker.tagName === "circle"));
+      click('[data-label-display="numbers"]');
+      await settle();
+      assert("switching back to Numbers restores the badge layout", badge().getAttribute("transform") === savedPlacement);
+      await waitFor(() => q('[data-style-id="goc-blue"] .map-style-preview').dataset.previewLabelDisplay === "numbers");
+      assert("gallery previews show numbered badges in Numbers mode", all('[data-style-id="goc-blue"] .map-style-preview-annotation text').every(text => /^\d+$/.test(text.textContent)) && !q('[data-style-id="goc-blue"] .map-style-preview').textContent.includes("Project 1"));
+      assert("regional starter preview retains its distinctive illustrations in Numbers mode", briefingArtworkMatches());
+      click("#closeMapStyleGalleryBtn");
+      badge().dispatchEvent(new win.MouseEvent("click", { bubbles: true }));
+      edit('[data-property-field="mapNumber"]', "23");
+      await settle();
+      assert("editable map numbers warn about conflicting titles", q('.properties-form[data-row-id="1"]').textContent.includes("different titles") && badge().textContent === "23");
+      click("#qualityTableTab");
+      assert("QA omits the next-step card that would reopen QA", q("#workflowNextBtn").dataset.workflowTarget === "quality" && q("#workflowNextStep").hidden);
+      assert("QA exposes number conflicts", q("#statusBox").textContent.includes("numbers with conflicting project details"));
+      assert("number conflicts retain their review instruction", q('#qualityMetricsPanel [data-property-action="preview-companion-table"]').closest(".quality-card").textContent.includes("Check numbers and titles before exporting"));
+      const reviewNumbers = q('#qualityMetricsPanel [data-property-action="preview-companion-table"]');
+      reviewNumbers.click();
+      assert("QA links number warnings to the companion preview", q("#companionTableNote").textContent.includes("conflicting project details"));
+      q("#companionTableTitle").dispatchEvent(new win.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+      assert("Escape closes the title table and restores QA focus", !companionDialog.open && doc.activeElement === reviewNumbers);
+      click("#previewTableTab");
+      assert("leaving QA restores useful next-step guidance", !q("#workflowNextStep").hidden && q("#workflowNextBtn").dataset.workflowTarget === "quality");
+      const html = await capture("#exportCompanionHtmlBtn");
+      const table = new win.DOMParser().parseFromString(html.text, "text/html");
+      assert("printable companion table keeps conflicts and consolidates repeated project locations", table.querySelectorAll("tbody tr").length === 27 && table.querySelectorAll("thead th[scope=col]").length === 3 && table.body.textContent.includes("Review"));
+      click('[data-map-language="fr"]');
+      await settle();
+      const french = await capture("#exportCompanionCsvBtn");
+      assert("French table uses French titles and headers", french.text.includes("Numéro") && french.text.includes("Projet d’exemple 23") && !french.text.includes("Example project"));
+      const project = await capture("#ribbonSaveProjectBtn");
+      const saved = JSON.parse(project.text);
+      assert("saved projects retain numbers, display mode and both layout modes", saved.version === 11 && saved.rows[0].mapNumber === "23" && saved.settings.labelDisplay === "numbers" && saved.languageLayouts.en.manualLabelPositions["badge:row:1"] && saved.languageLayouts.en.manualLabelPositions["row:1"]);
+      badge().dispatchEvent(new win.MouseEvent("click", { bubbles: true }));
+      edit('[data-property-field="mapNumber"]', "1.5");
+      await settle();
+      const exportCount = window.featureExports.length;
+      click("#ribbonSaveProjectBtn");
+      assert("invalid numbers are reported before saving an unreadable project", window.featureExports.length === exportCount && q("#statusBox").textContent.includes("positive whole number"));
+      badge().dispatchEvent(new win.MouseEvent("click", { bubbles: true }));
+      edit('[data-property-field="mapNumber"]', "99");
+      await settle();
+      const file = new win.File([project.text], "numbered-roundtrip.json", { type: "application/json" });
+      const transfer = new win.DataTransfer(); transfer.items.add(file);
+      q("#projectInput").files = transfer.files;
+      q("#projectInput").dispatchEvent(new win.Event("change", { bubbles: true }));
+      await waitFor(() => q("#projectSaveState").dataset.state === "saved" && rows()[0].number === "23");
+      await settle();
+      click('[data-map-language="en"]');
+      await settle();
+      assert("save/open restores the English badge position and row numbers", badge().getAttribute("transform") === savedPlacement && rows()[0].number === "23");
+      const svg = await capture("#ribbonExportSvgBtn");
+      assert("SVG export contains numbered badges with inline presentation CSS", svg.text.includes("numbered-badge") && svg.text.includes("is-numbered") && !svg.text.includes(">Example project"));
+      const exportFrame = doc.createElement("iframe");
+      exportFrame.hidden = true;
+      exportFrame.srcdoc = svg.text;
+      doc.body.append(exportFrame);
+      await waitFor(() => exportFrame.contentDocument?.querySelector(".map-label-background.is-numbered"));
+      const exportedBadge = exportFrame.contentDocument.querySelector(".map-label-background.is-numbered");
+      assert("exported badges retain visible outlines", exportFrame.contentWindow.getComputedStyle(exportedBadge).stroke !== "none");
+      assert("static exports describe projects without promising editing controls", !exportFrame.contentDocument.querySelector(".numbered-badge[role=button]") && !svg.text.includes("Use arrow keys"));
+      exportFrame.remove();
+      await capture("#ribbonExportPngBtn");
+      assert("PNG export renders successfully", window.featureExports.at(-1).blob.type === "image/png");
+      const beforeFit = JSON.stringify(rows());
+      click("#canvasAutoPlaceBtn");
+      await settle();
+      const fittedBounds = q(".map-layer").getBBox();
+      const fittedScale = Number(q("#mapScaleInput").value);
+      const canvas = q("#mapSvg").viewBox.baseVal;
+      assert("numbered auto-fit keeps a large map inside the canvas and preserves geographic data", fittedScale > 80 && Number.isInteger(fittedScale) && fittedBounds.x >= 0 && fittedBounds.y >= 0 && fittedBounds.x + fittedBounds.width <= canvas.width && fittedBounds.y + fittedBounds.height <= canvas.height && JSON.stringify(rows()) === beforeFit);
+      click("#mapStyleGalleryBtn");
+      q("#closeMapStyleGalleryBtn").dispatchEvent(new win.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      assert("Escape closes the non-modal gallery and restores focus", q("#mapStyleGallery").hidden && doc.activeElement === q("#mapStyleGalleryBtn"));
+      click("#mapStyleGalleryBtn");
+      click('[data-style-example="regional-briefing"]');
+      await waitFor(() => rows().length === 6 && all(".rich-label-image image").length === 6);
+      await settle();
+      assert("regional example creates six editable rich blocks and six embedded illustrations",
+        rows().length === 6 && all(".map-label[data-label-style=rich]").length === 6 && all(".rich-label-image image").length === 6
+        && all(".rich-label-image image").every(image => image.getAttribute("href").startsWith("data:image/png;base64,") && image.getAttribute("aria-label")));
+      assert("regional example uses a landscape document and grouped province colours",
+        q("#bookSizeInput").value === "landscape" && q('#mapSvg .province[data-region-id="Yukon"]').getAttribute("fill") === q('#mapSvg .province[data-region-id="Nunavut"]').getAttribute("fill"));
+      assert("all six English regional blocks have visible coloured connectors", all(".leader-line").length === 6 && all(".leader-line").every(path => path.getTotalLength() > 30 && path.getAttribute("stroke")));
+      assert("regional connector casing separates lines from matching land fills", all(".leader-casing").length === 6 && all(".leader-casing").every((path, index) => path.getAttribute("d") === all(".leader-line")[index].getAttribute("d") && Number(path.getAttribute("stroke-width")) > Number(all(".leader-line")[index].getAttribute("stroke-width"))));
+      const regionalData = JSON.stringify(rows());
+      const regionalPlacements = all(".map-label").map(label => [label.getAttribute("x"), label.getAttribute("y")]);
+      click("#mapStyleGalleryBtn"); click('[data-style-apply="regional-briefing"]'); await settle();
+      assert("applying the briefing style preserves data and deliberate block positions",
+        JSON.stringify(rows()) === regionalData && all(".map-label").every((label, index) =>
+          Math.abs(Number(label.getAttribute("x")) - Number(regionalPlacements[index][0])) < .01
+          && Math.abs(Number(label.getAttribute("y")) - Number(regionalPlacements[index][1])) < .01));
+      const regionalEnglishSvg = await capture("#ribbonExportSvgBtn");
+      const englishExport = new win.DOMParser().parseFromString(regionalEnglishSvg.text, "image/svg+xml");
+      assert("all six English print connectors remain visible", [...englishExport.querySelectorAll(".leader-line")].every(path => path.getTotalLength() > 30));
+      await capture("#ribbonExportPngBtn");
+      assert("English regional PNG export renders successfully", window.featureExports.at(-1).blob.type === "image/png");
+      click('[data-map-language="fr"]'); await settle();
+      assert("regional French content and illustration descriptions are complete",
+        q("#mapSvg").textContent.includes("Colombie-Britannique") && q(".rich-label-image image").getAttribute("aria-label").includes("Antennes"));
+      assert("all six French regional blocks have visible coloured connectors", all(".leader-line").length === 6 && all(".leader-line").every(path => path.getTotalLength() > 30));
+      const regionalProject = await capture("#ribbonSaveProjectBtn");
+      const regionalSaved = JSON.parse(regionalProject.text);
+      assert("regional project saves portable artwork and both language layouts",
+        regionalSaved.mapStyle === "regional-briefing" && regionalSaved.rows.every(row => row.content.some(block => block.type === "image" && block.assetRef.startsWith("data:image/png;base64,")))
+        && Object.keys(regionalSaved.languageLayouts.en.manualLabelPositions).length === 6 && Object.keys(regionalSaved.languageLayouts.fr.manualLabelPositions).length === 6);
+      const regionalSvg = await capture("#ribbonExportSvgBtn");
+      const exportedRegional = new win.DOMParser().parseFromString(regionalSvg.text, "image/svg+xml");
+      assert("regional SVG omits editor handles and boundary warning circles", !exportedRegional.querySelector(".label-width-control-layer, .marker-boundary-warning, .box-controls, .map-scale-controls"));
+      assert("all six French print connectors remain visible", [...exportedRegional.querySelectorAll(".leader-line")].every(path => path.getTotalLength() > 30));
+      assert("print export preserves the editable French label positions", all(".map-label").every((label, index) => {
+        const saved = regionalSaved.languageLayouts.fr.manualLabelPositions["row:" + regionalSaved.rows[index].rowId];
+        return Math.abs(Number(label.getAttribute("x")) - saved.x) < .01 && Math.abs(Number(label.getAttribute("y")) - saved.y) < .01;
+      }));
+      assert("regional SVG embeds illustrations and accessible French descriptions",
+        regionalSvg.text.includes("data:image/png;base64,") && regionalSvg.text.includes("Antennes") && regionalSvg.text.includes('fill="#9b5010"'));
+      await capture("#ribbonExportPngBtn");
+      assert("regional PNG export renders successfully", window.featureExports.at(-1).blob.type === "image/png");
+      const regionalTransfer = new win.DataTransfer();
+      regionalTransfer.items.add(new win.File([regionalProject.text], "regional-roundtrip.json", { type: "application/json" }));
+      edit('#projectTable tbody tr:first-child .name-input', "Changed before reopening");
+      q("#projectInput").files = regionalTransfer.files;
+      q("#projectInput").dispatchEvent(new win.Event("change", { bubbles: true }));
+      await waitFor(() => q("#projectSaveState").dataset.state === "saved" && rows()[0].name === regionalSaved.rows[0].name && all(".rich-label-image image").length === 6);
+      await settle();
+      assert("save/open restores regional content, artwork and layout", q("#bookSizeInput").value === "landscape" && q("#mapStylePresetInput").value === "regional-briefing" && q("#mapSvg").textContent.includes("Colombie-Britannique"));
+      click("#mapStyleGalleryBtn"); click('[data-label-display="numbers"]'); click("#closeMapStyleGalleryBtn"); await settle();
+      assert("regional briefing supports numbered labels and keeps rich content for later", all(".numbered-badge").length === 6 && rows().length === 6);
+      click("#mapStyleGalleryBtn"); click('[data-label-display="names"]'); click("#closeMapStyleGalleryBtn"); await settle();
+      assert("Names restores the illustrated regional blocks", all(".rich-label-image image").length === 6);
+      click("#ribbonUndoBtn"); await settle();
+      assert("Undo restores the previous display mode", all(".numbered-badge").length === 6);
+      click("#mapStyleGalleryBtn"); click('[data-label-display="names"]'); click("#closeMapStyleGalleryBtn"); await settle();
+      click('[data-map-language="en"]'); await settle();
+      click("#mapStyleGalleryBtn"); click('[data-style-apply="goc-green"]'); await settle();
+      edit("#bookSizeInput", "letter");
+      edit("#imageSizeInput", "two-thirds");
+      edit("#labelSizeInput", "12");
+      edit("#labelCharsInput", "24");
+      click("#ribbonLoadSampleBtn"); await settle();
+      const sampleSource = JSON.stringify(rows());
+      click("#canvasAutoPlaceBtn"); await settle();
+      const sampleFit = win.PLOTYPUS_AUTO_FIT_DIAGNOSTICS.snapshot().selected;
+      assert("named sample fits a larger map with no hard placement conflicts", sampleFit && sampleFit.scale >= 90 && sampleFit.hardProblems === 0 && JSON.stringify(rows()) === sampleSource, JSON.stringify(sampleFit));
+      const sampleScale = q("#mapScaleInput").value;
+      const samplePositions = all(".map-label").map(label => [label.getAttribute("x"), label.getAttribute("y")]);
+      click("#projectTableTab"); click("#previewTableTab"); await settle();
+      assert("ordinary workspace renders preserve fitted map scale and manual label positions", q("#mapScaleInput").value === sampleScale && JSON.stringify(all(".map-label").map(label => [label.getAttribute("x"), label.getAttribute("y")])) === JSON.stringify(samplePositions));
+      const paint = (node, property) => win.getComputedStyle(node)[property];
+      const signature = node => [node.tagName, paint(node, "fill"), paint(node, "stroke")].join("|");
+      for (const id of ["goc-green", "goc-blue", "neutral-print", "high-contrast", "project-atlas", "regional-briefing"]) {
+        const sourceBeforeGallery = JSON.stringify(rows());
+        const mapBeforeGallery = q("#mapSvg").innerHTML;
+        const rendersBeforeGallery = win.PLOTYPUS_RENDER_PERFORMANCE.snapshot().samples.length;
+        click("#mapStyleGalleryBtn");
+        await waitFor(() => all(".map-style-preview-region").length && briefingArtworkMatches() && all('#mapStyleGallery .map-style-preview[data-preview-label-display]').length === 5);
+        assert(`${id}: viewing previews preserves the document and does not replot it`, JSON.stringify(rows()) === sourceBeforeGallery && q("#mapSvg").innerHTML === mapBeforeGallery && win.PLOTYPUS_RENDER_PERFORMANCE.snapshot().samples.length === rendersBeforeGallery);
+        const thumbnail = q(`[data-style-id="${id}"] .map-style-preview`);
+        const regionPaints = new Set([...thumbnail.querySelectorAll(".map-style-preview-region, g:first-child > path")].map(node => paint(node, "fill")));
+        const boundaryPaint = paint(thumbnail.querySelector("path"), "stroke");
+        const numberMode = thumbnail.dataset.previewLabelDisplay === "numbers";
+        const textPaint = paint(thumbnail.querySelector("text"), "fill");
+        const symbolPaints = [...thumbnail.querySelectorAll(".map-style-preview-legend > circle, .map-style-preview-legend > rect:not(:first-child)")].map(signature);
+        const artwork = [...thumbnail.querySelectorAll("image")].map(image => image.getAttribute("href"));
+        const bounds = thumbnail.getBBox();
+        const viewBox = thumbnail.viewBox.baseVal;
+        assert(`${id}: distinctive elements stay inside the thumbnail`, bounds.x >= 0 && bounds.y >= 0 && bounds.x + bounds.width <= viewBox.width && bounds.y + bounds.height <= viewBox.height);
+        click(`[data-style-example="${id}"]`);
+        await settle();
+        assert(`${id}: thumbnail palette and boundaries match the loaded example`, all("#mapSvg .province").every(node => regionPaints.has(paint(node, "fill")) && paint(node, "stroke") === boundaryPaint));
+        if (id === "regional-briefing") {
+          assert("regional thumbnail retains the same coloured illustration assets as the final example", all("#mapSvg .rich-label-image image").every(image => artwork.includes(image.getAttribute("href"))) && artwork.length > 0 && all("#mapSvg .rich-label-image image").length > 0);
+        } else {
+          assert(`${id}: thumbnail text and legend symbols match the final treatment`, paint(q("#mapSvg .map-label"), "fill") === textPaint && all("#mapSvg .legend-layer .marker").every(marker => symbolPaints.includes(signature(marker))));
+          assert(`${id}: thumbnail label mode matches its starter example`, (all("#mapSvg .numbered-badge").length > 0) === numberMode);
+        }
+        const examplePng = await capture("#ribbonExportPngBtn");
+        assert(`${id}: the final example exports as PNG`, examplePng.blob?.type === "image/png" && examplePng.blob.size > 1000);
+        window.styleComparisons.push({ id, thumbnail: thumbnail.outerHTML, example: examplePng.blob });
+      }
+      click("#applicationSettingsBtn");
+      click('[data-ui-language="fr"]');
+      click("#applicationSettingsCloseBtn");
+      click("#mapStyleGalleryBtn");
+      assert("French gallery copy and actions are complete", q("#mapStyleGallery").textContent.includes("Appliquer le style") && q("#mapStyleGallery").textContent.includes("Numéros"));
+      await waitFor(() => briefingArtworkMatches());
+      assert("regional preview has French headings and the same example artwork", briefingPreview().textContent.includes("Nord / Arctique") && briefingPreview().textContent.includes("Canada atlantique") && !briefingPreview().textContent.includes("North / Arctic") && briefingArtworkMatches());
+      assert("the complete illustrated French preview stays inside its landscape canvas", briefingFits());
+      click("#closeMapStyleGalleryBtn");
+      assert("numbered-map journeys have no application errors", errors.length === 0, errors.join("; "));
+      result.textContent = JSON.stringify({ status: checks.every(check => check.pass) ? "passed" : "failed", checks }, null, 2);
+    } catch (error) {
+      result.textContent = JSON.stringify({ status: "error", message: error.message, checks }, null, 2);
+    }
+  });
+  localStorage.removeItem("plotypus.uiLanguage");
+  localStorage.removeItem("plotypus.layoutPreferences");
+  frame.src = frame.dataset.src;
+</script>
+</html>

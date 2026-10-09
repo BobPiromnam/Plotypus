@@ -17,6 +17,7 @@ function loadApi() {
   const projectFileSource = fs.readFileSync(path.join(__dirname, "..", "src", "project-file.js"), "utf8");
   const windowStub = {
     d3: {},
+    PLOTYPUS_NUMBERED_MAP: require("../src/numbered-map.js"),
     PLOTYPUS_TEST_MODE: true,
     PLOTYPUS_FEEDBACK: {
       createFeedbackComposer() {
@@ -111,6 +112,18 @@ function makeSettings(overrides = {}) {
 function makeMapBounds() {
   return { x0: 80, y0: 60, x1: 220, y1: 160 };
 }
+
+test("numbered badge connectors stop at the badge edge and vanish when the anchor is covered", () => {
+  const api = loadApi();
+  const badge = { rowId: "a", numberedBadge: true, badgeRadius: 11, type: "referred", labelX: 100, labelY: 100, x: 50, y: 100 };
+  assert.equal(api.lineEnd(badge).x, 88);
+  assert.equal(api.lineEnd(badge).y, 100);
+  assert.equal(api.leaderPathPoints(badge, {}).length, 2);
+  assert.equal(api.leaderPathPoints({ ...badge, x: 100, y: 100 }, {}).length, 0);
+  const rect = api.labelBackgroundRect(badge);
+  assert.equal(rect.x0, 88);
+  assert.equal(rect.x1, 112);
+});
 
 test("marker dragging allows an off-canvas warning gutter without losing the point", () => {
   const api = loadApi();
@@ -1051,6 +1064,47 @@ test("leader endpoints stay outside padded label backgrounds", () => {
 
   assert.ok(leftEnd.x > leftBox.x1, "left-side leaders should stop after the label background");
   assert.equal(leftEnd.y, leftBox.centerY);
+});
+
+test("rich-block leaders meet the nearest edge when text alignment differs from marker direction", () => {
+  const api = loadApi();
+  const block = makeLabel({ labelStyle: "rich", labelSide: "right", labelX: 100, labelY: 90, textWidth: 80, textHeight: 36 });
+  const left = api.lineEnd({ ...block, x: 20, y: 90 });
+  const right = api.lineEnd({ ...block, x: 260, y: 90 });
+  const above = api.lineEnd({ ...block, x: 140, y: 10 });
+  const below = api.lineEnd({ ...block, x: 140, y: 200 });
+  assert.ok(left.x < 100 && right.x > 180);
+  assert.ok(above.y < 80 && below.y > 100);
+  assert.equal(above.x, 140);
+  assert.equal(below.x, 140);
+});
+
+test("image descriptions survive normalization without adding visible caption lines", () => {
+  const api = loadApi();
+  const [image] = api.normalizeAnnotationContent([{ type: "image", assetRef: "data:image/png;base64,AA==",
+    caption: { en: "", fr: "" }, alt: { en: "Aircraft", fr: "Aéronef" }, displaySize: 80 }]);
+  const lines = api.getLabelLines({ name: "Region", labelStyle: "rich", content: [image] }, makeSettings({ mapLanguage: "fr" }));
+  assert.equal(lines.find(line => line.role === "image").alt, "Aéronef");
+  assert.ok(!lines.some(line => line.role === "caption"));
+});
+
+test("rich leaders remain visible beside an empty corner between text and a narrower image", () => {
+  const api = loadApi();
+  const block = makeLabel({ labelStyle: "rich", labelSide: "right", labelX: 100, labelY: 100,
+    textWidth: 180, textHeight: 100, x: 240, y: 160,
+    lines: [
+      { role: "title", text: "A wide heading", measuredWidth: 180, fontSize: 10, baselineOffset: 0 },
+      { role: "image", imageWidth: 50, imageHeight: 60, baselineOffset: 20 }
+    ] });
+  const end = api.lineEnd(block);
+  assert.equal(end.x, 240);
+  assert.equal(end.y, 106);
+  assert.ok(Math.hypot(block.x - end.x, block.y - end.y) > 30);
+  const covered = api.lineEnd({ ...block, labelSide: "left", labelX: 280 });
+  assert.equal(covered.x, 240, "a marker actually covered by the image has no clear connector");
+  const rightAligned = api.lineEnd({ ...block, labelSide: "left", labelX: 280, x: 200 });
+  assert.equal(rightAligned.x, 226);
+  assert.equal(rightAligned.y, 160);
 });
 
 test("automatic labels keep stable IDs when manual positions are ignored", () => {

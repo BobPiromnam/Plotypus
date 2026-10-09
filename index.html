@@ -9,7 +9,7 @@
   <link rel="preload" href="assets/fonts/lato/lato-4.woff2" as="font" type="font/woff2" />
   <link rel="stylesheet" href="assets/fonts/lato/lato.css?v=20260612-file-fonts" />
   <link rel="stylesheet" href="assets/fonts/ibm-plex-mono/ibm-plex-mono.css?v=20260622-offline-fonts" />
-  <link rel="stylesheet" href="styles/app.css?v=20260821-location-hierarchy" />
+  <link rel="stylesheet" href="styles/app.css?v=20261009-style-placement" />
   <link id="themeStylesheet" rel="stylesheet" href="styles/themes/goc-green.css?v=20260612-map-only" />
 </head>
 <body data-properties-side="right">
@@ -57,6 +57,9 @@
             <button id="ribbonExportCsvBtn" class="export-menu-item" type="button" role="menuitem" data-icon="table">
               <span><strong data-i18n="export.csv.title">Export CSV</strong><small data-i18n="export.csv.description">Editable project point data</small></span>
             </button>
+            <button id="previewCompanionTableBtn" class="export-menu-item btn-default" type="button" role="menuitem" data-icon="table"><span><strong data-i18n="companion.preview">Review project title table</strong><small data-i18n="companion.previewHelp">Check numbers and titles before exporting</small></span></button>
+            <button id="exportCompanionHtmlBtn" class="export-menu-item btn-default" type="button" role="menuitem" data-icon="table"><span><strong data-i18n="export.companion.html">Project title table</strong><small data-i18n="export.companion.description">Print or copy numbered project titles</small></span></button>
+            <button id="exportCompanionCsvBtn" class="export-menu-item btn-default" type="button" role="menuitem" data-icon="table"><span><strong data-i18n="export.companion.csv">Project title table (CSV)</strong><small data-i18n="export.companion.csvDescription">Numbers, titles and categories for spreadsheets</small></span></button>
             <div id="exportLanguageNotice" class="export-language-notice" hidden></div>
           </div>
         </div>
@@ -150,6 +153,8 @@
       <input id="csvInput" type="file" accept=".csv,.tsv,.txt,.xlsx,text/csv,text/tab-separated-values,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
       <input id="translationImportInput" type="file" accept=".csv,.tsv,.txt,.xlsx,text/csv,text/tab-separated-values,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
       <input id="projectInput" type="file" accept=".json,application/json" />
+        <select id="labelDisplayInput"><option value="names">Names</option><option value="numbers">Numbers</option></select>
+        <select id="regionColourModeInput"><option value="data">Data</option><option value="decorative">Decorative</option></select>
         <select id="mapStylePresetInput">
           <option value="goc-green" data-i18n="properties.mapStyle.goc-green">GoC green</option>
         </select>
@@ -270,7 +275,7 @@
                 <th class="name-col"><span data-i18n="table.projectName">Project name</span></th>
                 <th class="footnote-col" title="Superscript footnote marker" data-i18n-title="table.footnote.title"><span data-i18n="table.footnote">Footnote</span></th>
                 <th class="type-col"><span data-i18n="table.type">Type</span></th>
-                <th class="annotation-preview-col label-preview-col"><span data-i18n="table.label">Label</span> <span class="col-auto-chip" role="img" title="Auto" aria-label="Auto" data-i18n-title="table.auto" data-i18n-aria-label="table.auto"><span data-icon="wand" aria-hidden="true"></span></span></th>
+                <th class="annotation-preview-col label-preview-col" scope="col"><span data-i18n="table.label">Label</span></th>
                 <th class="coordinate-col city-col"><span data-i18n="table.cityColumn">City</span></th>
                 <th class="coordinate-col region-col anchor-preview-col"><span data-i18n="table.regionColumn">Province or territory</span></th>
                 <th class="coordinate-col lon-col"><span data-i18n="table.longitude">Longitude</span></th>
@@ -388,12 +393,12 @@
           </div>
         </div>
         <div id="previewTablePane" class="table-pane preview-table-pane is-active" role="tabpanel" aria-labelledby="previewTableTab" data-workspace="preview">
-          <header class="workspace-intro">
+          <header class="workspace-intro map-workspace-intro">
             <div class="workspace-intro-copy">
                 <h2 class="workspace-title type-panel-title" data-i18n="preview.intro.title">Map</h2>
                 <p class="type-supporting" data-i18n="preview.intro.body">Preview, arrange, and select map elements for contextual editing.</p>
             </div>
-            <div class="workspace-intro-actions">
+            <div class="workspace-intro-actions map-workspace-actions">
               <div class="map-tab-language-control" role="group" aria-label="Map language" data-i18n-aria-label="aria.mapLanguage">
                 <span data-i18n="aria.mapLanguage">Map language</span>
                 <div class="map-tab-language-toggle">
@@ -407,6 +412,12 @@
               </div>
             </div>
           </header>
+          <section id="mapStyleGallery" class="map-style-gallery" aria-labelledby="mapStyleGalleryTitle" hidden>
+            <div class="map-style-gallery-heading"><div><h3 id="mapStyleGalleryTitle" class="type-card-title" data-i18n="gallery.title">Choose a map style</h3><p id="mapStyleGalleryHelp" class="type-supporting" data-i18n="gallery.help">Apply a style to your data, or load an editable example. Your placements stay when you apply a style.</p><p class="type-caption" data-style-count></p></div><button id="closeMapStyleGalleryBtn" class="btn-quiet" type="button" data-i18n="gallery.done">Done</button></div>
+            <div class="map-style-gallery-controls" data-gallery-document-only><span class="type-control-label" data-i18n="gallery.labels">Map labels</span><div class="ui-control-group" role="group" aria-label="Map labels" data-i18n-aria-label="gallery.labels"><button class="btn-toggle" type="button" data-label-display="names" aria-pressed="true" data-i18n="gallery.names">Names</button><button class="btn-toggle" type="button" data-label-display="numbers" aria-pressed="false" data-i18n="gallery.numbers">Numbers</button></div><span class="type-caption" data-i18n="gallery.numberHelp">Numbers refer to project titles in the companion table.</span></div>
+            <p class="type-caption" data-gallery-document-only data-i18n="gallery.exampleHelp">Previews use illustrative Canada data. Loading an example replaces the current map; Undo restores it.</p>
+            <div id="mapStyleGalleryCards" class="map-style-gallery-grid"></div>
+          </section>
           <div class="preview-panel">
             <div id="mapHost" class="map-host">
               <div class="preview-loading" role="status" aria-live="polite">
@@ -427,6 +438,23 @@
                 </div>
               </div>
               <div id="previewErrorState" class="preview-state-card preview-error-state" hidden aria-live="polite"></div>
+              <div id="canvasToolbar" class="canvas-toolbar" aria-label="Canvas controls" data-i18n-aria-label="aria.canvasControls">
+                <div class="canvas-zoom-control">
+                  <div class="canvas-zoom-group" role="group" aria-label="Canvas zoom" data-i18n-aria-label="aria.canvasZoom">
+                    <button id="canvasZoomOutBtn" type="button" aria-label="Zoom canvas out" data-i18n-aria-label="canvas.zoomOut">&minus;</button>
+                    <output id="canvasZoomReadout" aria-live="polite" data-i18n="canvas.zoomReadout" data-i18n-params='{"value":"125%"}'>Canvas 125%</output>
+                    <button id="canvasZoomInBtn" type="button" aria-label="Zoom canvas in" data-i18n-aria-label="canvas.zoomIn">+</button>
+                  </div>
+                </div>
+                <div class="canvas-auto-place-control">
+                  <div class="canvas-auto-place-group" role="group" aria-labelledby="canvasAutoPlaceLabel">
+                    <span id="canvasAutoPlaceLabel" class="canvas-auto-place-label" data-i18n="canvas.autoPlace.label">Auto-place</span>
+                    <button id="canvasAutoPlaceBtn" type="button" class="primary-action" data-icon="auto-fit" aria-describedby="canvasAutoPlaceHint" title="Auto-place labels and resize the baselayer to fit the canvas" data-i18n-title="canvas.autoPlace.title"><span class="canvas-label-wide" data-i18n="canvas.autoPlace.wide">Fit: map + labels</span><span class="canvas-label-compact" data-i18n="canvas.autoPlace.compact">Map + labels</span></button>
+                    <button id="canvasPlaceLabelsOnlyBtn" type="button" data-icon="label-place" title="Auto-place labels while preserving the current map size" data-i18n-title="canvas.labelsOnly.title"><span class="canvas-label-wide" data-i18n="canvas.labelsOnly.wide">Fit: labels only</span><span class="canvas-label-compact" data-i18n="canvas.labelsOnly.compact">Labels</span></button>
+                  </div>
+                  <small id="canvasAutoPlaceHint" class="visually-hidden" data-i18n="status.autoPlaceMayResize">Auto-place will recalculate labels and resize the baselayer to fit the canvas.</small>
+                </div>
+              </div>
               <div id="canvasViewport" class="canvas-viewport" aria-describedby="documentPreviewHint">
                 <div class="document-preview-stack">
                   <div class="document-preview-caption">
@@ -471,23 +499,6 @@
                   </div>
                 </div>
               </div>
-              <div id="canvasToolbar" class="canvas-toolbar" aria-label="Canvas controls" data-i18n-aria-label="aria.canvasControls">
-                <div class="canvas-zoom-control">
-                  <div class="canvas-zoom-group" role="group" aria-label="Canvas zoom" data-i18n-aria-label="aria.canvasZoom">
-                    <button id="canvasZoomOutBtn" type="button" aria-label="Zoom canvas out" data-i18n-aria-label="canvas.zoomOut">&minus;</button>
-                    <output id="canvasZoomReadout" aria-live="polite" data-i18n="canvas.zoomReadout" data-i18n-params='{"value":"125%"}'>Canvas 125%</output>
-                    <button id="canvasZoomInBtn" type="button" aria-label="Zoom canvas in" data-i18n-aria-label="canvas.zoomIn">+</button>
-                  </div>
-                </div>
-                <div class="canvas-auto-place-control">
-                  <div class="canvas-auto-place-group" role="group" aria-labelledby="canvasAutoPlaceLabel">
-                    <span id="canvasAutoPlaceLabel" class="canvas-auto-place-label" data-i18n="canvas.autoPlace.label">Auto-place</span>
-                    <button id="canvasAutoPlaceBtn" type="button" class="primary-action" data-icon="auto-fit" aria-describedby="canvasAutoPlaceHint" title="Auto-place labels and resize the baselayer to fit the canvas" data-i18n-title="canvas.autoPlace.title"><span class="canvas-label-wide" data-i18n="canvas.autoPlace.wide">Fit: map + labels</span><span class="canvas-label-compact" data-i18n="canvas.autoPlace.compact">Map + labels</span></button>
-                    <button id="canvasPlaceLabelsOnlyBtn" type="button" data-icon="label-place" title="Auto-place labels while preserving the current map size" data-i18n-title="canvas.labelsOnly.title"><span class="canvas-label-wide" data-i18n="canvas.labelsOnly.wide">Fit: labels only</span><span class="canvas-label-compact" data-i18n="canvas.labelsOnly.compact">Labels</span></button>
-                  </div>
-                  <small id="canvasAutoPlaceHint" class="visually-hidden" data-i18n="status.autoPlaceMayResize">Auto-place will recalculate labels and resize the baselayer to fit the canvas.</small>
-                </div>
-              </div>
             </div>
             <div id="canvasQualityPill" class="canvas-quality-pill" hidden></div>
           </div>
@@ -522,6 +533,7 @@
             <span class="properties-collapse-glyph" aria-hidden="true">›</span>
           </button>
         </div>
+        <button id="propertiesDocumentBtn" class="btn-quiet properties-document-back" type="button" data-icon="chevron-left" data-i18n="properties.back.document" hidden>Back to Document</button>
         <div class="properties-heading">
           <span id="propertiesIcon" class="properties-entity-icon" aria-hidden="true"></span>
           <h2 id="propertiesTitle" class="type-panel-title" data-i18n="properties.title.document">Document</h2>
@@ -693,15 +705,15 @@
             <div>
               <h3 id="startupCanvasHeading" class="startup-section-label type-eyebrow" data-i18n="dialog.startup.canvasHeading">Canvas</h3>
               <div class="startup-setup-fields">
-                <label>
-                  <span data-i18n="dialog.startup.mapStyle">Map style</span>
-                  <select id="startupMapStyleInput">
-                    <option value="goc-green">GoC green</option>
-                    <option value="goc-blue">GoC blue</option>
-                    <option value="neutral-print">Neutral print</option>
-                    <option value="high-contrast">High contrast</option>
-                  </select>
-                </label>
+                <div class="startup-style-choice">
+                  <svg id="startupStylePreview" class="map-style-preview" viewBox="0 0 240 180" aria-hidden="true" focusable="false"></svg>
+                  <div class="startup-style-choice-controls">
+                    <span class="type-control-label" data-i18n="dialog.startup.mapStyle">Map style</span>
+                    <span id="startupStyleName" class="type-supporting"></span>
+                    <input id="startupMapStyleInput" type="hidden" value="goc-green" />
+                    <button id="startupChooseStyleBtn" class="btn-default" type="button" data-style-gallery-open aria-expanded="false" aria-controls="mapStyleGallery" data-i18n="gallery.choose">Choose style</button>
+                  </div>
+                </div>
                 <label>
                   <span data-i18n="dialog.startup.pagePreset">Page preset</span>
                   <select id="startupBookSizeInput">
@@ -735,8 +747,25 @@
           </section>
         </div>
       </form>
+      <div id="startupStyleGalleryScreen" class="startup-screen startup-style-gallery-screen" data-startup-screen="style" hidden></div>
     </div>
   </div>
+  <dialog id="companionTableDialog" class="dialog-card companion-table-dialog" aria-labelledby="companionTableTitle" hidden>
+    <header class="dialog-header">
+      <h2 id="companionTableTitle" class="type-dialog-title" tabindex="-1" data-dialog-initial-focus data-i18n="companion.title">Numbered project titles</h2>
+      <button type="button" class="btn-icon dialog-close" data-dialog-close="companion-table" data-icon="x" aria-label="Close project title table" data-i18n-aria-label="companion.close"></button>
+    </header>
+    <div class="dialog-body">
+      <p id="companionTableNote" class="type-supporting"></p>
+      <div id="companionTableContent" class="companion-table-content"></div>
+    </div>
+    <footer class="dialog-footer companion-table-actions">
+      <button type="button" class="btn-default" data-companion-export="html" data-i18n="companion.exportHtml">Export HTML table</button>
+      <button type="button" class="btn-default" data-companion-export="csv" data-i18n="export.csv.title">Export CSV</button>
+      <button type="button" class="btn-quiet" data-dialog-close="companion-table" data-i18n="gallery.done">Done</button>
+    </footer>
+  </dialog>
+
   <div id="mapDetailsDialog" class="app-dialog" role="dialog" aria-modal="true" aria-labelledby="mapDetailsTitle" hidden>
     <div class="dialog-scrim" data-dialog-close="map-details"></div>
     <form id="mapDetailsForm" class="dialog-card map-details-dialog-card">
@@ -998,24 +1027,27 @@
 
   <script src="assets/vendor/d3-7.9.0.min.js"></script>
   <script src="assets/vendor/papaparse-5.4.1.min.js"></script>
-  <script src="src/presets.js?v=20260714-bilingual-audit"></script>
-  <script src="src/config.js?v=20260820-followup22"></script>
+  <script src="src/numbered-map.js?v=20261008"></script>
+  <script src="src/map-composition.js?v=20261008-connectors"></script>
+  <script src="assets/illustrations/regional-briefing/artwork.js?v=20261008"></script>
+  <script src="src/presets.js?v=20261008-reference-composition"></script>
+  <script src="src/config.js?v=20261008-reference-composition"></script>
   <script src="src/icons.js?v=20260815-composed-map-icons-v3"></script>
   <script src="src/location-hierarchy.js?v=20260821-location-hierarchy"></script>
-  <script src="src/project-file.js?v=20260820-marker-cities-only"></script>
+  <script src="src/project-file.js?v=20261008-style-gallery"></script>
   <script src="src/geometry.js?v=20260622-module-extraction"></script>
   <script src="src/marker-colour.js?v=20260818-icon-leaders"></script>
-  <script src="src/label-layout.js?v=20260622-module-extraction"></script>
-  <script src="src/project-io.js?v=20260821-location-hierarchy"></script>
+  <script src="src/label-layout.js?v=20261008-reference-composition"></script>
+  <script src="src/project-io.js?v=20261008-style-gallery"></script>
   <script src="src/region-matching.js?v=20260712-location-mode"></script>
   <script src="src/workspace.js?v=20260821-location-hierarchy"></script>
-  <script src="src/properties.js?v=20260821-location-hierarchy"></script>
-  <script src="src/i18n.js?v=20260821-location-hierarchy"></script>
+  <script src="src/properties.js?v=20261009-style-placement"></script>
+  <script src="src/i18n.js?v=20261009-style-placement"></script>
   <script src="src/feedback.js?v=20260820-ui-marker-workflows"></script>
   <script src="data/cities.js?v=20260812-reference-cities"></script>
   <script src="src/lib/city-search-runtime.js?v=20260812-reference-cities"></script>
   <script src="src/reference-cities.js?v=20260821-ui-patterns-3"></script>
   <script src="src/city-integration.js?v=20260812-city-integration"></script>
-  <script src="src/app.js?v=20260821-location-hierarchy"></script>
+  <script src="src/app.js?v=20261009-style-placement"></script>
 </body>
 </html>

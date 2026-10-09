@@ -223,4 +223,14 @@ test("fixed-scale solver distinguishes infeasible from budget-exhausted", () => 
     candidatePlacementMap: new Map([["a", [alpha, { ...alpha, labelY: 40 }]], ["b", [beta]]]),
     maxNodes: 1
   }).status, "budget-exhausted");
+  const expired = policies.solveConflictFreeLayout(points, settings, bounds, {
+    candidatePlacementMap: new Map([["a", [alpha, { ...alpha, labelY: 40 }]], ["b", [beta]]]),
+    minConflictRestarts: 5,
+    minConflictSteps: 1000,
+    minConflictsOnly: true,
+    timeBudgetMs: 0
+  });
+  assert.equal(expired.status, "budget-exhausted");
+  assert.equal(expired.placed, null, "an expired search must not accept an unresolved placement");
+  assert.equal(expired.nodesVisited, 0);
 });

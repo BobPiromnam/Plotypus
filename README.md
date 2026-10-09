@@ -95,6 +95,18 @@ All runtime libraries, fonts, map boundaries, and other required assets are incl
 
 Project data stays in the browser unless you explicitly save, export, copy, or share a file.
 
+### Map styles and numbered projects
+
+In new-map setup, use **Choose style** to browse six visual map styles before continuing to **Markers**. To change an existing map, open **Document Properties → Map style → Change style**. The collapsed section shows the current style. Selected map objects offer a return to Document Properties. **Apply style** formats your current data and preserves manual placements; **Load example** replaces the map with editable illustrative data, which **Undo** can restore. The **Numbered projects** preset uses blue-grey regions, outlined category badges, and numbered labels like a project atlas. Distinct region colours are decorative; choose **By data value** in Document Properties when colours should represent values. Manual region fills are preserved.
+
+For the bundled **Sample**, **Fit: map + labels** favours label positions around the map's perimeter to make more room for the map. Review **QA** and refine the layout before exporting.
+
+Choose **Regional briefing → Load example** for a landscape map with six bilingual briefing labels, provinces grouped by colour, outlined coloured connectors, and bundled offline equipment silhouettes. Its gallery preview uses the same illustrations and briefing layout. Applying this style to existing data keeps your **Names** or **Numbers** choice. Select a label or its artwork to edit headings, bullets, image size, or replacement images in **Properties**. The content is illustrative: replace it and review both languages before publication. **Save** includes the images and both language layouts; SVG and PNG exports are self-contained.
+
+Choose **Names** or **Numbers** with any style. Numbers replace project titles on the map. Select a marker or badge to edit its **Map number** in Properties, or map an optional `map_number` spreadsheet column during import. Map numbers must be positive whole numbers. Blank numbers are assigned once; sorting rows or changing styles does not renumber projects. Several locations of one project may share a number. Properties and QA warn when the same number has conflicting titles or categories.
+
+Drag a badge, or focus it and use the arrow keys (Shift moves farther), to move its label while keeping its geographic location. Name labels and numbered badges retain separate English and French layouts. Use **Review project title table** in **Export** or **QA** to check the number-to-title key before exporting. Choose **Project title table** for a printable/copyable HTML table or **Project title table (CSV)** for a spreadsheet. The table uses the selected map language and consolidates repeated locations of the same project. Review missing translations and number warnings before publication.
+
 ### Optional: run from a server
 
 A server is not required for normal offline use. Run Plotypus from a local or hosted static server when you want to load deployment overrides from `plotypus.config.json`, make it available to other people on a network, or publish it as a website.

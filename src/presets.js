@@ -28,6 +28,72 @@
   ];
 
   window.MAP_APP_STYLE_PRESETS = {
+    "regional-briefing": {
+      "label": "Regional briefing",
+      "labelFr": "Portrait régional",
+      "stylesheet": "styles/themes/regional-briefing.css?v=20261008",
+      "exampleKind": "regional-briefing",
+      "regionColours": ["#14958f", "#df7d28", "#9e796c", "#0c5952", "#208fa7", "#0b3c56"],
+      "regionFills": {
+        "Yukon": "#14958f",
+        "Northwest Territories": "#14958f",
+        "Nunavut": "#14958f",
+        "British Columbia": "#df7d28",
+        "Alberta": "#9e796c",
+        "Saskatchewan": "#9e796c",
+        "Manitoba": "#9e796c",
+        "Ontario": "#0c5952",
+        "Quebec": "#208fa7",
+        "New Brunswick": "#0b3c56",
+        "Nova Scotia": "#0b3c56",
+        "Prince Edward Island": "#0b3c56",
+        "Newfoundland and Labrador": "#0b3c56"
+      },
+      "categoryStyles": [
+        { "colour": "#14958f", "stroke": "#ffffff", "markerSize": 4, "lineWidth": 1.5, "shape": "circle" },
+        { "colour": "#df7d28", "stroke": "#ffffff", "markerSize": 4, "lineWidth": 1.5, "shape": "circle" },
+        { "colour": "#9e796c", "stroke": "#ffffff", "markerSize": 4, "lineWidth": 1.5, "shape": "circle" },
+        { "colour": "#0c5952", "stroke": "#ffffff", "markerSize": 4, "lineWidth": 1.5, "shape": "circle" },
+        { "colour": "#208fa7", "stroke": "#ffffff", "markerSize": 4, "lineWidth": 1.5, "shape": "circle" },
+        { "colour": "#0b3c56", "stroke": "#ffffff", "markerSize": 4, "lineWidth": 1.5, "shape": "circle" }
+      ],
+      "headingColours": { "#14958f": "#0d716c", "#df7d28": "#9b5010", "#9e796c": "#745548", "#0c5952": "#0c5952", "#208fa7": "#116b7f", "#0b3c56": "#0b3c56" }
+    },
+    "project-atlas": {
+      "label": "Numbered projects",
+      "labelFr": "Projets numérotés",
+      "stylesheet": "styles/themes/project-atlas.css?v=20261008",
+      "defaultLabelDisplay": "numbers",
+      "regionColours": [
+        "#a7aebd",
+        "#7d899f",
+        "#49637f",
+        "#124c68"
+      ],
+      "categoryStyles": [
+        {
+          "colour": "#ffffff",
+          "stroke": "#124c68",
+          "markerSize": 11,
+          "lineWidth": 1,
+          "shape": "circle"
+        },
+        {
+          "colour": "#ffffff",
+          "stroke": "#124c68",
+          "markerSize": 11,
+          "lineWidth": 1,
+          "shape": "square"
+        },
+        {
+          "colour": "#ffffff",
+          "stroke": "#124c68",
+          "markerSize": 11,
+          "lineWidth": 1,
+          "shape": "diamond"
+        }
+      ]
+    },
     "goc-green": {
       label: "GoC green",
       labelFr: "Vert GC",

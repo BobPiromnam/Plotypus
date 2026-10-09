@@ -11,6 +11,20 @@ Earlier project history remains available in the Git commit log.
 
 ### Added
 
+- Added a visual gallery of six map styles with separate actions to apply a
+  style to existing data or load an editable example.
+- Added the **Numbered projects** style and a **Names / Numbers** choice for
+  every style. Stable, editable map numbers replace dense project names;
+  movable badges retain their geographic locations and use connectors when
+  displaced. Several locations of one project can share a number.
+- Added a bilingual project-title table preview with printable/copyable HTML
+  and CSV exports, plus QA warnings for conflicting numbers and titles.
+- Added the **Regional briefing** style with six region colours, editable
+  bilingual briefing blocks, coloured connectors, bundled equipment
+  illustrations, and a landscape page preset. Saved projects and SVG/PNG
+  exports include the artwork.
+- Added regression coverage for style selection, numbered badges, companion
+  tables, illustrated examples, thumbnail fidelity, and save/open round trips.
 - Added fictional city and province/territory CSV datasets alongside the
   existing longitude/latitude sample, with automated import validation for all
   three location modes.
@@ -31,6 +45,15 @@ Earlier project history remains available in the Git commit log.
 
 ### Changed
 
+- Made style selection optional during new-map setup, which now continues to
+  **Markers**. Later changes live in **Document Properties → Map style →
+  Change style**; the collapsed section shows the current style and selected
+  map objects offer **Back to Document**.
+- Improved **Fit: map + labels** for the Canada sample by placing names around
+  the perimeter to leave more room for the map, while preserving manual layout
+  through ordinary renders.
+- Simplified number cells, QA instructions, and next-step guidance by removing
+  repeated wording and redundant actions.
 - Renamed the generic QA “Locate first” action to “Review on map” so its
   destination and purpose are clear before users leave the QA workspace.
 - Replaced the global Markers location mode with a per-marker Province or
@@ -80,6 +103,12 @@ Earlier project history remains available in the Git commit log.
 
 ### Fixed
 
+- Made gallery thumbnails reflect each example's palette, category symbols,
+  label treatment, and distinctive coloured illustrations in both languages.
+- Kept canvas controls in reserved space so they wrap without covering the map
+  or document caption.
+- Preserved separate English/French name and numbered-badge placements when
+  switching label modes, changing styles, and saving or reopening projects.
 - Reworked the narrow workflow rail's QA warning into a balanced, single-row
   shield-and-count action while retaining its full accessible description.
 - Centred the compact save-state dot inside a square passive status chip at
@@ -106,6 +135,8 @@ Earlier project history remains available in the Git commit log.
 
 ### Removed
 
+- Removed style selection from the canvas toolbar and the duplicate startup
+  card in favour of the setup and Document Properties routes.
 - Removed the empty Note and Source placeholders from the document-page preview.
 - Removed superseded design handoffs, completed audit and migration plans,
   unused branding exports, and an obsolete standalone loading fixture. Current

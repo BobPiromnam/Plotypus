@@ -89,6 +89,8 @@ The established five-step guide is:
 
 Keep the existing workflow icons. “Markers” and “QA” are compact workflow labels; longer workspace or explanatory labels may remain where clarity requires them. Do not rename internal keys or persisted data merely to match display copy.
 
+Map style selection is optional during new-map setup, which continues to **Markers**. Later changes live in **Document Properties → Map style → Change style**, using the same visual gallery. Keep style selection off the canvas toolbar and provide a return to Document Properties from selected map objects. Applying a style preserves data and deliberate placements; loading an example is a separate content-replacement action.
+
 Reference-city UI has one home: **Markers**. It appears in the City table-column view and in a selected marker's progressive location controls; do not expose it in startup, Map baselayer, Map Document Properties, settings, or a generic catalogue entry point. City data is bundled and offline. A chosen city creates or locates a project marker; it is not independent baselayer decoration.
 
 Marker location is a per-marker hierarchy: **Province or territory → City → Exact coordinates**. The most precise complete value determines placement, while broader values remain available as fallbacks. Exact coordinates must not infer a city, switching the visible location columns must never rewrite marker data, and clearing a precise value must reveal—not silently delete—the next valid fallback.
